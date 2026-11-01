@@ -29,11 +29,12 @@
     </div>
     <div class="assistant-error" id="assistant-error" role="alert" hidden><p id="assistant-error-text"></p><button type="button" id="assistant-retry">Повторить запрос</button></div>
   </div>
+  <p class="assistant-history-notice" id="assistant-history-notice" role="status" hidden><span aria-hidden="true">⚠</span><span><strong>Диалог стал длинным.</strong> В длинной переписке модель может путать детали и упускать важное. Начните новый диалог кнопкой ↺ и кратко повторите нужный контекст.</span></p>
   <form class="assistant-compose" id="assistant-form">
     {% csrf_token %}
     <label class="assistant-sr-only" for="assistant-input">Вопрос помощнику</label>
-    <textarea id="assistant-input" rows="3" maxlength="6000" placeholder="Спросите об опыте или гипотезе…" aria-describedby="assistant-input-hint" required></textarea>
-    <div class="assistant-compose-bottom"><span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка<br>↑/↓ — последние 25 запросов при пустом вводе</span><button id="assistant-cancel" type="button" hidden>Остановить</button><button id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button></div>
+    <textarea id="assistant-input" rows="3" maxlength="6000" placeholder="Спросите об опыте или гипотезе…" aria-describedby="assistant-history-notice assistant-input-hint" required></textarea>
+    <div class="assistant-compose-bottom"><span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка<br>↑/↓ — последние 25 запросов при пустом вводе</span><button id="assistant-cancel" type="button" aria-label="Остановить ответ" title="Остановить ответ (Esc)" hidden><span aria-hidden="true">■</span></button><button id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button></div>
   </form>
   <p class="assistant-disclosure">Вопросы, данные текущих форм и найденные записи передаются в Cloud.ru. Ответы ИИ проверяйте по источникам.</p>
 </aside>

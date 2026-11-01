@@ -448,6 +448,11 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.waitForFunction(() => document.getElementById('assistant-pending').textContent.includes('Смотрю эксперименты'));
   assert.equal(await page.locator('#assistant-cancel').isVisible(), true);
   assert.equal(await page.locator('.assistant-message.is-assistant').count(), 0, 'Activity updates do not invent an answer');
+  const nextQuestionDraft = 'Черновик следующего вопроса';
+  await page.locator('#assistant-input').fill(nextQuestionDraft);
+  await page.locator('#assistant-input').press('Enter');
+  assert.equal(await page.locator('#assistant-input').inputValue(), nextQuestionDraft, 'Enter while busy preserves the draft');
+  assert.equal(captured.at(-1).messages.at(-1).content, 'Сравни эксперименты в потоке', 'Typing does not change the active request');
   event(streaming, 'status', {text:'Изучаю статистику'});
   await page.waitForFunction(() => document.getElementById('assistant-pending').textContent.includes('Изучаю статистику'));
 
@@ -491,6 +496,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(await page.locator('.assistant-table-scroll tbody td').last().textContent(), '31');
   assert.equal(await page.locator('.assistant-sources a[href="/tests/1/"]').textContent(), 'Потоковый опыт A');
   assert.equal((await history()).at(-1).content, firstPart + secondPart);
+  assert.equal(await page.locator('#assistant-input').inputValue(), nextQuestionDraft, 'Completion preserves the next question draft');
   assert.deepEqual((await history()).at(-1).progress, [preamble,nextPreamble], 'Completed turns keep public stage text separately from the final answer');
   await page.reload({waitUntil:'networkidle'});
   assert.match(await page.locator('.assistant-message.is-assistant').textContent(), /Я проверю исходные данные/);
@@ -503,8 +509,11 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(captured.at(-1).messages[1].content, firstPart + secondPart);
   event(cancelled, 'delta', {text:'Частичный ответ перед остановкой'});
   await page.waitForFunction(() => document.querySelector('.assistant-message.is-assistant:last-child')?.textContent.includes('Частичный ответ'));
-  await page.locator('#assistant-cancel').click();
+  await page.locator('#assistant-input').fill(nextQuestionDraft);
+  await page.locator('#assistant-input').press('Escape');
   await page.locator('#assistant-error').waitFor({state:'visible'});
+  assert.equal(await page.locator('#lab-assistant').isVisible(), true, 'Escape cancels the active response without closing the chat');
+  assert.equal(await page.locator('#assistant-input').inputValue(), nextQuestionDraft, 'Cancellation preserves the next question draft');
   assert.match(await page.locator('#assistant-error-text').textContent(), /остановлен/);
   assert.match(await page.locator('.assistant-message.is-assistant').last().textContent(), /Ответ прерван/);
   assert.equal((await history()).some(item => item.content.includes('Частичный ответ')), false, 'Cancellation does not save an unfinished model turn');

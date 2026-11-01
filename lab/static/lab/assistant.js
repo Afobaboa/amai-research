@@ -12,6 +12,7 @@
   const widthKey = `${storageKey}:width`;
   const promptsKey = `${storageKey}:prompts`;
   const maxMessages = 16;
+  const historyNoticeThreshold = 10;
   let messages = [], controller = null, configured = null, open = false;
   let prompts = [], promptIndex = null;
   let turn = 0, savedOpen = null;
@@ -52,7 +53,11 @@
     try { localStorage.setItem(promptsKey, JSON.stringify(prompts)); } catch {}
   };
 
+  const updateHistoryNotice = () => {
+    $('history-notice').hidden = messages.length < historyNoticeThreshold;
+  };
   const persist = () => {
+    updateHistoryNotice();
     try { sessionStorage.setItem(storageKey, JSON.stringify(messages.slice(-maxMessages))); }
     catch { /* The current page can still keep a conversation in memory. */ }
   };
@@ -194,6 +199,7 @@
     return article;
   };
   const render = () => {
+    updateHistoryNotice();
     messagesNode.replaceChildren();
     messages.forEach(showMessage);
     $('welcome').hidden = messages.length > 0;
@@ -278,7 +284,12 @@
   desktop.addEventListener('change', () => { if (savedOpen === null) setOpen(desktop.matches, false, false); else syncModal(); });
   document.addEventListener('keydown', event => {
     if (!open) return;
-    if (event.key === 'Escape') { event.preventDefault(); if (drag) stopResize(); else setOpen(false, true); }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (controller) controller.abort('cancelled');
+      else if (drag) stopResize();
+      else setOpen(false, true);
+    }
     if (event.key !== 'Tab' || desktop.matches) return;
     const nodes = [...panel.querySelectorAll('button:not(:disabled), textarea, a[href], [tabindex="0"]')].filter(node => node.getClientRects().length);
     const first = nodes[0], last = nodes.at(-1);
@@ -323,7 +334,6 @@
     $('send').hidden = value;
     $('send').disabled = value || configured === false;
     $('retry').disabled = value;
-    input.readOnly = value;
     messagesNode.setAttribute('aria-busy', String(value));
     panel.querySelectorAll('[data-assistant-prompt]').forEach(node => { node.disabled = value; });
     followResponse();
