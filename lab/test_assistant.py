@@ -397,6 +397,76 @@ class CloudTransportTests(SimpleTestCase):
         stream.close()
         response.__exit__.assert_called_once()
 
+    @override_settings(CLOUD_RU_TIMEOUT=300)
+    @patch('lab.assistant.time.monotonic', return_value=0)
+    @patch('lab.assistant.build_opener')
+    def test_active_stream_can_pass_180_seconds_but_stops_at_300(self, opener, clock):
+        chunks = [
+            {'choices': [{'delta': {'content': text}}]}
+            for text in ('Начало', 'Продолжение', 'Ещё текст')
+        ]
+        response = opener.return_value.open.return_value
+        body = response.__enter__.return_value
+        body.readline.side_effect = [
+            line for chunk in chunks
+            for line in (('data: ' + json.dumps(chunk) + '\n').encode(), b'\n')
+        ]
+        stream = assistant._cloud_stream({'stream': True}, timeout=300)
+        self.assertEqual(next(stream), chunks[0])
+        clock.return_value = 181
+        self.assertEqual(next(stream), chunks[1])
+        clock.return_value = 299
+        self.assertEqual(next(stream), chunks[2])
+        self.assertEqual(body.fp.raw._sock.settimeout.call_args.args, (1,))
+        clock.return_value = 300
+        with self.assertRaises(assistant.AssistantError) as caught:
+            next(stream)
+        self.assertEqual(caught.exception.code, 'timeout')
+        self.assertEqual(caught.exception.status, 504)
+        self.assertEqual(opener.return_value.open.call_args.kwargs['timeout'], 300)
+        self.assertEqual(body.readline.call_count, 6)
+        response.__exit__.assert_called_once()
+
+    @override_settings(CLOUD_RU_TIMEOUT=300)
+    @patch('lab.assistant.time.monotonic', return_value=0)
+    @patch('lab.assistant.build_opener')
+    def test_stream_is_limited_by_remaining_overall_budget(self, opener, clock):
+        response = opener.return_value.open.return_value
+        body = response.__enter__.return_value
+        body.readline.side_effect = [b'data: {"choices":[]}\n', b'\n']
+        stream = assistant._cloud_stream({'stream': True}, timeout=37.5)
+        self.assertEqual(next(stream), {'choices': []})
+        self.assertEqual(opener.return_value.open.call_args.kwargs['timeout'], 37.5)
+        clock.return_value = 37.5
+        with self.assertRaises(assistant.AssistantError) as caught:
+            next(stream)
+        self.assertEqual(caught.exception.code, 'timeout')
+        self.assertEqual(body.readline.call_count, 2)
+        response.__exit__.assert_called_once()
+
+    @override_settings(CLOUD_RU_TIMEOUT=300, ASSISTANT_MAX_TOOL_ROUNDS=3)
+    @patch('lab.assistant._initial_context', return_value={})
+    @patch('lab.assistant.execute_tool', return_value={})
+    @patch('lab.assistant.time.monotonic', return_value=0)
+    @patch('lab.assistant._cloud_stream')
+    def test_tool_rounds_share_one_300_second_budget(self, cloud, clock, tool, context):
+        timeouts = []
+
+        def provider(payload, *, timeout):
+            timeouts.append(timeout)
+            clock.return_value = 200 if len(timeouts) == 1 else 300
+            yield {'choices': [{'delta': {'tool_calls': [{
+                'index': 0, 'id': f'lookup-{len(timeouts)}',
+                'function': {'name': 'search_lab_data', 'arguments': '{"entity":"tests"}'},
+            }]}, 'finish_reason': 'tool_calls'}]}
+
+        cloud.side_effect = provider
+        with self.assertRaises(assistant.AssistantError) as caught:
+            list(assistant.answer_stream([{'role': 'user', 'content': 'Сравни испытания'}]))
+        self.assertEqual(caught.exception.code, 'timeout')
+        self.assertEqual(timeouts, [300, 100])
+        self.assertEqual(tool.call_count, 2)
+
     @patch('lab.assistant.build_opener')
     def test_sse_transport_rejects_missing_terminal_invalid_and_oversized_frames(self, opener):
         for wire, code in ((b'data: {"choices":[]}\n\n', 'incomplete_response'),

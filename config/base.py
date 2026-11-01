@@ -28,5 +28,5 @@ X_FRAME_OPTIONS = 'DENY'
 CLOUD_RU_API_KEY = os.getenv('CLOUD_RU_API_KEY', '').strip()
 CLOUD_RU_MODEL = os.getenv('CLOUD_RU_MODEL', 'deepseek-ai/DeepSeek-V4-Pro').strip()
 CLOUD_RU_BASE_URL = os.getenv('CLOUD_RU_BASE_URL', 'https://foundation-models.api.cloud.ru/v1').rstrip('/')
-CLOUD_RU_TIMEOUT = os.getenv('CLOUD_RU_TIMEOUT', '90')
+CLOUD_RU_TIMEOUT = os.getenv('CLOUD_RU_TIMEOUT', '300')
 ASSISTANT_MAX_TOOL_ROUNDS = os.getenv('ASSISTANT_MAX_TOOL_ROUNDS', '5')

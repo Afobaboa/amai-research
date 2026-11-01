@@ -20,7 +20,7 @@ MAX_FORM_STATE_CHARS = 24000
 MAX_FORM_STATE_FIELDS = 200
 MAX_FORM_STATE_FORMS = 3
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
-TOTAL_TIMEOUT = 180
+TOTAL_TIMEOUT = 300
 
 SYSTEM_PROMPT = """Ты — исследовательский помощник KUDO LIMS. Отвечай по-русски.
 Помогай обсуждать эксперименты, проверять гипотезы и ориентироваться в сайте.
@@ -207,7 +207,7 @@ def _cloud_request(endpoint, *, payload=None, timeout=None):
                       data=json.dumps(payload, ensure_ascii=False).encode('utf-8') if payload is not None else None,
                       headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'Accept': 'application/json'},
                       method='POST' if payload is not None else 'GET')
-    timeout = min(timeout or TOTAL_TIMEOUT, _number_setting('CLOUD_RU_TIMEOUT', 90, 5, TOTAL_TIMEOUT))
+    timeout = min(timeout or TOTAL_TIMEOUT, _number_setting('CLOUD_RU_TIMEOUT', TOTAL_TIMEOUT, 5, TOTAL_TIMEOUT))
     try:
         with build_opener(_NoRedirects()).open(request, timeout=max(1, timeout)) as response:
             data = response.read(MAX_RESPONSE_BYTES + 1)
@@ -244,7 +244,7 @@ def list_models():
 def _cloud_stream(payload, *, timeout):
     """Read bounded SSE frames without buffering the provider's whole response."""
     key, _, base = _configuration()
-    timeout = max(1, min(timeout, _number_setting('CLOUD_RU_TIMEOUT', 90, 5, TOTAL_TIMEOUT)))
+    timeout = max(1, min(timeout, _number_setting('CLOUD_RU_TIMEOUT', TOTAL_TIMEOUT, 5, TOTAL_TIMEOUT)))
     deadline = time.monotonic() + timeout
     request = Request(base + '/chat/completions',
                       data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
