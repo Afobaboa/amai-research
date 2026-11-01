@@ -5,14 +5,19 @@
   const $ = id => document.getElementById(`assistant-${id}`);
   const launcher = $('launcher'), backdrop = $('backdrop'), input = $('input');
   const messagesNode = $('messages'), scroll = $('scroll'), statusNode = $('status');
+  const resize = $('resize');
   const desktop = window.matchMedia('(min-width: 1400px)');
   const storageKey = `kudo-assistant-v1:${panel.dataset.employee}`;
   const preferenceKey = `${storageKey}:open`;
+  const widthKey = `${storageKey}:width`;
   const maxMessages = 16;
   let messages = [], controller = null, configured = null, open = false;
   let turn = 0, savedOpen = null;
+  let preferredWidth = 374, drag = null;
   try {
     savedOpen = sessionStorage.getItem(preferenceKey);
+    const savedWidth = Number(sessionStorage.getItem(widthKey));
+    if (Number.isFinite(savedWidth) && savedWidth > 0) preferredWidth = savedWidth;
     const saved = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
     if (Array.isArray(saved)) {
       for (const item of saved.slice(-maxMessages)) {
@@ -53,9 +58,34 @@
     }
     target.append(document.createTextNode(text.slice(offset)));
   };
+  const tableRow = line => {
+    const source = line.trim(), cells = [];
+    let cell = '', codeDelimiter = '', hasPipe = false;
+    for (let index = 0; index < source.length; index++) {
+      const character = source[index];
+      if (character === '\\' && index + 1 < source.length) {
+        const next = source[++index];
+        cell += next === '|' ? '|' : '\\' + next;
+      } else if (character === '`') {
+        let ticks = '`';
+        while (source[index + 1] === '`') { ticks += '`'; index++; }
+        if (codeDelimiter === ticks) codeDelimiter = '';
+        else if (!codeDelimiter && source.slice(index + 1).match(/`+/g)?.includes(ticks)) codeDelimiter = ticks;
+        cell += ticks;
+      } else if (character === '|' && !codeDelimiter) {
+        cells.push(cell.trim()); cell = ''; hasPipe = true;
+      } else cell += character;
+    }
+    cells.push(cell.trim());
+    if (source.startsWith('|')) cells.shift();
+    if (hasPipe && source.endsWith('|') && cells.at(-1) === '') cells.pop();
+    return {cells, hasPipe};
+  };
   const markdown = (target, text) => {
     let paragraph = null, list = null, code = null;
-    for (const line of text.split('\n')) {
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
       if (line.trim().startsWith('```')) {
         paragraph = null; list = null;
         if (code) code = null;
@@ -64,6 +94,34 @@
       }
       if (code) { code.append(document.createTextNode((code.textContent ? '\n' : '') + line)); continue; }
       if (!line.trim()) { paragraph = null; list = null; continue; }
+      const header = tableRow(line), separator = tableRow(lines[index + 1] || '');
+      if (header.hasPipe && header.cells.length && header.cells.length === separator.cells.length && separator.cells.every(cell => /^:?-{3,}:?$/.test(cell))) {
+        paragraph = null; list = null;
+        const wrapper = element('div', 'assistant-table-scroll');
+        wrapper.tabIndex = 0;
+        wrapper.setAttribute('role', 'region');
+        wrapper.setAttribute('aria-label', 'Таблица в ответе помощника');
+        const table = element('table'), head = element('thead'), body = element('tbody');
+        const alignment = separator.cells.map(cell => cell.endsWith(':') ? (cell.startsWith(':') ? 'center' : 'right') : 'left');
+        const appendRow = (section, cells, heading = false) => {
+          const row = element('tr');
+          header.cells.forEach((_, column) => {
+            const cell = element(heading ? 'th' : 'td');
+            if (heading) cell.scope = 'col';
+            cell.style.textAlign = alignment[column];
+            inline(cell, cells[column] || '');
+            row.append(cell);
+          });
+          section.append(row);
+        };
+        appendRow(head, header.cells, true);
+        index++;
+        while (index + 1 < lines.length && lines[index + 1].trim() && !/^\s*(?:```|#{1,6}\s|(?:[-*]|\d+[.)])\s)/.test(lines[index + 1])) {
+          appendRow(body, tableRow(lines[++index]).cells);
+        }
+        table.append(head, body); wrapper.append(table); target.append(wrapper);
+        continue;
+      }
       const heading = line.match(/^#{1,6}\s+(.+)/);
       if (heading) { const node = element('h4'); inline(node, heading[1]); target.append(node); paragraph = null; list = null; continue; }
       const item = line.match(/^\s*(?:([-*])|\d+[.)])\s+(.+)/);
@@ -105,6 +163,59 @@
     $('welcome').hidden = messages.length > 0;
     scroll.scrollTop = scroll.scrollHeight;
   };
+  const widthBounds = () => {
+    const viewport = document.documentElement.clientWidth;
+    const sidebar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar')) || 244;
+    const min = Math.min(340, viewport);
+    // Leave enough room to use the laboratory when the panel is docked.
+    const max = Math.max(min, Math.min(960, desktop.matches ? viewport - sidebar - 600 : viewport - 32));
+    return {min, max, viewport, sidebar};
+  };
+  const setWidth = (value = preferredWidth, remember = false) => {
+    const {min, max, viewport, sidebar} = widthBounds();
+    const width = Math.round(Math.max(min, Math.min(max, value)));
+    document.documentElement.style.setProperty('--assistant-width', `${width}px`);
+    resize.hidden = viewport < 640;
+    resize.setAttribute('aria-valuemin', String(min));
+    resize.setAttribute('aria-valuemax', String(max));
+    resize.setAttribute('aria-valuenow', String(width));
+    resize.setAttribute('aria-valuetext', `${width} пикселей`);
+    document.body.classList.toggle('assistant-narrow-workspace', desktop.matches && viewport - sidebar - width < 760);
+    if (remember) {
+      preferredWidth = width;
+      try { sessionStorage.setItem(widthKey, String(width)); } catch { /* Resizing also works without storage. */ }
+    }
+  };
+  const stopResize = () => {
+    if (!drag) return;
+    const pointer = drag.pointer;
+    drag = null;
+    document.body.classList.remove('assistant-resizing');
+    if (resize.hasPointerCapture(pointer)) resize.releasePointerCapture(pointer);
+  };
+  resize.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || !event.isPrimary || resize.hidden || drag) return;
+    event.preventDefault();
+    drag = {pointer:event.pointerId, x:event.clientX, width:panel.getBoundingClientRect().width};
+    resize.setPointerCapture(event.pointerId);
+    resize.focus();
+    document.body.classList.add('assistant-resizing');
+  });
+  resize.addEventListener('pointermove', event => {
+    if (drag?.pointer === event.pointerId) setWidth(drag.width + drag.x - event.clientX, true);
+  });
+  resize.addEventListener('pointerup', stopResize);
+  resize.addEventListener('pointercancel', stopResize);
+  resize.addEventListener('lostpointercapture', stopResize);
+  resize.addEventListener('keydown', event => {
+    const {min, max} = widthBounds();
+    const width = panel.getBoundingClientRect().width, step = event.shiftKey ? 60 : 20;
+    const next = {ArrowLeft:width + step, ArrowRight:width - step, Home:min, End:max}[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    setWidth(next, true);
+  });
+  window.addEventListener('resize', () => { stopResize(); setWidth(); });
   const syncModal = () => {
     const modal = open && !desktop.matches;
     document.body.classList.toggle('assistant-modal-open', modal);
@@ -115,6 +226,7 @@
     document.querySelectorAll('.main-shell, .sidebar').forEach(node => { node.inert = modal; });
   };
   const setOpen = (value, focus = false, remember = true) => {
+    if (!value) stopResize();
     open = value;
     panel.hidden = !value;
     launcher.setAttribute('aria-expanded', String(value));
@@ -129,9 +241,9 @@
   desktop.addEventListener('change', () => { if (savedOpen === null) setOpen(desktop.matches, false, false); else syncModal(); });
   document.addEventListener('keydown', event => {
     if (!open) return;
-    if (event.key === 'Escape') { event.preventDefault(); setOpen(false, true); }
+    if (event.key === 'Escape') { event.preventDefault(); if (drag) stopResize(); else setOpen(false, true); }
     if (event.key !== 'Tab' || desktop.matches) return;
-    const nodes = [...panel.querySelectorAll('button:not(:disabled), textarea, a[href]')].filter(node => node.getClientRects().length);
+    const nodes = [...panel.querySelectorAll('button:not(:disabled), textarea, a[href], [tabindex="0"]')].filter(node => node.getClientRects().length);
     const first = nodes[0], last = nodes.at(-1);
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -175,6 +287,72 @@
     }
     $('send').disabled = Boolean(controller) || configured === false;
   };
+  const formState = () => {
+    const state = {title:'', forms:[], truncated:false};
+    const limit = (value, maximum) => {
+      if (value.length > maximum) state.truncated = true;
+      const result = value.slice(0, maximum);
+      return /[\uD800-\uDBFF]$/.test(result) ? result.slice(0, -1) : result;
+    };
+    const readable = value => value.replace(/\s+/g, ' ').trim();
+    const types = new Set(['text','search','number','textarea','select-one','select-multiple','checkbox','radio','date','datetime-local','time','email','tel','url','range','color','week','month']);
+    const privateName = /(?:^|[_-])(?:csrfmiddlewaretoken|csrf|password|passwd|secret|token|api[_-]?key)(?:$|[_-])/i;
+    state.title = limit(readable(document.querySelector('.main-shell main h1')?.textContent || document.title), 200);
+    let count = 0;
+    collect: for (const form of document.querySelectorAll('.main-shell main form')) {
+      let snapshot = null;
+      for (const node of form.querySelectorAll('input, select, textarea')) {
+        if (!node.name || privateName.test(node.name) || !types.has(node.type) || node.matches(':disabled') || !node.getClientRects().length) continue;
+        if (count === 200 || (!snapshot && state.forms.length === 3)) { state.truncated = true; break collect; }
+        if (!snapshot) {
+          snapshot = {method:form.method === 'post' ? 'post' : 'get', fields:[]};
+          state.forms.push(snapshot);
+        }
+        const label = [...(node.labels || [])].map(source => {
+          const copy = source.cloneNode(true);
+          copy.querySelectorAll('.required').forEach(marker => marker.remove());
+          return readable(copy.textContent);
+        }).filter(Boolean).join(' · ') || node.getAttribute('aria-label') || node.name;
+        const name = limit(node.name, 120);
+        if (privateName.test(name)) continue;
+        const field = {name, label:limit(readable(label), 160), type:node.type, value:'', changed:false};
+        const section = node.closest('.panel')?.querySelector('h2')?.textContent;
+        if (section) field.section = limit(readable(section), 160);
+        if (node.type === 'checkbox' || node.type === 'radio') {
+          field.value = node.checked;
+          field.display = limit(node.value, 160);
+          field.changed = node.checked !== node.defaultChecked;
+        } else if (node.tagName === 'SELECT') {
+          const selected = [...node.selectedOptions];
+          if (selected.length > 20) state.truncated = true;
+          if (node.multiple) {
+            field.value = selected.slice(0, 20).map(option => limit(option.value, 2000));
+            field.display = selected.slice(0, 20).map(option => limit(readable(option.textContent), 160));
+            field.changed = [...node.options].some(option => option.selected !== option.defaultSelected);
+          } else {
+            field.value = limit(node.value, 2000);
+            field.display = limit(readable(selected[0]?.textContent || ''), 160);
+            const original = [...node.options].filter(option => option.defaultSelected).at(-1)
+              || [...node.options].find(option => !option.disabled && !option.parentElement.disabled);
+            field.changed = node.value !== (original?.value || '');
+          }
+        } else {
+          field.value = limit(node.value, 2000);
+          field.changed = node.value !== node.defaultValue;
+        }
+        snapshot.fields.push(field);
+        count++;
+        if (JSON.stringify(state).length > 24000) {
+          snapshot.fields.pop();
+          if (!snapshot.fields.length) state.forms.pop();
+          state.truncated = true;
+          break collect;
+        }
+      }
+    }
+    // Form drafts are captured only for this request, never in chat history.
+    return count ? state : undefined;
+  };
   const send = async (retry = false) => {
     if (controller || configured === false) return;
     const text = input.value.trim();
@@ -197,7 +375,7 @@
       const response = await fetch(panel.dataset.chatUrl, {
         method:'POST', credentials:'same-origin', signal:ownController.signal,
         headers:{'Content-Type':'application/json', Accept:'application/json', 'X-CSRFToken':$('form').querySelector('[name=csrfmiddlewaretoken]').value},
-        body:JSON.stringify({messages:messages.map(({role,content}) => ({role,content})), page:location.pathname}),
+        body:JSON.stringify({messages:messages.map(({role,content}) => ({role,content})), page:location.pathname, form_state:formState()}),
       });
       if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Сеанс завершён или сервер недоступен. Обновите страницу и войдите снова.');
       const data = await response.json();
@@ -225,6 +403,7 @@
   panel.querySelectorAll('[data-assistant-prompt]').forEach(node => node.addEventListener('click', () => { input.value = node.dataset.assistantPrompt; input.focus(); void send(); }));
   document.querySelector('.logout-form')?.addEventListener('submit', () => { try { sessionStorage.removeItem(storageKey); } catch {} });
   render();
+  setWidth();
   if (messages.at(-1)?.role === 'user') error('Предыдущий запрос не завершён. Его можно повторить.');
   setOpen(savedOpen === null ? desktop.matches : savedOpen === 'true', false, false);
   void loadStatus();

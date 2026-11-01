@@ -1,5 +1,6 @@
 """Exercise authenticated chat, real orchestration and isolated Cloud transport."""
 import json
+from copy import deepcopy
 from io import BytesIO, StringIO
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
@@ -34,6 +35,16 @@ class AssistantWorkflowTests(TestCase):
 
     def post(self, **extra):
         return self.client.post('/assistant/chat/', json.dumps({'messages': [{'role': 'user', 'content': 'Покажи материалы'}], **extra}), content_type='application/json')
+
+    def draft(self):
+        return {'title': 'Новая рецептура', 'forms': [{'method': 'post', 'fields': [
+            {'name': 'title', 'label': 'Название', 'type': 'text', 'value': 'Пробный состав', 'changed': True},
+            {'name': 'components-0-quantity_value', 'label': 'Количество', 'type': 'number', 'value': '0', 'changed': True, 'section': 'Состав рецептуры'},
+            {'name': 'notes', 'label': 'Примечание', 'type': 'textarea', 'value': '', 'changed': False},
+            {'name': 'components-0-DELETE', 'label': 'Удалить', 'type': 'checkbox', 'value': False, 'changed': False},
+            {'name': 'components-0-material', 'label': 'Материал', 'type': 'select-one', 'value': str(self.material.pk), 'display': 'Полиол', 'changed': True},
+            {'name': 'outputs', 'label': 'Результаты', 'type': 'select-multiple', 'value': ['mass', 'cost'], 'display': ['Масса', 'Стоимость'], 'changed': False},
+        ]}], 'truncated': False}
 
     @patch('lab.assistant._cloud_request')
     def test_authentication_and_active_employee_are_required_before_cloud(self, cloud):
@@ -103,6 +114,71 @@ class AssistantWorkflowTests(TestCase):
         self.assertEqual(context['current_record']['version_label'], 'AI.1')
         self.assertEqual(context['employee_role'], 'reader')
         self.assertEqual(context['overview']['materials']['total'], 1)
+
+    @patch('lab.assistant._cloud_request')
+    def test_current_form_snapshot_reaches_provider_without_changing_stored_record(self, cloud):
+        cloud.return_value = {'choices': [{'message': {'content': 'В форме указано нулевое количество.'}}]}
+        self.sign_in()
+        draft = self.draft()
+        # Additional client properties cannot become provider instructions/context.
+        draft['instructions'] = 'unwanted top-level value'
+        draft['forms'][0]['instructions'] = 'unwanted form value'
+        draft['forms'][0]['fields'][0]['instructions'] = 'unwanted field value'
+        response = self.post(page=f'/recipes/{self.recipe.pk}/', form_state=draft)
+        self.assertEqual(response.status_code, 200, response.content)
+        context = json.loads(cloud.call_args.kwargs['payload']['messages'][1]['content'].split('\n', 1)[1])
+        self.assertEqual(context['form_state'], self.draft())
+        self.assertEqual(context['current_record']['title'], 'Проверяемый состав')
+        self.recipe.refresh_from_db()
+        self.assertEqual(self.recipe.title, 'Проверяемый состав')
+
+    @patch('lab.assistant._cloud_request')
+    def test_form_snapshot_is_fresh_for_each_question_and_optional_on_other_pages(self, cloud):
+        cloud.return_value = {'choices': [{'message': {'content': 'Проверьте черновик перед сохранением.'}}]}
+        self.sign_in()
+        draft = self.draft()
+        self.assertEqual(self.post(page='/recipes/new/', form_state=draft).status_code, 200)
+        first = json.loads(cloud.call_args.kwargs['payload']['messages'][1]['content'].split('\n', 1)[1])
+        draft['forms'][0]['fields'][1]['value'] = '25'
+        draft['truncated'] = True
+        self.assertEqual(self.post(page='/recipes/new/', form_state=draft).status_code, 200)
+        current = json.loads(cloud.call_args.kwargs['payload']['messages'][1]['content'].split('\n', 1)[1])
+        self.assertEqual(first['form_state']['forms'][0]['fields'][1]['value'], '0')
+        self.assertEqual(current['form_state']['forms'][0]['fields'][1]['value'], '25')
+        self.assertTrue(current['form_state']['truncated'])
+        for extra in ({}, {'form_state': None}):
+            self.assertEqual(self.post(page='/materials/', **extra).status_code, 200)
+            context = json.loads(cloud.call_args.kwargs['payload']['messages'][1]['content'].split('\n', 1)[1])
+            self.assertNotIn('form_state', context)
+
+    @patch('lab.assistant._cloud_request')
+    def test_malformed_sensitive_and_oversized_form_snapshots_fail_before_provider(self, cloud):
+        self.sign_in()
+        bad_states = [[], 'form', {}, {'title': '', 'forms': [], 'truncated': 'false'}]
+        for key, value in (('title', 'x' * 201), ('forms', [{'method': 'post', 'fields': []}] * 4)):
+            state = self.draft()
+            state[key] = value
+            bad_states.append(state)
+        for key, value in (('name', ''), ('name', 'x' * 121), ('label', 'x' * 161),
+                           ('type', 'password'), ('type', 'hidden'), ('type', 'file'),
+                           ('name', 'csrfmiddlewaretoken'), ('name', 'access_token'),
+                           ('name', 'apiKey'), ('changed', 1), ('value', 0),
+                           ('value', {'nested': 'value'}), ('value', 'x' * 2001),
+                           ('value', ['x'] * 21), ('display', 'x' * 161), ('section', 'x' * 161)):
+            state = self.draft()
+            state['forms'][0]['fields'][0][key] = value
+            bad_states.append(state)
+        for fields in ([deepcopy(self.draft()['forms'][0]['fields'][0])] * 201,
+                       [{'name': f'field_{index}', 'label': 'Поле', 'type': 'text', 'value': 'x' * 2000, 'changed': True} for index in range(13)]):
+            state = self.draft()
+            state['forms'][0]['fields'] = fields
+            bad_states.append(state)
+        for state in bad_states:
+            with self.subTest(state=str(state)[:100]):
+                response = self.post(form_state=state)
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(response.json()['code'], 'invalid_request')
+        cloud.assert_not_called()
 
     @patch('lab.assistant._cloud_request')
     def test_invalid_tool_arguments_are_returned_to_model_for_correction(self, cloud):

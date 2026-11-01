@@ -1,6 +1,7 @@
 <button class="assistant-launcher" id="assistant-launcher" type="button" aria-controls="lab-assistant" aria-expanded="false"><span aria-hidden="true">✦</span> Помощник</button>
 <div class="assistant-backdrop" id="assistant-backdrop" hidden></div>
 <aside class="assistant" id="lab-assistant" aria-labelledby="assistant-title" data-employee="{{ employee.pk }}" data-status-url="/assistant/status/" data-chat-url="/assistant/chat/" hidden>
+  <div class="assistant-resize" id="assistant-resize" role="separator" tabindex="0" aria-label="Ширина окна помощника" aria-controls="lab-assistant" aria-orientation="vertical" aria-valuemin="340" aria-valuemax="960" aria-valuenow="374" title="Потяните, чтобы изменить ширину. Клавиши ← и → — изменить, Home — минимум, End — максимум."></div>
   <header class="assistant-header">
     <span class="assistant-mark" aria-hidden="true">✦</span>
     <div class="assistant-heading"><h2 id="assistant-title">Помощник лаборатории</h2><span id="assistant-model">Cloud.ru · подключение…</span></div>
@@ -31,5 +32,5 @@
     <textarea id="assistant-input" rows="3" maxlength="6000" placeholder="Спросите об опыте или гипотезе…" aria-describedby="assistant-input-hint" required></textarea>
     <div class="assistant-compose-bottom"><span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка</span><button id="assistant-cancel" type="button" hidden>Остановить</button><button id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button></div>
   </form>
-  <p class="assistant-disclosure">Вопросы и найденные данные передаются в Cloud.ru. Ответы ИИ проверяйте по источникам.</p>
+  <p class="assistant-disclosure">Вопросы, данные текущих форм и найденные записи передаются в Cloud.ru. Ответы ИИ проверяйте по источникам.</p>
 </aside>

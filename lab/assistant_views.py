@@ -9,7 +9,7 @@ from django.http import JsonResponse, RawPostDataException
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from .assistant import AssistantError, answer, configuration_status, validate_messages
+from .assistant import AssistantError, answer, configuration_status, validate_form_state, validate_messages
 from .models import EmployeeProfile
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,7 @@ def chat(request):
         page = payload.get('page', '/')
         if not isinstance(page, str):
             raise AssistantError('Некорректный адрес страницы.', 'invalid_request', 400)
+        form_state = validate_form_state(payload.get('form_state'))
     except (ValueError, UnicodeError, RawPostDataException):
         return JsonResponse({'error': 'Не удалось прочитать JSON сообщения.', 'code': 'invalid_request'}, status=400)
     except AssistantError as error:
@@ -64,7 +65,7 @@ def chat(request):
         rate_key = employee_key + ':minute:' + str(int(time.time() // 60))
         if not cache.add(rate_key, 1, timeout=65) and cache.incr(rate_key) > 20:
             raise AssistantError('Слишком много запросов. Повторите через минуту.', 'rate_limit', 429)
-        result = answer(messages, page=page, role=request.employee.role)
+        result = answer(messages, page=page, role=request.employee.role, form_state=form_state)
         return JsonResponse(result)
     except AssistantError as error:
         return JsonResponse({'error': str(error), 'code': error.code}, status=error.status)
