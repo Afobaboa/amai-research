@@ -29,7 +29,7 @@
     if (Array.isArray(saved)) {
       for (const item of saved.slice(-maxMessages)) {
         const expected = messages.length % 2 === 0 ? 'user' : 'assistant';
-        if (item && item.role === expected && typeof item.content === 'string' && item.content.trim() && item.content.length <= 12000) {
+        if (item && item.role === expected && typeof item.content === 'string' && (item.content.trim() || (item.role === 'assistant' && item.interrupted === true)) && item.content.length <= 12000) {
           messages.push({...item, progress:progressParts(item.progress)});
         }
       }
@@ -195,6 +195,11 @@
     else body.textContent = message.content;
     article.append(body);
     showSources(article, message);
+    if (message.role === 'assistant' && message.interrupted === true) {
+      article.classList.add('is-interrupted');
+      article.setAttribute('aria-label', 'Прерванный ответ помощника');
+      article.append(element('div', 'assistant-interrupted', 'Ответ прерван'));
+    }
     messagesNode.append(article);
     return article;
   };
@@ -469,14 +474,18 @@
     if (!retry && !text) return;
     $('error').hidden = true;
     if (!retry) {
-      // Replace an unanswered draft after a failed/cancelled turn; only completed
-      // user/assistant pairs are ever followed by another user message.
-      if (messages.at(-1)?.role === 'user') messages.pop();
+      // Keep unanswered requests restored after navigation in the visible transcript.
+      if (messages.at(-1)?.role === 'user') {
+        messages.at(-1).interrupted = true;
+        messages.push({role:'assistant', content:'', interrupted:true});
+      }
       messages.push({role:'user', content:text});
       rememberPrompt(text);
       input.value = '';
     }
+    if (retry && messages.at(-1)?.role === 'assistant' && messages.at(-1).interrupted === true) messages.pop();
     if (messages.at(-1)?.role !== 'user') return;
+    delete messages.at(-1).interrupted;
     while (messages.length > maxMessages - 1 || messages.reduce((total, item) => total + item.content.length, 0) > 48000) messages.splice(0, 2);
     persist(); render();
     const ownController = new AbortController(), ownTurn = ++turn;
@@ -502,7 +511,7 @@
       const response = await fetch(panel.dataset.chatUrl, {
         method:'POST', credentials:'same-origin', signal:ownController.signal,
         headers:{'Content-Type':'application/json', Accept:'text/event-stream', 'X-CSRFToken':$('form').querySelector('[name=csrfmiddlewaretoken]').value},
-        body:JSON.stringify({messages:messages.map(({role,content}) => ({role,content})), page:location.pathname, form_state:formState()}),
+        body:JSON.stringify({messages:messages.filter(message => message.interrupted !== true).map(({role,content}) => ({role,content})), page:location.pathname, form_state:formState()}),
       });
       const contentType = response.headers.get('content-type') || '';
       let data;
@@ -555,7 +564,12 @@
       if (ownTurn !== turn) return;
       if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
       paintDraft();
-      if (draft) {
+      messages.at(-1).interrupted = true;
+      const interrupted = {role:'assistant', content:draftText, progress:progressParts(draftStages), interrupted:true};
+      messages.push(interrupted);
+      persist();
+      if (!draft) draft = showMessage(interrupted);
+      else {
         draft.classList.remove('is-streaming');
         draft.classList.add('is-interrupted');
         draft.setAttribute('aria-label', 'Прерванный ответ помощника');

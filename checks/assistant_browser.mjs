@@ -516,7 +516,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(await page.locator('#assistant-input').inputValue(), nextQuestionDraft, 'Cancellation preserves the next question draft');
   assert.match(await page.locator('#assistant-error-text').textContent(), /остановлен/);
   assert.match(await page.locator('.assistant-message.is-assistant').last().textContent(), /Ответ прерван/);
-  assert.equal((await history()).some(item => item.content.includes('Частичный ответ')), false, 'Cancellation does not save an unfinished model turn');
+  assert.equal((await history()).find(item => item.content.includes('Частичный ответ')).interrupted, true, 'Cancellation saves the partial answer as interrupted');
   cancelled.end();
   const retried = await openStream('', true);
   assert.deepEqual(captured.at(-1).messages.map(item => item.role), ['user','assistant','user']);
@@ -528,15 +528,34 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(await page.locator('.assistant-message.is-assistant').count(), 2, 'Retry replaces the interrupted draft');
   assert.equal((await history()).at(-1).content, 'Полный ответ после повтора');
 
+  const thinking = await openStream('Вопрос, остановленный во время размышления');
+  event(thinking, 'status', {text:'Проверяю данные…'});
+  await page.locator('#assistant-cancel').click();
+  await page.locator('#assistant-error').waitFor({state:'visible'});
+  thinking.end();
+  await page.reload({waitUntil:'networkidle'});
+  assert.match(await page.locator('.assistant-message.is-assistant').last().textContent(), /Ответ прерван/, 'Cancellation before any text survives reload');
+  await page.locator('#lab-assistant').evaluate((node, url) => { node.dataset.chatUrl = url; }, streamUrl);
+
   const interrupted = await openStream('Проверка обрыва соединения');
+  const stoppedQuestion = page.locator('.assistant-message.is-user').filter({hasText:'Вопрос, остановленный во время размышления'});
+  assert.equal(await stoppedQuestion.count(), 1, 'Sending a new question preserves the cancelled question');
+  await stoppedQuestion.scrollIntoViewIfNeeded();
+  assert.equal(await stoppedQuestion.isVisible(), true, 'The cancelled question remains reachable by scrolling');
   event(interrupted, 'delta', {text:'Ответ перед обрывом'});
   interrupted.end();
   await page.locator('#assistant-error').waitFor({state:'visible'});
   assert.equal(await page.locator('#assistant-cancel').isVisible(), false);
   assert.match(await page.locator('.assistant-message.is-assistant').last().textContent(), /Ответ прерван/);
-  assert.equal((await history()).some(item => item.content.includes('Ответ перед обрывом')), false, 'EOF without done does not complete a turn');
+  assert.equal((await history()).find(item => item.content.includes('Ответ перед обрывом')).interrupted, true, 'EOF preserves an unfinished answer');
+  await page.reload({waitUntil:'networkidle'});
+  assert.match(await page.locator('.assistant-message.is-assistant').last().textContent(), /Ответ перед обрывом.*Ответ прерван/s, 'Interrupted text survives reload');
+  await page.locator('#lab-assistant').evaluate((node, url) => { node.dataset.chatUrl = url; }, streamUrl);
 
   const failed = await openStream('Проверка ошибки в потоке');
+  assert.equal(await page.locator('.assistant-message.is-user').filter({hasText:'Проверка обрыва соединения'}).count(), 1, 'The previous question stays in the transcript');
+  assert.match(await page.locator('.assistant-message.is-interrupted').last().textContent(), /Ответ перед обрывом/, 'A new question preserves the previous partial answer');
+  assert.equal(captured.at(-1).messages.some(item => item.content.includes('Ответ перед обрывом') || item.content === 'Проверка обрыва соединения'), false, 'Interrupted turns stay outside provider context');
   event(failed, 'status', {text:'Думаю'});
   event(failed, 'error', {error:'Cloud.ru прервал поток.',code:'provider_error'});
   failed.end();
