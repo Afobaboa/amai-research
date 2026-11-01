@@ -2,23 +2,8 @@ from decimal import Decimal, InvalidOperation, localcontext
 from django import template
 from django.urls import reverse
 from ..ui_text import FIELD_LABELS as LABELS
+from ..ui_text import PROPERTY_LABELS, UNIT_LABELS
 register = template.Library()
-
-PROPERTY_LABELS = {
-    'ohv': 'Гидроксильное число',
-    'density_g_ml': 'Плотность компонента',
-    'source_price_per_kg': 'Цена из исходной рецептуры',
-    'isocyanate_nco_pct': 'Содержание NCO в изоцианате',
-    'can_volume_ml': 'Объём баллона',
-    'polyol_ratio': 'Массовые части смеси A',
-    'isocyanate_ratio': 'Массовые части изоцианата',
-    'gas_mix_mass_pct': 'Массовая доля газовой смеси',
-}
-UNIT_LABELS = {
-    'mg KOH/g': 'мг KOH/г', 'g/ml': 'г/мл', 'ml': 'мл',
-    'source_currency/kg': 'валюта не указана / кг',
-    'weight_parts': 'масс. ч.',
-}
 
 
 @register.filter

@@ -15,7 +15,7 @@ from django.db.models import F, Func, Q, TextField
 from django.urls import reverse
 
 from . import models as m
-from .assistant_labels import field_labels
+from .assistant_labels import add_value_labels, field_labels
 
 MAX_ROWS = 40
 MAX_TEXT = 4000
@@ -386,6 +386,7 @@ CONDITION_FIELDS = (
 RECIPE_LINK_FIELDS = 'id recipe_version_id recipe_version__version_label status reason'
 DEPENDENCY_FIELDS = (
     'id input_result_id role input_result__metric__code '
+    'input_result__metric__label input_result__metric__unit_code '
     'input_result__numeric_value input_result__text_value '
     'input_result__value_state input_result__origin'
 )
@@ -641,7 +642,9 @@ def execute_tool(name, arguments):
     try:
         result = functions[name](**arguments)
         if name in ('search_lab_data', 'get_lab_record') and 'error' not in result:
-            result['field_labels'] = field_labels(result, ENTITIES[arguments['entity']][0])
+            model = ENTITIES[arguments['entity']][0]
+            add_value_labels(result, model)
+            result['field_labels'] = field_labels(result, model)
         return _finish(result)
     except ValueError as error:
         return {'error': str(error)}

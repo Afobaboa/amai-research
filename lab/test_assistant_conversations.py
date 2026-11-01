@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from .assistant import AssistantError
 from .assistant_worker import recover_stale, run_next
-from .models import AssistantConversation, AssistantJob, AssistantRequestLog, EmployeeProfile
+from .models import AssistantConversation, AssistantJob, AssistantRequestLog, EmployeeProfile, Metric
 
 
 @override_settings(CLOUD_RU_API_KEY='fake-test-key', CLOUD_RU_MODEL='test-model')
@@ -71,6 +71,34 @@ class ConversationTests(TestCase):
         self.assertEqual(self.client.post(f'{self.url}jobs/{job.pk}/cancel/').status_code, 404)
         self.client.logout()
         self.assertEqual(self.client.get(self.url).status_code, 401)
+
+    def test_saved_technical_names_are_readable_without_rewriting_history(self):
+        reply = ('Партия не указана (`specified_lot_id: null`). '
+                 'Проверьте source_price_per_kg. '
+                 '[Карточка](/recipes/1/?field=specified_lot_id)')
+        self.finish(reply=reply)
+        job = AssistantJob.objects.get()
+        AssistantJob.objects.filter(pk=job.pk).update(
+            progress=['Проверяю source_price_per_kg'],
+        )
+        shown = self.client.get(self.url).json()['jobs'][0]
+        self.assertIn('Партия: не указана', shown['reply'])
+        self.assertIn('Цена из исходной рецептуры', shown['reply'])
+        self.assertIn('](/recipes/1/?field=specified_lot_id)', shown['reply'])
+        self.assertEqual(shown['progress'], ['Проверяю Цена из исходной рецептуры'])
+        job.refresh_from_db()
+        self.assertEqual(job.reply, reply)
+        self.assertEqual(job.journal.reply, reply)
+
+    def test_saved_metric_codes_use_the_catalogue_without_rewriting_replies(self):
+        Metric.objects.create(code='custom_foam_yield', label='Выход пены', unit_code='л')
+        original = 'custom_foam_yield: 42 л; missing_inputs; [Карточка](/tests/1/)'
+        self.finish(reply=original)
+        shown = self.client.get(self.url).json()['jobs'][0]['reply']
+        self.assertIn('Выход пены: 42 л', shown)
+        self.assertIn('Нет исходных данных', shown)
+        self.assertIn('](/tests/1/)', shown)
+        self.assertEqual(AssistantJob.objects.get().reply, original)
 
     def test_completed_history_from_server_and_failed_answers_excluded(self):
         self.finish('Первый', 'Подтверждённый ответ')

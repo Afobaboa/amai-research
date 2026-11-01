@@ -1,6 +1,6 @@
 """Author-facing forms for the material and documentary catalogues."""
 from django import forms
-from .ui_text import UI_TEXT
+from .ui_text import SOURCE_CELL_KIND_LABELS, UI_TEXT
 
 from .forms import CompactNumberInput
 from .models import Material, MaterialLot, Metric, MixtureType, SourceCell, SourceFile, SourceSheet
@@ -124,8 +124,13 @@ class SourceCellForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.sheet = sheet
         self.instance.sheet = sheet
-        self.fields['cell_kind'].widget = forms.Select(choices=[('text', 'Текст'), ('numeric', 'Число'),
-                                                               ('formula', 'Формула'), ('blank', 'Пусто'), ('other', 'Другое')])
+        kinds = ['text', 'numeric', 'formula', 'blank', 'other']
+        # Keep an imported cell's original type selected when editing it.
+        if self.instance.cell_kind in SOURCE_CELL_KIND_LABELS and self.instance.cell_kind not in kinds:
+            kinds.append(self.instance.cell_kind)
+        self.fields['cell_kind'].widget = forms.Select(
+            choices=[(code, SOURCE_CELL_KIND_LABELS[code]) for code in kinds],
+        )
         self.fields['raw_value'].strip = False
         self.fields['formula_text'].strip = False
 

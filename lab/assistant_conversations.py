@@ -1,5 +1,6 @@
 """Durable conversations and a DB queue; HTTP requests never run the model."""
 import json
+import re
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
@@ -11,8 +12,9 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 
 from .assistant import AssistantError, configuration_status, validate_form_state, validate_messages
 from .assistant_logging import RequestJournal
+from .assistant_output import OutputLabels, normalize_output
 from .assistant_views import MAX_BODY_BYTES, assistant_required
-from .models import AssistantConversation, AssistantJob
+from .models import AssistantConversation, AssistantJob, Metric
 
 
 def payload(request):
@@ -70,9 +72,20 @@ def conversation(request, pk):
             Q(created_at=cursor.created_at, pk__lt=cursor.pk))
     rows = list(jobs_query.order_by('-created_at', '-pk')[:51])
     jobs = rows[:50][::-1]
+    output_labels = OutputLabels()
+    # Old replies predate per-request tool vocabulary. Resolve only metric
+    # names mentioned in this page, in one query for the entire conversation.
+    identifiers = {name for job in jobs for text in [job.reply, *job.progress]
+                   for name in re.findall(r'(?<!\w)[A-Za-z_][A-Za-z0-9_]*(?!\w)', text)}
+    if identifiers:
+        output_labels.add_data({'value_labels': {'metrics': dict(
+            Metric.objects.filter(code__in=identifiers).values_list('code', 'label'),
+        )}})
     return JsonResponse({**summary(chat), 'jobs': [{
         'id': str(job.pk), 'status': job.status, 'question': job.journal.question,
-        'reply': job.reply, 'progress': job.progress, 'activity': job.activity,
+        'reply': normalize_output(job.reply, output_labels),
+        'progress': [normalize_output(part, output_labels) for part in job.progress],
+        'activity': job.activity,
         'sources': job.journal.sources, 'error_code': job.journal.error_code,
     } for job in jobs], 'next_before': str(jobs[0].pk) if len(rows) > 50 else None})
 

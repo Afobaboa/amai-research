@@ -12,6 +12,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 from .assistant_tools import TOOLS, execute_tool
 from .assistant_context import UI_GUIDE_INTRO, interface_guide, initial_context
+from .assistant_output import OutputLabels, ReadableOutput
 
 MAX_HISTORY_MESSAGES = 24
 MAX_MESSAGE_CHARS = 12000
@@ -48,6 +49,14 @@ JSON, имена полей БД, section и коды показателей н�
 не выдумывай название поля или раздела. effective_density_g_ml и
 effective_price_per_kg — свойства партии с подписями из field_labels,
 а не разделы карточки рецептуры и не цена литра пены.
+Используй также value_labels, property_label, unit_label и подписи *_display
+для значений кодов. Учитывай раздел в value_labels: одинаковый код статуса
+может означать разное у партии и испытания. Обозначения материалов, номера
+методик и формулы сохраняй дословно; неизвестным кодам переводы не придумывай.
+Например, specified_lot_id: null объясняй как «Партия сырья не указана»,
+source_price_per_kg — как «Цена из исходной рецептуры»; не вставляй служебный JSON.
+Отсутствие связи с партией не доказывает, что нужно создать новую партию:
+сначала предложи проверить и выбрать уже существующую партию, если она известна.
 Навигацию оформляй только как Markdown-ссылку с понятной подписью:
 [название действия](адрес из navigation). Не показывай голые пути, URL в обратных кавычках,
 имена маршрутов, параметры section или шаблоны {id}. Используй navigation
@@ -384,8 +393,9 @@ class _StreamMessage:
         }]}
 
 
-def _stream_completion(payload, *, timeout):
+def _stream_completion(payload, *, timeout, output_labels=None):
     state = _StreamMessage()
+    output = ReadableOutput(output_labels or OutputLabels(), MAX_MESSAGE_CHARS)
     last_ping = time.monotonic()
     stream = _cloud_stream(payload, timeout=timeout)
     try:
@@ -398,7 +408,10 @@ def _stream_completion(payload, *, timeout):
                 yield 'metrics', {'kind': 'provider_usage',
                                   'usage': chunk['usage']}
             try:
-                yield from state.consume(chunk)
+                for event, data in state.consume(chunk):
+                    text = output.feed(data['text'])
+                    if text:
+                        yield event, {'text': text}
             except (KeyError, IndexError, TypeError, ValueError, AttributeError):
                 raise AssistantError(
                     'Cloud.ru вернул некорректный поток ответа.',
@@ -406,6 +419,9 @@ def _stream_completion(payload, *, timeout):
                 ) from None
     finally:
         stream.close()
+    tail = output.feed(final=True)
+    if tail:
+        yield 'delta', {'text': tail}
     return state.result()
 
 
@@ -508,6 +524,8 @@ class _LabAgent:
         self.total_calls = 0
         self.rounds = _number_setting('ASSISTANT_MAX_TOOL_ROUNDS', 5, 1, 8)
         initial = _initial_context(page, role)
+        self.output_labels = OutputLabels()
+        self.output_labels.add_data(initial)
         if form_state is not None:
             initial['form_state'] = form_state
         _sources(initial.get('current_record'), self.sources)
@@ -548,7 +566,9 @@ class _LabAgent:
             'request_chars': len(_json(payload)),
         }
         if self.streaming:
-            data = yield from _stream_completion(payload, timeout=remaining)
+            data = yield from _stream_completion(
+                payload, timeout=remaining, output_labels=self.output_labels,
+            )
         else:
             data = _cloud_request(
                 '/chat/completions', payload=payload, timeout=remaining,
@@ -565,6 +585,7 @@ class _LabAgent:
                 'Модель не вернула текст ответа. Повторите вопрос или '
                 'выберите модель с Function Calling.', 'empty_response',
             )
+        content = self.output_labels.render(content)
         if (choice.get('finish_reason') == 'length'
                 or len(content) > MAX_MESSAGE_CHARS):
             suffix = ('\n\nОтвет сокращён. Уточните вопрос, '
@@ -589,6 +610,7 @@ class _LabAgent:
             result = {'error': 'Некорректные параметры инструмента. '
                       'Проверьте имя, типы и разрешённые поля.'}
         _sources(result, self.sources)
+        self.output_labels.add_data(result)
         if name not in self.used:
             self.used.append(name)
         self.total_calls += 1

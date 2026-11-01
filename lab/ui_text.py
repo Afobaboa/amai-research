@@ -39,7 +39,8 @@ SECTION_LABELS = {
     'conditions': 'Условия испытания', 'conditioning': 'Кондиционирование',
     'runs': 'Серии измерений', 'results': 'Результаты измерений',
     'observations': 'Наблюдения', 'source': 'Первичный источник',
-    'dependencies': 'Исходные результаты',
+    'dependencies': 'Исходные результаты', 'sheets': 'Листы источника',
+    'cells': 'Ячейки источника',
 }
 UI_TEXT.update(SECTION_LABELS)
 
@@ -66,7 +67,7 @@ FIELD_LABELS = {
 FIELD_LABELS.update({'category': 'Категория', 'supplier': 'Поставщик', 'density_g_ml': UI_TEXT['density_g_ml'],
                'price_per_kg': UI_TEXT['price_per_kg'], 'lot_code': 'Номер партии', 'received_on': 'Дата поступления',
                'expires_on': 'Годен до', 'source': 'Источник', 'kind': 'Вид записи', 'url': 'Ссылка',
-               'attachment': 'Вложение', 'sha256': 'SHA-256', 'original_path': 'Исходное имя',
+               'attachment': 'Вложение', 'sha256': 'Контрольная сумма SHA-256', 'original_path': 'Исходное имя',
                'date_system': 'Система дат', 'source_sheet': 'Лист источника', 'source_cell': 'Первичная ячейка',
                'material': 'Материал', 'name': 'Название', 'version': 'Версия', 'description': 'Описание',
                'definition': 'Структура шаблона', 'recipe_template': 'Шаблон рецептуры', 'calculation_template': 'Шаблон расчёта',
@@ -79,6 +80,93 @@ FIELD_LABELS.update({'category': 'Категория', 'supplier': 'Постав
                'total_cost': 'Стоимость, ₽', 'cost_per_kg': 'Цена за кг', 'volume_ml': 'Объём, мл',
                'rows': 'Строки расчёта', 'quantity_total': 'Сумма количеств', 'issues': 'Замечания',
                'cost': 'Стоимость компонента', 'density_origin': 'Происхождение плотности', 'price_origin': 'Происхождение цены'})
+
+# Property codes and units are values, separate from names of model fields.
+# Templates and assistant tools use the same vocabulary.
+PROPERTY_LABELS = {
+    'ohv': 'Гидроксильное число',
+    'density_g_ml': 'Плотность компонента',
+    'source_price_per_kg': 'Цена из исходной рецептуры',
+    'isocyanate_nco_pct': 'Содержание NCO в изоцианате',
+    'can_volume_ml': 'Объём баллона',
+    'polyol_ratio': 'Массовые части смеси A',
+    'isocyanate_ratio': 'Массовые части изоцианата',
+    'gas_mix_mass_pct': 'Массовая доля газовой смеси',
+}
+UNIT_LABELS = {
+    'mg KOH/g': 'мг KOH/г', 'g/ml': 'г/мл', 'ml': 'мл',
+    'source_currency/kg': 'валюта не указана / кг',
+    'weight_parts': 'масс. ч.',
+}
+SOURCE_CELL_KIND_LABELS = {
+    'text': 'Текст', 'numeric': 'Число', 'formula': 'Формула',
+    'blank': 'Пусто', 'other': 'Другое',
+    # Imported Excel types retain their original codes as documentary data.
+    'n': 'Число', 's': 'Текст', 'inlineStr': 'Текст', 'str': 'Текст',
+    'b': 'Логическое значение', 'd': 'Дата', 'e': 'Ошибка Excel',
+    'comment': 'Комментарий Excel',
+}
+FIELD_LABELS.update({
+    'property_label': 'Свойство', 'unit_label': 'Единица',
+    'metric__label': 'Показатель',
+    'input_result__metric__label': 'Исходный показатель',
+})
+FIELD_LABELS.update({
+    # Relation names also label their Django *_id attributes in tool output.
+    'id': 'Номер записи', 'group': 'Группа состава', 'component': 'Компонент',
+    'filling_plan_line': 'Строка плана заправки', 'input_result': 'Исходный результат',
+    'test_run': 'Определение', 'session': 'Испытание', 'template': 'Шаблон расчёта',
+    'file': 'Файл источника', 'name_cell': 'Ячейка названия компонента',
+    'quantity_cell': 'Ячейка количества', 'label_cell': 'Ячейка названия строки заправки',
+    'mass_cell': 'Ячейка массы', 'scope_cell': 'Ячейка названия определения',
+    'identifier_cell': 'Ячейка номера карточки',
+    'source_title': 'Название источника', 'cell_kind': 'Тип ячейки',
+    'value_kind': 'Вид значения', 'group_label': 'Группа состава',
+    # Saved calculation snapshots contain explicit identifiers as JSON keys,
+    # rather than actual model relations.
+    'recipe_id': 'Рецептура', 'lot_id': 'Партия', 'lot_status': 'Статус партии',
+    'filling': 'План заправки', 'valid': 'Расчёт выполнен',
+    'disclaimer': 'Ограничения расчёта', 'purpose': 'Назначение расчёта',
+    'formula': 'Формула расчёта', 'unit': 'Единица',
+    # Service metadata explains incomplete selections without exposing API names.
+    'entity': 'Реестр', 'total': 'Всего записей', 'offset': 'Начало выборки',
+    'items': 'Записи', 'truncated': 'Выборка сокращена',
+    'next_offset': 'Продолжение выборки', 'output_truncated': 'Ответ сокращён',
+    'truncated_fields': 'Сокращённые поля', 'available_sections': 'Доступные разделы',
+    'detail_hint': 'Как получить подробности', 'note': 'Пояснение', 'error': 'Ошибка',
+    'field_labels': 'Названия полей', 'value_labels': 'Названия значений',
+    'path': 'Путь файла', 'lines': 'Строки файла', 'match': 'Найденный фрагмент',
+    'total_lines': 'Всего строк', 'start_line': 'Начальная строка',
+    'next_line': 'Следующая строка', 'next_column': 'Следующий столбец',
+    'column': 'Столбец', 'number': 'Номер строки', 'text': 'Текст',
+})
+
+# Assistant protocol vocabulary does not define website navigation routes.
+ASSISTANT_LABELS = {
+    'materials': UI_TEXT['material_list'], 'lots': UI_TEXT['lot_list'],
+    'mixtures': UI_TEXT['mixture_list'], 'recipes': UI_TEXT['recipe_list'],
+    'tests': UI_TEXT['test_list'], 'results': SECTION_LABELS['results'],
+    'metrics': UI_TEXT['metric_list'], 'sources': UI_TEXT['source_list'],
+    'source_cells': 'Ячейки источников',
+    'recipe_templates': UI_TEXT['recipe_template_list'],
+    'calculation_templates': UI_TEXT['calculation_template_list'],
+    'calculations': SECTION_LABELS['calculations'],
+    'summary': 'Краткая сводка', 'all': 'Все сведения карточки',
+    'search_lab_data': 'Поиск лабораторных данных',
+    'get_lab_record': 'Чтение карточки',
+    'list_project_files': 'Поиск справочных файлов',
+    'read_project_file': 'Чтение справочного файла',
+    'q': 'Поисковый запрос', 'query': 'Поисковый запрос',
+    'section': 'Раздел карточки', 'limit': 'Размер выборки',
+    'metric_code': 'Показатель', 'match_status': 'Статус связи с рецептурой',
+    'min_value': 'Минимальное значение', 'max_value': 'Максимальное значение',
+    'order': 'Порядок сортировки', 'start_column': 'Начальный столбец',
+    'line_count': 'Число строк',
+    'id_asc': 'По номеру записи: по возрастанию',
+    'id_desc': 'По номеру записи: по убыванию',
+    'value_asc': 'По значению: по возрастанию',
+    'value_desc': 'По значению: по убыванию',
+}
 
 @lru_cache(maxsize=1)
 def navigation_labels():
