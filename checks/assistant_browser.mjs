@@ -64,6 +64,11 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     '',
     'Смотрите **рецептуру** [DEMO](/recipes/1/).',
     '',
+    'Создать: [Новое испытание](/tests/new/?recipe=8).',
+    'Старый ответ: `/tests/new/`, /tests/ и **`/tests/1/results/new/`**.',
+    'Шаблон: `/tests/{id}/results/new/`, [Карточка](/tests/{id}/).',
+    'Подпись адресом: [/tests/new/](/tests/new/). Плотность 1 г/мл.',
+    '',
     '| **Рецептура** | Значение | Комментарий |',
     '| :--- | ---: | :---: |',
     String.raw`| [DEMO](/recipes/1/) | 316 | A\|B |`,
@@ -145,8 +150,15 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(await page.locator('.assistant-message img').count(), 0);
   assert.equal(await page.locator('.assistant-message a[href^="javascript:"]').count(), 0);
   assert.equal(await page.evaluate(() => window.injected), undefined);
-  assert.equal(await page.locator('.assistant-sources a[href="/recipes/1/"]').count(), 1);
+  assert.equal(await page.locator('.assistant-sources a[href="/recipes/1/"]').count(), 0, 'Sources do not repeat inline links');
   const firstReply = page.locator('.assistant-message.is-assistant').first();
+  assert.equal(await firstReply.getByRole('link', {name:'Новое испытание', exact:true}).count(), 3);
+  assert.equal(await firstReply.locator('a[href="/tests/new/?recipe=8"]').textContent(), 'Новое испытание');
+  assert.equal(await firstReply.locator('a[href="/tests/"]').textContent(), 'Испытания');
+  assert.equal(await firstReply.locator('strong a[href="/tests/1/results/new/"]').textContent(), 'Добавить результат');
+  assert.equal(await firstReply.locator('a[href*="{id}"]').count(), 0);
+  assert.equal(await firstReply.locator('a').filter({hasText:/^\//}).count(), 0, 'Route text is replaced with a UI label');
+  assert.ok((await firstReply.textContent()).includes('Плотность 1 г/мл.'), 'Units remain intact');
   const tables = firstReply.locator('.assistant-table-scroll > table');
   assert.equal(await tables.count(), 3, 'Only Markdown tables outside code fences become tables');
   const table = tables.first();
@@ -248,7 +260,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   const savedWidth = await panelWidth();
   await page.screenshot({path:join(artifacts,'desktop-tables-resized.png'),fullPage:true});
 
-  await page.locator('.assistant-sources a').click();
+  await page.locator('.assistant-message-body a[href="/recipes/1/"]').first().click();
   await page.waitForLoadState('networkidle');
   assert.equal(await page.locator('.assistant-message.is-assistant').count(), 1);
   await checkWidth(savedWidth);
@@ -285,6 +297,15 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.locator('#assistant-new').click();
   assert.equal(await page.locator('.assistant-message').count(), 0);
   assert.equal(chats.get(Number(firstChat)).jobs.at(-1).status, 'running', 'New chat does not cancel the previous generation');
+  const chatCount = chats.size;
+  await page.reload({waitUntil:'networkidle'});
+  assert.equal(await page.locator('#assistant-conversations').inputValue(), '', 'An explicitly selected new chat survives reload');
+  assert.equal(await page.locator('.assistant-message').count(), 0);
+  assert.equal(await page.locator('#assistant-send').isEnabled(), true);
+  await page.goto(base + '/recipes/1/', {waitUntil:'networkidle'});
+  assert.equal(await page.locator('#assistant-conversations').inputValue(), '', 'New chat also survives page navigation');
+  assert.equal(await page.locator('.assistant-message').count(), 0);
+  assert.equal(chats.size, chatCount, 'Restoring an empty selection does not create a saved conversation');
   mode = 'success';
   await page.locator('#assistant-input').fill('Другая тема');
   await page.locator('#assistant-send').click();
@@ -293,10 +314,17 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.notEqual(secondChat, firstChat);
   await page.locator('#assistant-conversations').selectOption(firstChat);
   await page.locator('#assistant-cancel').waitFor({state:'visible'});
+  await page.reload({waitUntil:'networkidle'});
+  await page.locator('#assistant-cancel').waitFor({state:'visible'});
+  assert.equal(await page.locator('#assistant-conversations').inputValue(), firstChat, 'An older selected conversation survives reload');
   await page.locator('#assistant-cancel').click();
   await page.locator('#assistant-error').waitFor({state:'visible'});
   assert.match(await page.locator('#assistant-error-text').textContent(), /остановлен/);
   assert.equal(chats.get(Number(firstChat)).jobs.at(-1).status, 'cancelled');
+  await page.locator('#assistant-conversations').selectOption('');
+  await page.reload({waitUntil:'networkidle'});
+  assert.equal(await page.locator('#assistant-conversations').inputValue(), '', 'Selecting new chat from the picker survives reload');
+  assert.equal(await page.locator('.assistant-message').count(), 0);
 
   // Simulate server completion after the browser tab has been closed.
   await page.locator('#assistant-new').click();

@@ -1,5 +1,6 @@
 """Author-facing forms for the material and documentary catalogues."""
 from django import forms
+from .ui_text import UI_TEXT
 
 from .forms import CompactNumberInput
 from .models import Material, MaterialLot, Metric, MixtureType, SourceCell, SourceFile, SourceSheet
@@ -10,7 +11,7 @@ class MaterialForm(forms.ModelForm):
         model = Material
         fields = ['name', 'category', 'supplier', 'density_g_ml', 'price_per_kg', 'notes']
         labels = {'name': 'Название материала', 'category': 'Категория', 'supplier': 'Производитель / поставщик',
-                  'density_g_ml': 'Плотность, г/мл', 'price_per_kg': 'Цена, ₽/кг', 'notes': 'Примечание'}
+                  'density_g_ml': UI_TEXT['density_g_ml'], 'price_per_kg': UI_TEXT['price_per_kg'], 'notes': 'Примечание'}
         widgets = {'density_g_ml': CompactNumberInput(), 'price_per_kg': CompactNumberInput(),
                    'notes': forms.Textarea(attrs={'rows': 4})}
         help_texts = {'density_g_ml': 'Справочное значение. Для конкретной партии можно записать собственное.',

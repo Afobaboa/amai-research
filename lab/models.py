@@ -1,5 +1,7 @@
 """Documentary LIMS core. Physical samples and actual manufacturing stay out of scope."""
 
+from .ui_text import UI_TEXT
+
 from functools import reduce
 from operator import or_
 from decimal import Decimal, InvalidOperation
@@ -253,8 +255,8 @@ class Material(models.Model):
     name = models.CharField("Материал", max_length=255)
     category = models.CharField("Категория", max_length=100, blank=True)
     supplier = models.CharField("Поставщик", max_length=255, blank=True)
-    density_g_ml = number(verbose_name="Плотность, г/мл", validators=[MinValueValidator(Decimal("0.00000001"))])
-    price_per_kg = number(verbose_name="Цена, ₽/кг", validators=[MinValueValidator(0)])
+    density_g_ml = number(verbose_name=UI_TEXT['density_g_ml'], validators=[MinValueValidator(Decimal("0.00000001"))])
+    price_per_kg = number(verbose_name=UI_TEXT['price_per_kg'], validators=[MinValueValidator(0)])
     notes = models.TextField("Примечание", blank=True)
 
     class Meta:

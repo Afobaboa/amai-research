@@ -15,6 +15,7 @@ from django.db.models import F, Func, Q, TextField
 from django.urls import reverse
 
 from . import models as m
+from .assistant_labels import field_labels
 
 MAX_ROWS = 40
 MAX_TEXT = 4000
@@ -638,7 +639,10 @@ def execute_tool(name, arguments):
     if set(arguments) - set(allowed):
         return {'error': 'Неизвестные параметры инструмента.'}
     try:
-        return _finish(functions[name](**arguments))
+        result = functions[name](**arguments)
+        if name in ('search_lab_data', 'get_lab_record') and 'error' not in result:
+            result['field_labels'] = field_labels(result, ENTITIES[arguments['entity']][0])
+        return _finish(result)
     except ValueError as error:
         return {'error': str(error)}
     except TypeError:

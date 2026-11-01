@@ -7,9 +7,15 @@ from django.test import TestCase, override_settings
 from django.urls import resolve
 
 from . import assistant
-from .assistant_context import initial_context
+from .assistant_context import initial_context, interface_guide
 from .assistant_tools import execute_tool
-from .models import AssistantRequestLog, EmployeeProfile, Material
+from .assistant_labels import ui_labels
+from .catalog_forms import MaterialForm
+from .context_processors import workspace
+from .ui_text import UI_TEXT, navigation_labels
+from django.template.loader import render_to_string
+from django.test import RequestFactory
+from .models import AssistantRequestLog, EmployeeProfile, Material, MaterialLot
 
 
 class CompactContextTests(TestCase):
@@ -83,6 +89,49 @@ class CompactContextTests(TestCase):
             self.assertIsNotNone(resolve(path).url_name)
         self.assertIn('Краткая справка по интерфейсу', assistant.SYSTEM_PROMPT)
         self.assertIn('только если справки', assistant.SYSTEM_PROMPT)
+
+    def test_navigation_uses_current_card_and_author_permissions(self):
+        context = initial_context('/recipes/8/', 'author')
+        link = next(item for item in context['navigation'] if item['label'] == 'Новое испытание')
+        self.assertEqual(link['url'], '/tests/new/?recipe=8')
+        context = initial_context('/tests/12/', 'author')
+        for item in context['navigation']:
+            self.assertIsNotNone(resolve(item['url']).url_name)
+            self.assertNotIn('{id}', item['url'])
+        reader = initial_context('/tests/12/', 'reader')
+        self.assertEqual([item['label'] for item in reader['navigation']], ['Рецептуры', 'Испытания'])
+
+    def test_tools_explain_property_names_using_ui_labels(self):
+        lot = MaterialLot.objects.create(material=self.material, lot_code='Партия')
+        result = execute_tool('get_lab_record', {'entity': 'lots', 'id': lot.pk})
+        self.assertEqual(result['field_labels']['effective_density_g_ml'], 'Плотность, г/мл')
+        self.assertEqual(result['field_labels']['effective_price_per_kg'], 'Цена, ₽/кг')
+        self.assertIn('effective_price_per_kg', result['available_sections'])
+        result = execute_tool('search_lab_data', {'entity': 'materials'})
+        self.assertEqual(result['field_labels']['name'], MaterialForm.base_fields['name'].label)
+
+    def test_renaming_shared_label_updates_interface_and_assistant(self):
+        navigation_labels.cache_clear()
+        ui_labels.cache_clear()
+        try:
+            with patch.dict(UI_TEXT, {'test_create': 'Создать опыт', 'density_g_ml': 'Плотность сырья'}):
+                request = RequestFactory().get('/')
+                request.employee = EmployeeProfile(role='author')
+                context = workspace(request)
+                html = render_to_string('lab/dashboard.html', context)
+                self.assertIn('Создать опыт</a>', html)
+                self.assertIn('[Создать опыт](/tests/new/)', interface_guide())
+                self.assertIn({'label': 'Создать опыт', 'url': '/tests/new/'},
+                              initial_context('/', 'author')['navigation'])
+                self.assertIn('Создать опыт', [item['label'] for item in context['assistant_navigation']])
+                lot = MaterialLot.objects.create(material=self.material, lot_code='Партия')
+                html = render_to_string('lab/catalog/lot_detail.html', {**context, 'lot': lot})
+                labels = execute_tool('get_lab_record', {'entity': 'lots', 'id': lot.pk})['field_labels']
+                self.assertIn('Плотность сырья</td>', html)
+                self.assertEqual(labels['effective_density_g_ml'], UI_TEXT['density_g_ml'])
+        finally:
+            navigation_labels.cache_clear()
+            ui_labels.cache_clear()
 
 
 @override_settings(

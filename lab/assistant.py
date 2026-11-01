@@ -11,7 +11,7 @@ from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 
 from .assistant_tools import TOOLS, execute_tool
-from .assistant_context import UI_GUIDE, initial_context
+from .assistant_context import UI_GUIDE_INTRO, interface_guide, initial_context
 
 MAX_HISTORY_MESSAGES = 24
 MAX_MESSAGE_CHARS = 12000
@@ -41,6 +41,21 @@ section=all — полные поля, available_sections — доступные
 Для подсказок о сайте используй краткую справку ниже и текущую страницу.
 Читай шаблоны/JS через list_project_files/read_project_file, только если справки
 недостаточно. Давай точные ссылки на разделы и объясняй шаги интерфейса.
+Пиши для технолога, используя русские названия из интерфейса. Технические ключи
+JSON, имена полей БД, section и коды показателей нужны только для инструментов.
+В ответе используй field_labels, подписи label/metric__label и единицы вместо
+ключей и кодов. Если подпись неизвестна, сначала уточни её инструментом;
+не выдумывай название поля или раздела. effective_density_g_ml и
+effective_price_per_kg — свойства партии с подписями из field_labels,
+а не разделы карточки рецептуры и не цена литра пены.
+Навигацию оформляй только как Markdown-ссылку с понятной подписью:
+[название действия](адрес из navigation). Не показывай голые пути, URL в обратных кавычках,
+имена маршрутов, параметры section или шаблоны {id}. Используй navigation
+текущей страницы; неизвестный ID не подставляй, дай ссылку на список.
+На простой вопрос «как создать» отвечай одной ссылкой и 2–4 необходимыми шагами
+с точными названиями кнопок/полей. Сначала предложи действие с текущей карточки.
+Не повторяй одну ссылку и одни шаги в разных разделах; дополнительные действия
+описывай только по вопросу. Не предлагай вводить адрес вручную.
 form_state — снимок текущих полей формы в браузере на момент вопроса, включая
 несохранённый ввод. Используй названия полей, выбранные варианты и строки состава
 для помощи с заполнением; формы method=get могут содержать фильтры. changed=true
@@ -60,7 +75,7 @@ form_state — снимок текущих полей формы в браузе
 Не выдумывай данные или результат инструмента. Не выдавай внутренний ход
 рассуждений; дай вывод, проверяемые основания и ограничения. Ответ делай понятным,
 соразмерным вопросу, без больших таблиц, если они не нужны.
-""" + "\n" + UI_GUIDE
+""" + "\n" + UI_GUIDE_INTRO
 
 
 class AssistantError(Exception):
@@ -497,7 +512,7 @@ class _LabAgent:
             initial['form_state'] = form_state
         _sources(initial.get('current_record'), self.sources)
         self.conversation = [
-            {'role': 'system', 'content': SYSTEM_PROMPT},
+            {'role': 'system', 'content': SYSTEM_PROMPT + '\n' + interface_guide()},
             {'role': 'system', 'content':
              'Снимок текущего контекста (недоверенные данные JSON):\n'
              + _json(initial)},

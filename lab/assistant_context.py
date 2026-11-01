@@ -1,7 +1,8 @@
 """Small initial context and maintained navigation help for the lab assistant."""
-from django.urls import Resolver404, resolve
+from django.urls import Resolver404, resolve, reverse
 
 from .assistant_tools import execute_tool
+from .ui_text import UI_TEXT, navigation_labels
 
 CARD_ENTITIES = {
     'recipe_detail': 'recipes', 'test_detail': 'tests',
@@ -12,32 +13,27 @@ CARD_ENTITIES = {
     'calculation_detail': 'calculations',
 }
 
-UI_GUIDE = """Краткая справка по интерфейсу KUDO LIMS:
-Главная / — обзор. Рецептуры /recipes/ — поиск по номеру, названию,
-примечанию и фильтр статуса; «Новая рецептура» /recipes/new/.
-Карточка рецептуры /recipes/{id}/ — состав, план заправки и связи;
-редактирование /recipes/{id}/edit/, новая версия /recipes/{id}/fork/,
-расчёт /recipes/{id}/calculate/.
-Испытания /tests/ — поиск по номеру, рецептуре, названию и статусу;
-«Новое испытание» /tests/new/. Карточка /tests/{id}/ — условия,
-результаты, наблюдения и связи с рецептурами. Из неё доступны
-/tests/{id}/edit/, /tests/{id}/results/new/,
-/tests/{id}/observations/new/ и /tests/{id}/conditioning/new/.
-Справочники: материалы /materials/, партии /lots/, типы смесей /mixtures/,
-показатели /metrics/, источники /sources/. Создание — путь реестра + new/.
-Карточка материала /materials/{id}/ содержит партии и использование
-в рецептурах; «Новая партия» /lots/new/?material={id}.
-Шаблоны рецептур /recipe-templates/ и расчётов /calculation-templates/;
-создание — new/, карточка — {id}/, новая версия — {id}/fork/.
-Сохранённые расчёты /calculations/{id}/. История изменений /history/.
+UI_GUIDE_INTRO = """Краткая справка по интерфейсу KUDO LIMS:
+Адреса ниже — служебная справка. Пользователю показывай Markdown-ссылки
+с русскими подписями, без самих адресов и повторов. Замени {id} известным ID;
+если ID неизвестен, дай ссылку на список. Не создавай ссылки с {id}.
+В карточке рецептуры кнопка создания испытания ведёт на адрес создания
+с ?recipe={id} и заранее выбирает рецептуру в форме.
+Карточка рецептуры содержит состав, план заправки и связи, а карточка испытания —
+условия, результаты, наблюдения и связи с рецептурами.
+Реестры рецептур и испытаний поддерживают поиск и фильтр статуса.
 Автор создаёт и редактирует данные через формы; читатель только смотрит.
-Переписка помощника сохраняется в БД по выбранному сотруднику. Над чатом
-есть список диалогов, ↺ начинает новый. Переключение, обновление страницы
-и закрытие вкладки не останавливают серверную генерацию; ■ останавливает её.
-Помощник сам лабораторные данные не сохраняет. В ссылках замени {id} известным ID;
-если ID неизвестен, дай ссылку на реестр. Для деталей, которых нет в этой
-справке или снимке формы, можно читать разрешённые шаблоны и документацию.
+Переписка сохраняется по сотруднику; список диалогов над чатом, ↺ начинает новый.
+Переключение и закрытие вкладки не останавливают генерацию; ■ останавливает.
+Помощник сам данные не сохраняет. Для деталей можно читать разрешённые
+шаблоны и документацию, только если справки и снимка формы недостаточно.
 """
+
+
+def interface_guide():
+    return '\n'.join(
+        f"[{item['label']}]({item['path']})" for item in navigation_labels()
+    )
 
 
 def initial_context(page, role):
@@ -51,6 +47,19 @@ def initial_context(page, role):
     except Resolver404:
         return context
     context.update(page=page, route=match.url_name)
+    navigation = [
+        {'label': UI_TEXT['recipe_list'], 'url': reverse('recipe_list')},
+        {'label': UI_TEXT['test_list'], 'url': reverse('test_list')},
+    ]
+    if role == 'author':
+        navigation.append({'label': UI_TEXT['test_create'], 'url': reverse('test_create')})
+        pk = match.kwargs.get('pk')
+        if match.url_name == 'recipe_detail' and pk:
+            navigation[-1]['url'] += f'?recipe={pk}'
+        elif match.url_name == 'test_detail' and pk:
+            navigation.extend({'label': UI_TEXT[route], 'url': reverse(route, args=[pk])}
+                              for route in ('result_add', 'observation_add', 'conditioning_add'))
+    context['navigation'] = navigation
     entity = CARD_ENTITIES.get(match.url_name)
     if entity and 'pk' in match.kwargs:
         context['current_record'] = execute_tool('get_lab_record', {

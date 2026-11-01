@@ -53,22 +53,41 @@
     return node;
   };
   const safeHref = value => {
-    if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\x00-\x20]/.test(value)) return null;
+    if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\{}<>\x00-\x20]|%7[bd]|%3[ce]/i.test(value)) return null;
     try { const url = new URL(value, location.origin); return url.origin === location.origin ? url.pathname + url.search + url.hash : null; }
     catch { return null; }
   };
+  const navigation = JSON.parse(document.getElementById('assistant-navigation').textContent)
+    .map(item => ({...item, pattern:new RegExp(item.pattern)}));
+  const routeLabel = value => {
+    const path = value.split(/[?#]/)[0];
+    return navigation.find(item => item.pattern.test(path))?.label || null;
+  };
+  const appendRoute = (target, value) => {
+    const label = routeLabel(value);
+    if (!label) return false;
+    const href = safeHref(value);
+    const node = element(href ? 'a' : 'span', '', label);
+    if (href) node.href = href;
+    target.append(node);
+    return true;
+  };
   // The model's text never enters innerHTML. Only same-site links become anchors.
   const inline = (target, text) => {
-    const pattern = /\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
+    const pattern = /\[([^\]\n]+)\]\(([^\s)]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`|(?<![\p{L}\p{N}_:/])\/[a-z][a-zA-Z0-9_/{\}?=&%#-]*/gu;
     let offset = 0;
     for (const match of text.matchAll(pattern)) {
       target.append(document.createTextNode(text.slice(offset, match.index)));
       if (match[1] !== undefined) {
         const href = safeHref(match[2]);
-        const node = element(href ? 'a' : 'span', '', match[1]);
+        const node = element(href ? 'a' : 'span', '', routeLabel(match[1]) || match[1]);
         if (href) node.href = href;
         target.append(node);
-      } else target.append(element(match[3] !== undefined ? 'strong' : 'code', '', match[3] ?? match[4]));
+      } else if (match[3] !== undefined) {
+        const node = element('strong'); inline(node, match[3]); target.append(node);
+      } else if (match[4] !== undefined) {
+        if (!appendRoute(target, match[4])) target.append(element('code', '', match[4]));
+      } else if (!appendRoute(target, match[0])) target.append(document.createTextNode(match[0]));
       offset = match.index + match[0].length;
     }
     target.append(document.createTextNode(text.slice(offset)));
@@ -155,14 +174,17 @@
     if (message.role === 'assistant' && Array.isArray(message.sources) && message.sources.length) {
       const sources = element('div', 'assistant-sources');
       sources.append(element('span', 'assistant-sources-label', 'Источники'));
+      const seen = new Set([...article.querySelectorAll('a')].map(node => node.getAttribute('href')));
       for (const source of message.sources.slice(0, 12)) {
         if (!source || typeof source.title !== 'string') continue;
         const href = safeHref(source.url);
+        if (href && seen.has(href)) continue;
+        if (href) seen.add(href);
         const node = element(href ? 'a' : 'span', href ? '' : 'assistant-source-text', source.title.slice(0, 180));
         if (href) node.href = href;
         sources.append(node);
       }
-      article.append(sources);
+      if (sources.children.length > 1) article.append(sources);
     }
   };
   const showMessage = message => {
@@ -420,7 +442,13 @@
   let chatId = null, activeJob = null, ready = false, submitting = false;
   let pollTimer = null, lastTranscript = '', nextBefore = null, pendingSubmission = null, listInitialized = false;
   let lastQuestion = '', retainedJobs = [], olderCursor = null, historyLoaded = false;
-  try { chatId = Number(sessionStorage.getItem(activeKey)) || null; } catch {}
+  let hasSavedSelection = false;
+  try {
+    const saved = sessionStorage.getItem(activeKey);
+    // An empty value explicitly selects a new chat; a missing key means first visit.
+    hasSavedSelection = saved === '' || (Number.isSafeInteger(Number(saved)) && Number(saved) > 0);
+    chatId = hasSavedSelection ? Number(saved) || null : null;
+  } catch {}
   const api = async (url, body) => {
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), 15000);
@@ -637,9 +665,11 @@
   setOpen(savedOpen === null ? desktop.matches : savedOpen === 'true', false, false);
   void loadStatus();
   void (async () => {
+    const ownTurn = turn;
     try {
       const chats = await refreshChats();
-      await chooseChat(chatId || chats[0]?.id || null);
+      if (ownTurn !== turn) return;
+      await chooseChat(hasSavedSelection ? chatId : chats[0]?.id || null);
     } catch (failure) { error(failure.message, false); schedulePoll(); }
   })();
 })();
