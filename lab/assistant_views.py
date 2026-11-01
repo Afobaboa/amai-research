@@ -80,63 +80,106 @@ def status(request):
     return JsonResponse(configuration_status())
 
 
+def _chat_payload(request):
+    length = int(request.META.get('CONTENT_LENGTH') or 0)
+    if length > MAX_BODY_BYTES or len(request.body) > MAX_BODY_BYTES:
+        raise AssistantError('Сообщение слишком большое.', 'invalid_request', 413)
+    payload = json.loads(request.body)
+    if not isinstance(payload, dict):
+        raise AssistantError('Ожидается JSON-объект.', 'invalid_request', 400)
+    messages = validate_messages(payload.get('messages'))
+    page = payload.get('page', '/')
+    if not isinstance(page, str):
+        raise AssistantError('Некорректный адрес страницы.', 'invalid_request', 400)
+    form_state = validate_form_state(payload.get('form_state'))
+    return messages, page, form_state
+
+
+def _chat_lock(employee_key):
+    # This is a per-process guard, not a global spending quota.
+    lock_key = employee_key + ':busy'
+    lock_token = uuid4().hex
+    if not cache.add(lock_key, lock_token, timeout=200):
+        raise AssistantError(
+            'Предыдущий ответ ещё готовится. Дождитесь его завершения.',
+            'busy', 429,
+        )
+
+    def release():
+        if cache.get(lock_key) == lock_token:
+            cache.delete(lock_key)
+    return release
+
+
+def _chat_response(request, payload, release, journal):
+    messages, page, form_state = payload
+    kwargs = {'page': page, 'role': request.employee.role,
+              'form_state': form_state, 'on_metrics': journal.metrics}
+    if ('text/event-stream' in request.headers.get('Accept', '')
+            and request.accepts('text/event-stream')):
+        events = answer_stream(messages, **kwargs)
+        response = StreamingHttpResponse(
+            _EventStream(events, release, journal),
+            content_type='text/event-stream; charset=utf-8',
+        )
+        response['X-Accel-Buffering'] = 'no'
+        response['Cache-Control'] = 'no-cache, no-store, no-transform'
+        return response
+    result = answer(messages, **kwargs)
+    journal.complete(result)
+    return JsonResponse(result)
+
+
+def _guarded_chat(request, payload, employee_key, release):
+    journal = None
+    response = None
+    try:
+        rate_key = employee_key + ':minute:' + str(int(time.time() // 60))
+        if not cache.add(rate_key, 1, timeout=65) and cache.incr(rate_key) > 20:
+            raise AssistantError(
+                'Слишком много запросов. Повторите через минуту.',
+                'rate_limit', 429,
+            )
+        messages, page, _ = payload
+        journal = RequestJournal(request.employee, messages, page)
+        response = _chat_response(request, payload, release, journal)
+        return response
+    except AssistantError as error:
+        if journal is not None:
+            journal.fail(error.code)
+        raise
+    except Exception:
+        if journal is not None:
+            journal.fail('internal_error')
+        logger.error('Assistant request failed with an internal error.')
+        return JsonResponse({
+            'error': 'Не удалось подготовить ответ. Повторите запрос позже.',
+            'code': 'internal_error',
+        }, status=500)
+    finally:
+        if response is None or not response.streaming:
+            release()
+
+
 @assistant_required
 @require_POST
 def chat(request):
     if request.content_type != 'application/json':
-        return JsonResponse({'error': 'Используйте JSON для сообщений.', 'code': 'invalid_request'}, status=415)
+        return JsonResponse({
+            'error': 'Используйте JSON для сообщений.',
+            'code': 'invalid_request',
+        }, status=415)
     try:
-        length = int(request.META.get('CONTENT_LENGTH') or 0)
-        if length > MAX_BODY_BYTES or len(request.body) > MAX_BODY_BYTES:
-            raise AssistantError('Сообщение слишком большое.', 'invalid_request', 413)
-        payload = json.loads(request.body)
-        if not isinstance(payload, dict):
-            raise AssistantError('Ожидается JSON-объект.', 'invalid_request', 400)
-        messages = validate_messages(payload.get('messages'))
-        page = payload.get('page', '/')
-        if not isinstance(page, str):
-            raise AssistantError('Некорректный адрес страницы.', 'invalid_request', 400)
-        form_state = validate_form_state(payload.get('form_state'))
+        payload = _chat_payload(request)
+        employee_key = f'assistant:employee:{request.employee.pk}'
+        release = _chat_lock(employee_key)
+        return _guarded_chat(request, payload, employee_key, release)
     except (ValueError, UnicodeError, RawPostDataException):
-        return JsonResponse({'error': 'Не удалось прочитать JSON сообщения.', 'code': 'invalid_request'}, status=400)
+        return JsonResponse({
+            'error': 'Не удалось прочитать JSON сообщения.',
+            'code': 'invalid_request',
+        }, status=400)
     except AssistantError as error:
-        return JsonResponse({'error': str(error), 'code': error.code}, status=error.status)
-    # In-memory cache is deliberately only a per-process guard, not a global quota.
-    employee_key = f'assistant:employee:{request.employee.pk}'
-    lock_key = employee_key + ':busy'
-    lock_token = uuid4().hex
-    if not cache.add(lock_key, lock_token, timeout=200):
-        return JsonResponse({'error': 'Предыдущий ответ ещё готовится. Дождитесь его завершения.', 'code': 'busy'}, status=429)
-    def release():
-        if cache.get(lock_key) == lock_token:
-            cache.delete(lock_key)
-    streaming = False
-    journal = None
-    try:
-        rate_key = employee_key + ':minute:' + str(int(time.time() // 60))
-        if not cache.add(rate_key, 1, timeout=65) and cache.incr(rate_key) > 20:
-            raise AssistantError('Слишком много запросов. Повторите через минуту.', 'rate_limit', 429)
-        journal = RequestJournal(request.employee, messages, page)
-        if request.accepts('text/event-stream') and 'text/event-stream' in request.headers.get('Accept', ''):
-            events = answer_stream(messages, page=page, role=request.employee.role, form_state=form_state)
-            response = StreamingHttpResponse(_EventStream(events, release, journal), content_type='text/event-stream; charset=utf-8')
-            response['X-Accel-Buffering'] = 'no'
-            response['Cache-Control'] = 'no-cache, no-store, no-transform'
-            streaming = True
-            return response
-        result = answer(messages, page=page, role=request.employee.role, form_state=form_state)
-        journal.complete(result)
-        return JsonResponse(result)
-    except AssistantError as error:
-        if journal is not None:
-            journal.fail(error.code)
-        return JsonResponse({'error': str(error), 'code': error.code}, status=error.status)
-    except Exception:
-        if journal is not None:
-            journal.fail('internal_error')
-        # Do not log exception text: database/provider errors can contain user data.
-        logger.error('Assistant request failed with an internal error.')
-        return JsonResponse({'error': 'Не удалось подготовить ответ. Повторите запрос позже.', 'code': 'internal_error'}, status=500)
-    finally:
-        if not streaming:
-            release()
+        return JsonResponse(
+            {'error': str(error), 'code': error.code}, status=error.status,
+        )

@@ -61,7 +61,9 @@ class ReadOnlyRecordAdmin(admin.ModelAdmin):
 @admin.register(models.AssistantRequestLog)
 class AssistantRequestLogAdmin(ReadOnlyRecordAdmin):
     readonly_fields = [field.name for field in models.AssistantRequestLog._meta.fields]
-    list_display = ["created_at", "employee_name", "question_preview", "status", "model", "duration_ms"]
+    list_display = ["created_at", "employee_name", "question_preview", "status", "model", "duration_ms",
+                    "provider_call_count", "tool_call_count",
+                    "prompt_tokens", "completion_tokens", "usage_call_count"]
     list_filter = ["status", "employee", "model"]
     search_fields = ["employee_name", "question", "reply"]
     date_hierarchy = "created_at"

@@ -6,6 +6,7 @@ from django.db import DatabaseError
 from django.utils import timezone
 
 from .assistant import MAX_MESSAGE_CHARS, configuration_status
+from .assistant_usage import UsageJournal
 from .models import AssistantRequestLog
 
 logger = logging.getLogger(__name__)
@@ -13,12 +14,14 @@ logger = logging.getLogger(__name__)
 
 class RequestJournal:
     def __init__(self, employee, messages, page):
+        self.usage = UsageJournal()
         self.started = time.monotonic()
         self.finished = False
         self.reply = ''
         self.progress = []
         self.record = AssistantRequestLog.objects.create(
-            employee=employee, employee_name=employee.full_name, employee_role=employee.role,
+            employee=employee, employee_name=employee.full_name,
+            employee_role=employee.role,
             messages=messages, question=messages[-1]['content'], page=page[:2048],
             model=configuration_status()['model'][:255],
         )
@@ -31,6 +34,15 @@ class RequestJournal:
             self.reply = ''
         elif event == 'done':
             self.complete(data)
+
+    def metrics(self, event):
+        self.usage.observe(event)
+        try:
+            AssistantRequestLog.objects.filter(
+                pk=self.record.pk, status=AssistantRequestLog.Status.PENDING,
+            ).update(**self.usage.fields())
+        except DatabaseError:
+            logger.error('Could not update assistant usage log.')
 
     def complete(self, data):
         self.reply = data['reply']
@@ -48,10 +60,15 @@ class RequestJournal:
         if self.finished:
             return
         try:
-            AssistantRequestLog.objects.filter(pk=self.record.pk, status=AssistantRequestLog.Status.PENDING).update(
+            AssistantRequestLog.objects.filter(
+                pk=self.record.pk, status=AssistantRequestLog.Status.PENDING,
+            ).update(
                 status=status, finished_at=timezone.now(),
-                duration_ms=max(0, round((time.monotonic() - self.started) * 1000)),
-                reply=self.reply, progress=self.progress, **fields,
+                duration_ms=max(0, round(
+                    (time.monotonic() - self.started) * 1000,
+                )),
+                reply=self.reply, progress=self.progress,
+                **self.usage.fields(final_status=status), **fields,
             )
             self.finished = True
         except DatabaseError:

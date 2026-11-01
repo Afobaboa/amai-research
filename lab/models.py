@@ -87,6 +87,27 @@ class AssistantRequestLog(models.Model):
     progress = models.JSONField("Публичные пояснения перед ответом", default=list, blank=True)
     sources = models.JSONField("Источники", default=list, blank=True)
     tools_used = models.JSONField("Инструменты", default=list, blank=True)
+    provider_calls = models.JSONField(
+        "Обращения к провайдеру", default=list, blank=True,
+    )
+    tool_calls = models.JSONField(
+        "Вызовы инструментов и размер результатов", default=list, blank=True,
+    )
+    provider_call_count = models.PositiveIntegerField(
+        "Число обращений к провайдеру", default=0,
+    )
+    tool_call_count = models.PositiveIntegerField(
+        "Число вызовов инструментов", default=0,
+    )
+    usage_call_count = models.PositiveIntegerField(
+        "Обращения со статистикой токенов", default=0,
+    )
+    prompt_tokens = models.PositiveBigIntegerField(
+        "Входные токены (известная часть)", null=True, blank=True,
+    )
+    completion_tokens = models.PositiveBigIntegerField(
+        "Выходные токены (известная часть)", null=True, blank=True,
+    )
     error_code = models.CharField("Код ошибки", max_length=80, blank=True)
 
     class Meta:

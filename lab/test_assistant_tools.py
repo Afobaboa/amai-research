@@ -40,11 +40,11 @@ class LaboratoryAssistantToolTests(TestCase):
         Observation.objects.create(test_run=cls.test_run, sequence_no=1, text_value='Мелкая ровная ячейка')
 
     def test_recipe_detail_has_plan_composition_and_provenance_without_employee(self):
-        data = execute_tool('get_lab_record', {'entity': 'recipes', 'id': self.recipe.pk})
+        data = execute_tool('get_lab_record', {'entity': 'recipes', 'id': self.recipe.pk, 'section': 'all'})
         self.assertEqual(data['components']['items'][0]['quantity_value'], '100.00000000')
         self.assertEqual(data['components']['items'][0]['specified_lot__material__name'], 'Полиол А')
         self.assertEqual(data['source']['sheet'], 'Испытания')
-        source = execute_tool('get_lab_record', {'entity': 'source_cells', 'id': self.cell.pk})
+        source = execute_tool('get_lab_record', {'entity': 'source_cells', 'id': self.cell.pk, 'section': 'all'})
         self.assertEqual(source['source']['address'], 'C12')
         self.assertEqual(source['url'], f'/sources/{self.source.pk}/')
         self.assertEqual(data['test_links']['items'][0]['status'], 'candidate')
@@ -53,7 +53,7 @@ class LaboratoryAssistantToolTests(TestCase):
         self.assertNotIn(self.employee.full_name, json.dumps(data, ensure_ascii=False))
 
     def test_test_card_preserves_missing_zero_units_context_and_link_status(self):
-        data = execute_tool('get_lab_record', {'entity': 'tests', 'id': self.test.pk})
+        data = execute_tool('get_lab_record', {'entity': 'tests', 'id': self.test.pk, 'section': 'all'})
         self.assertEqual(data['conditions']['items'][0]['numeric_value'], '-10.00000000')
         self.assertEqual(data['recipe_links']['items'][0]['status'], 'candidate')
         self.assertEqual(data['observations']['items'][0]['text_value'], 'Мелкая ровная ячейка')
@@ -105,7 +105,7 @@ class LaboratoryAssistantToolTests(TestCase):
                 data = execute_tool('search_lab_data', {'entity': entity})
                 self.assertNotIn('error', data, entity)
                 for item in data['items']:
-                    detail = execute_tool('get_lab_record', {'entity': entity, 'id': item['id']})
+                    detail = execute_tool('get_lab_record', {'entity': entity, 'id': item['id'], 'section': 'all'})
                     self.assertNotIn('error', detail, entity)
                     json.dumps(detail)
         for query in queries:
@@ -137,7 +137,7 @@ class LaboratoryAssistantToolTests(TestCase):
         self.test.save(update_fields=['notes'])
         for index in range(1, 43):
             Observation.objects.create(test_run=self.test_run, sequence_no=index + 1, text_value='Б' * 5000)
-        data = execute_tool('get_lab_record', {'entity': 'tests', 'id': self.test.pk})
+        data = execute_tool('get_lab_record', {'entity': 'tests', 'id': self.test.pk, 'section': 'all'})
         self.assertLessEqual(len(json.dumps(data, ensure_ascii=False)), MAX_OUTPUT)
         self.assertEqual(data['observations']['total'], 43)
         self.assertTrue(data['observations']['truncated'])
@@ -149,7 +149,7 @@ class LaboratoryAssistantToolTests(TestCase):
                 unbatched_material=self.material, quantity_value=0)
             Observation.objects.create(test_run=self.test_run, sequence_no=index + 2,
                 text_value='Наблюдение ' + str(index))
-        first = execute_tool('get_lab_record', {'entity': 'recipes', 'id': self.recipe.pk, 'limit': 40})
+        first = execute_tool('get_lab_record', {'entity': 'recipes', 'id': self.recipe.pk, 'limit': 40, 'section': 'all'})
         self.assertEqual(first['components']['total'], 43)
         self.assertEqual(first['components']['offset'], 0)
         self.assertEqual(first['components']['next_offset'], 40)

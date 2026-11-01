@@ -5,6 +5,7 @@ lookups, uploaded files, credentials or application configuration are exposed.
 """
 import json
 from decimal import Decimal, InvalidOperation
+from functools import partial
 from pathlib import Path
 
 from django.conf import settings
@@ -18,9 +19,12 @@ from . import models as m
 MAX_ROWS = 40
 MAX_TEXT = 4000
 MAX_OUTPUT = 60000
-DETAIL_SECTIONS = ('all', 'groups', 'components', 'filling_plan', 'properties', 'test_links', 'calculations',
-                   'recipe_links', 'conditions', 'conditioning', 'runs', 'results', 'observations',
-                   'lots', 'recipes', 'sheets', 'cells', 'dependencies')
+DETAIL_SECTIONS = (
+    'summary', 'all', 'groups', 'components', 'filling_plan', 'properties',
+    'test_links', 'calculations', 'recipe_links', 'conditions', 'conditioning',
+    'runs', 'results', 'observations', 'lots', 'recipes', 'sheets', 'cells',
+    'dependencies', 'source', 'effective_density_g_ml', 'effective_price_per_kg',
+)
 
 # Fields are deliberately explicit: adding a model field does not publish it.
 ENTITIES = {
@@ -45,7 +49,15 @@ def _spec(name, description, properties, required=()):
 
 
 TOOLS = [
-    _spec('search_lab_data', 'Прочитать текущую базу LIMS: поиск, точное количество, страницы до 40 записей. Для сравнения результатов выбирайте results, metric_code, границы min_value/max_value и order=value_desc/value_asc; возвращаются единицы, происхождение и состояния пропусков. Для контекста рецептуры/испытания затем get_lab_record. Связь candidate не подтверждает состав. Пустой q возвращает весь реестр постранично.', {
+    _spec('search_lab_data', (
+        'Поиск LIMS: краткие записи без длинных примечаний; по умолчанию '
+        'до 5 строк, limit до 40. Полные поля читай через get_lab_record '
+        'section=all. Для сравнения результатов выбирай results, metric_code, '
+        'min_value/max_value и order=value_desc/value_asc. Сохраняются единицы, '
+        'происхождение и состояния пропусков. Состав и условия читай в нужных '
+        'section карточек. Связь candidate не подтверждает состав. '
+        'Пустой q возвращает весь реестр постранично.'
+    ), {
         'entity': {'type': 'string', 'enum': list(ENTITIES)},
         'q': {'type': 'string', 'maxLength': 160, 'description': 'Подстрока названия, номера, материала, примечания; без SQL или специальных операторов.'},
         'status': {'type': 'string', 'description': 'Точный статус только для recipes/tests/lots.'},
@@ -59,7 +71,14 @@ TOOLS = [
         'offset': {'type': 'integer', 'minimum': 0, 'maximum': 100000},
         'limit': {'type': 'integer', 'minimum': 1, 'maximum': MAX_ROWS},
     }, ['entity']),
-    _spec('get_lab_record', 'Прочитать карточку по ID со связанными данными: состав и план заправки, условия, результаты, наблюдения, обработка, связи рецептур и первичные фрагменты. Вложенные реестры постраничны: offset/limit применяются к каждой коллекции, next_offset показывает продолжение. Для узкого чтения одной коллекции задайте section. total/truncated показывают полноту. Для больших реестров используйте search_lab_data.', {
+    _spec('get_lab_record', (
+        'Карточка по ID: по умолчанию section=summary, краткая сводка '
+        'и available_sections. Для деталей задай имя section; all — полные '
+        'поля и все разделы. Состав и заправка — план. Условия, измерения, '
+        'наблюдения, связи и происхождение читай до выводов. Вложенные списки '
+        'постраничны: offset/limit, по умолчанию 5 строк; next_offset — '
+        'продолжение. total/truncated показывают полноту.'
+    ), {
         'entity': {'type': 'string', 'enum': list(ENTITIES)}, 'id': {'type': 'integer', 'minimum': 1},
         'offset': {'type': 'integer', 'minimum': 0, 'maximum': 100000},
         'limit': {'type': 'integer', 'minimum': 1, 'maximum': MAX_ROWS},
@@ -316,7 +335,197 @@ def _result_rows(queryset, offset=0, limit=MAX_ROWS):
     return result
 
 
-def get_lab_record(entity, id, offset=0, limit=MAX_ROWS, section='all'):
+# Long text and JSON definitions remain available through explicit detail reads.
+SUMMARY_OMIT = {
+    'notes', 'description', 'definition', 'operations', 'inputs', 'outputs',
+    'original_path', 'sha256', 'raw_value', 'formula_text', 'cached_value',
+}
+
+
+def compact_record(row):
+    result = {key: value for key, value in row.items()
+              if key not in SUMMARY_OMIT}
+    shortened = []
+    for key, value in result.items():
+        if isinstance(value, str) and len(value) > 240:
+            result[key] = value[:240]
+            shortened.append(key)
+    if shortened:
+        result['truncated_fields'] = shortened
+    return result
+
+
+def compact_search(**arguments):
+    arguments.setdefault('limit', 5)
+    result = search_lab_data(**arguments)
+    result['items'] = [compact_record(row) for row in result['items']]
+    result['detail_hint'] = 'Краткие записи; полные поля: get_lab_record section=all.'
+    return result
+
+
+RECIPE_COMPONENT_FIELDS = (
+    'id group_id group__label group__quantity_basis group__completeness '
+    'position unbatched_material_id unbatched_material__name '
+    'specified_lot_id specified_lot__lot_code specified_lot__material_id '
+    'specified_lot__material__name quantity_value name_cell_id quantity_cell_id'
+)
+FILLING_FIELDS = (
+    'id input_group_id input_group__label unbatched_material_id '
+    'unbatched_material__name specified_lot_id specified_lot__lot_code '
+    'specified_lot__material__name mass_g mass_status label_cell_id mass_cell_id'
+)
+PROPERTY_FIELDS = (
+    'id recipe_version_id group_id component_id filling_plan_line_id '
+    'property_code value unit_code source_cell_id'
+)
+CONDITION_FIELDS = (
+    'id metric_id metric__code metric__label metric__unit_code '
+    'numeric_value text_value source_cell_id'
+)
+RECIPE_LINK_FIELDS = 'id recipe_version_id recipe_version__version_label status reason'
+DEPENDENCY_FIELDS = (
+    'id input_result_id role input_result__metric__code '
+    'input_result__numeric_value input_result__text_value '
+    'input_result__value_state input_result__origin'
+)
+
+
+def _recipe_properties(obj):
+    return m.RecipeProperty.objects.filter(
+        Q(recipe_version=obj) | Q(group__recipe_version=obj)
+        | Q(component__group__recipe_version=obj)
+        | Q(filling_plan_line__recipe_version=obj)
+    )
+
+
+def _recipes_sections(obj, related, offset, limit):
+    return {
+        'source': lambda: _provenance(obj),
+        'groups': lambda: related(
+            obj.groups, 'id label quantity_basis completeness',
+        ),
+        'components': lambda: related(
+            m.RecipeComponent.objects.filter(group__recipe_version=obj),
+            RECIPE_COMPONENT_FIELDS,
+        ),
+        'filling_plan': lambda: related(obj.filling_plan, FILLING_FIELDS),
+        'properties': lambda: related(_recipe_properties(obj), PROPERTY_FIELDS),
+        'test_links': lambda: related(
+            obj.session_matches, 'id session_id session__identifier status reason',
+        ),
+        'calculations': lambda: related(
+            obj.calculations, 'id template_id group_id created_at outputs',
+        ),
+    }
+
+
+def _tests_sections(obj, related, offset, limit):
+    return {
+        'source': lambda: _provenance(obj),
+        'recipe_links': lambda: related(obj.recipe_matches, RECIPE_LINK_FIELDS),
+        'conditions': lambda: related(obj.conditions, CONDITION_FIELDS),
+        'conditioning': lambda: related(
+            obj.conditioning_events,
+            'id target_kind step_no kind duration_value duration_unit '
+            'temperature_c source_cell_id',
+        ),
+        'runs': lambda: related(obj.runs, 'id scope method_code scope_cell_id'),
+        'results': lambda: _result_rows(
+            m.Result.objects.filter(test_run__session=obj),
+            offset=offset, limit=limit,
+        ),
+        'observations': lambda: related(
+            m.Observation.objects.filter(test_run__session=obj),
+            'id test_run_id sequence_no text_value source_cell_id',
+        ),
+    }
+
+
+def _results_sections(obj, related, offset, limit):
+    return {
+        'source': lambda: _source_cell(obj.source_cell),
+        'dependencies': lambda: related(obj.dependencies, DEPENDENCY_FIELDS),
+        'conditions': lambda: related(
+            obj.test_run.session.conditions, CONDITION_FIELDS,
+        ),
+        'recipe_links': lambda: related(
+            obj.test_run.session.recipe_matches, RECIPE_LINK_FIELDS,
+        ),
+    }
+
+
+def _materials_sections(obj, related, offset, limit):
+    return {
+        'lots': lambda: related(
+            obj.lots,
+            'id lot_code supplier status density_g_ml price_per_kg source_id',
+        ),
+        'recipes': lambda: compact_search(
+            entity='recipes', material_id=obj.pk, offset=offset, limit=limit,
+        ),
+    }
+
+
+def _lot_recipes(obj):
+    return m.RecipeVersion.objects.filter(
+        Q(groups__components__specified_lot=obj)
+        | Q(filling_plan__specified_lot=obj),
+    ).distinct()
+
+
+def _lots_sections(obj, related, offset, limit):
+    return {
+        'effective_density_g_ml': lambda: obj.effective_density_g_ml,
+        'effective_price_per_kg': lambda: obj.effective_price_per_kg,
+        'recipes': lambda: related(
+            _lot_recipes(obj), 'id version_label title status',
+        ),
+    }
+
+
+def _mixtures_sections(obj, related, offset, limit):
+    return {
+        'recipes': lambda: related(
+            obj.recipes, 'id version_label title status recorded_on',
+        ),
+    }
+
+
+def _sources_sections(obj, related, offset, limit):
+    return {
+        'sheets': lambda: related(obj.sheets, 'id name'),
+        'cells': lambda: related(
+            m.SourceCell.objects.filter(sheet__file=obj),
+            'id sheet_id sheet__name address cell_kind '
+            'raw_value formula_text cached_value',
+        ),
+    }
+
+
+def _source_cells_sections(obj, related, offset, limit):
+    return {'source': lambda: _source_cell(obj)}
+
+
+def _metrics_sections(obj, related, offset, limit):
+    return {
+        'results': lambda: _result_rows(obj.results, offset=offset, limit=limit),
+    }
+
+
+SECTION_BUILDERS = {
+    'recipes': _recipes_sections,
+    'tests': _tests_sections,
+    'results': _results_sections,
+    'materials': _materials_sections,
+    'lots': _lots_sections,
+    'mixtures': _mixtures_sections,
+    'sources': _sources_sections,
+    'source_cells': _source_cells_sections,
+    'metrics': _metrics_sections,
+}
+
+
+def get_lab_record(entity, id, offset=0, limit=5, section='summary'):
     if entity not in ENTITIES:
         raise ValueError('Неизвестный реестр.')
     _integer(id, 'id', upper=9223372036854775807)
@@ -324,58 +533,22 @@ def get_lab_record(entity, id, offset=0, limit=MAX_ROWS, section='all'):
     limit = _integer(limit, 'limit', 1, MAX_ROWS)
     if section not in DETAIL_SECTIONS:
         raise ValueError('Неизвестный раздел карточки.')
-    def related(queryset, fields):
-        return _rows(queryset, fields, offset=offset, limit=limit)
     model = ENTITIES[entity][0]
     obj = model.objects.filter(pk=id).first()
     if obj is None:
         raise ValueError('Запись не найдена.')
     row = _records(entity, model.objects.filter(pk=id))[0]
-    if entity == 'recipes':
-        row['source'] = _provenance(obj)
-        row['groups'] = related(obj.groups, 'id label quantity_basis completeness')
-        row['components'] = related(m.RecipeComponent.objects.filter(group__recipe_version=obj),
-            'id group_id group__label group__quantity_basis group__completeness position unbatched_material_id unbatched_material__name specified_lot_id specified_lot__lot_code specified_lot__material_id specified_lot__material__name quantity_value name_cell_id quantity_cell_id')
-        row['filling_plan'] = related(obj.filling_plan,
-            'id input_group_id input_group__label unbatched_material_id unbatched_material__name specified_lot_id specified_lot__lot_code specified_lot__material__name mass_g mass_status label_cell_id mass_cell_id')
-        row['properties'] = related(m.RecipeProperty.objects.filter(Q(recipe_version=obj) | Q(group__recipe_version=obj) | Q(component__group__recipe_version=obj) | Q(filling_plan_line__recipe_version=obj)),
-            'id recipe_version_id group_id component_id filling_plan_line_id property_code value unit_code source_cell_id')
-        row['test_links'] = related(obj.session_matches, 'id session_id session__identifier status reason')
-        row['calculations'] = related(obj.calculations, 'id template_id group_id created_at outputs')
-    elif entity == 'tests':
-        row['source'] = _provenance(obj)
-        row['recipe_links'] = related(obj.recipe_matches, 'id recipe_version_id recipe_version__version_label status reason')
-        row['conditions'] = related(obj.conditions, 'id metric_id metric__code metric__label metric__unit_code numeric_value text_value source_cell_id')
-        row['conditioning'] = related(obj.conditioning_events, 'id target_kind step_no kind duration_value duration_unit temperature_c source_cell_id')
-        row['runs'] = related(obj.runs, 'id scope method_code scope_cell_id')
-        row['results'] = _result_rows(m.Result.objects.filter(test_run__session=obj), offset=offset, limit=limit)
-        row['observations'] = related(m.Observation.objects.filter(test_run__session=obj), 'id test_run_id sequence_no text_value source_cell_id')
-    elif entity == 'results':
-        row['source'] = _source_cell(obj.source_cell)
-        row['dependencies'] = related(obj.dependencies, 'id input_result_id role input_result__metric__code input_result__numeric_value input_result__text_value input_result__value_state input_result__origin')
-        row['conditions'] = related(obj.test_run.session.conditions, 'id metric__code metric__label metric__unit_code numeric_value text_value')
-        row['recipe_links'] = related(obj.test_run.session.recipe_matches, 'id recipe_version_id recipe_version__version_label status reason')
-    elif entity == 'materials':
-        row['lots'] = related(obj.lots, 'id lot_code supplier status density_g_ml price_per_kg source_id')
-        row['recipes'] = search_lab_data('recipes', material_id=id, offset=offset, limit=limit)
-    elif entity == 'lots':
-        row['effective_density_g_ml'] = obj.effective_density_g_ml
-        row['effective_price_per_kg'] = obj.effective_price_per_kg
-        row['recipes'] = related(m.RecipeVersion.objects.filter(Q(groups__components__specified_lot=obj) | Q(filling_plan__specified_lot=obj)).distinct(), 'id version_label title status')
-    elif entity == 'mixtures':
-        row['recipes'] = related(obj.recipes, 'id version_label title status recorded_on')
-    elif entity == 'sources':
-        row['sheets'] = related(obj.sheets, 'id name')
-        row['cells'] = related(m.SourceCell.objects.filter(sheet__file=obj), 'id sheet_id sheet__name address cell_kind raw_value formula_text cached_value')
-    elif entity == 'source_cells':
-        row['source'] = _source_cell(obj)
-    elif entity == 'metrics':
-        row['results'] = _result_rows(obj.results, offset=offset, limit=limit)
-    if section != 'all':
-        if section not in row or section not in DETAIL_SECTIONS:
-            raise ValueError('Этот раздел отсутствует у выбранного реестра.')
-        row = {**{key: value for key, value in row.items() if key not in DETAIL_SECTIONS}, section: row[section]}
-    return row
+    related = partial(_rows, limit=limit, offset=offset)
+    builder = SECTION_BUILDERS.get(entity)
+    sections = builder(obj, related, offset, limit) if builder else {}
+    if section == 'summary':
+        return {**compact_record(row), 'available_sections': list(sections),
+                'detail_hint': 'Полные поля: section=all; коллекции постраничны.'}
+    if section != 'all' and section not in sections:
+        raise ValueError('Этот раздел отсутствует у выбранного реестра.')
+    selected = sections if section == 'all' else {section: sections[section]}
+    base = row if section == 'all' else compact_record(row)
+    return {**base, **{key: read() for key, read in selected.items()}}
 
 
 def _project_files():
@@ -451,16 +624,22 @@ def read_project_file(path, start_line=1, line_count=80, start_column=1):
 
 def execute_tool(name, arguments):
     """Dispatch validated JSON arguments; return tool errors without internals."""
-    functions = {'search_lab_data': search_lab_data, 'get_lab_record': get_lab_record,
-                 'list_project_files': list_project_files, 'read_project_file': read_project_file}
+    functions = {
+        'search_lab_data': compact_search, 'get_lab_record': get_lab_record,
+        'list_project_files': list_project_files,
+        'read_project_file': read_project_file,
+    }
     if name not in functions:
         return {'error': 'Неизвестный инструмент.'}
     if not isinstance(arguments, dict):
         return {'error': 'Аргументы инструмента должны быть JSON-объектом.'}
-    allowed = next(spec['function']['parameters']['properties'] for spec in TOOLS if spec['function']['name'] == name)
+    allowed = next(spec['function']['parameters']['properties']
+                   for spec in TOOLS if spec['function']['name'] == name)
     if set(arguments) - set(allowed):
         return {'error': 'Неизвестные параметры инструмента.'}
     try:
         return _finish(functions[name](**arguments))
-    except (TypeError, ValueError) as error:
-        return {'error': str(error) if isinstance(error, ValueError) else 'Отсутствуют или некорректны обязательные аргументы.'}
+    except ValueError as error:
+        return {'error': str(error)}
+    except TypeError:
+        return {'error': 'Отсутствуют или некорректны обязательные аргументы.'}

@@ -9,9 +9,9 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.urls import Resolver404, resolve
 
 from .assistant_tools import TOOLS, execute_tool
+from .assistant_context import UI_GUIDE, initial_context
 
 MAX_HISTORY_MESSAGES = 24
 MAX_MESSAGE_CHARS = 12000
@@ -24,10 +24,12 @@ TOTAL_TIMEOUT = 180
 
 SYSTEM_PROMPT = """Ты — исследовательский помощник KUDO LIMS. Отвечай по-русски.
 Помогай обсуждать эксперименты, проверять гипотезы и ориентироваться в сайте.
-Перед выводами о лабораторных данных активно используй инструменты: найди нужные
+Перед выводами о лабораторных данных используй инструменты по необходимости: найди нужные
 материалы, партии, версии рецептур и испытания, прочитай детали, условия,
-измерения, наблюдения и происхождение. Начальные записи — только небольшой обзор,
-не полная выборка. Для сравнения используй поиск, фильтры и страницы результатов;
+измерения, наблюдения и происхождение. Начальная карточка — краткая сводка.
+Поиск возвращает краткие записи. Для выводов читай нужные section карточек;
+section=all — полные поля, available_sections — доступные разделы.
+Начинай с малых выборок и не перечитывай уже полученные сведения. Для сравнения используй поиск, фильтры и страницы результатов;
 не называй ограниченную выборку всей базой. Подтверждай факты ссылками на карточки
 в Markdown [название](/путь/), сохраняй номера версий, единицы и статусы связей.
 Различай плановую рецептуру, фактическое изготовление и гипотезу о соответствии.
@@ -36,9 +38,9 @@ SYSTEM_PROMPT = """Ты — исследовательский помощник 
 Отделяй наблюдаемые факты от интерпретаций и гипотез. Не делай причинных выводов
 из корреляции. Если данных недостаточно, назови недостающие сведения и предложи
 проверяемый следующий опыт с контролем, измерениями и критериями результата.
-Для подсказок о сайте сначала читай соответствующие реальные шаблоны/JS и
-документацию инструментами list_project_files/read_project_file. Учитывай текущую
-страницу; давай точные ссылки на существующие разделы и объясняй шаги интерфейса.
+Для подсказок о сайте используй краткую справку ниже и текущую страницу.
+Читай шаблоны/JS через list_project_files/read_project_file, только если справки
+недостаточно. Давай точные ссылки на разделы и объясняй шаги интерфейса.
 form_state — снимок текущих полей формы в браузере на момент вопроса, включая
 несохранённый ввод. Используй названия полей, выбранные варианты и строки состава
 для помощи с заполнением; формы method=get могут содержать фильтры. changed=true
@@ -58,7 +60,7 @@ form_state — снимок текущих полей формы в браузе
 Не выдумывай данные или результат инструмента. Не выдавай внутренний ход
 рассуждений; дай вывод, проверяемые основания и ограничения. Ответ делай понятным,
 соразмерным вопросу, без больших таблиц, если они не нужны.
-"""
+""" + "\n" + UI_GUIDE
 
 
 class AssistantError(Exception):
@@ -292,74 +294,104 @@ def _cloud_stream(payload, *, timeout):
         raise AssistantError('Cloud.ru вернул некорректный поток ответа. Повторите запрос.', 'invalid_response') from None
 
 
+class _StreamMessage:
+    def __init__(self):
+        self.message = {'content': '', 'reasoning_content': ''}
+        self.calls = {}
+        self.finish_reason = None
+        self.sent = 0
+
+    def consume(self, chunk):
+        choices = chunk['choices']
+        if not isinstance(choices, list):
+            raise ValueError
+        if not choices:
+            return
+        choice = choices[0]
+        delta = choice['delta']
+        if not isinstance(delta, dict):
+            raise ValueError
+        if choice.get('finish_reason') is not None:
+            self.finish_reason = choice['finish_reason']
+        for field in ('content', 'reasoning_content'):
+            value = delta.get(field)
+            if value is not None:
+                yield from self.add_text(field, value)
+        fragments = delta.get('tool_calls') or []
+        if not isinstance(fragments, list):
+            raise ValueError
+        for fragment in fragments:
+            self.add_call(fragment)
+
+    def add_text(self, field, value):
+        if not isinstance(value, str):
+            raise ValueError
+        self.message[field] += value
+        if field == 'content' and value and self.sent < MAX_MESSAGE_CHARS:
+            text = value[:MAX_MESSAGE_CHARS - self.sent]
+            self.sent += len(text)
+            yield 'delta', {'text': text}
+
+    def add_call(self, fragment):
+        index = fragment.get('index')
+        if type(index) is not int or not 0 <= index < 8:
+            raise ValueError
+        call = self.calls.setdefault(index, {
+            'id': '', 'type': 'function',
+            'function': {'name': '', 'arguments': ''},
+        })
+        if fragment.get('type', 'function') != 'function':
+            raise ValueError
+        if fragment.get('id') is not None:
+            if not isinstance(fragment['id'], str):
+                raise ValueError
+            call['id'] += fragment['id']
+        function = fragment.get('function') or {}
+        if not isinstance(function, dict):
+            raise ValueError
+        for field in ('name', 'arguments'):
+            if function.get(field) is not None:
+                if not isinstance(function[field], str):
+                    raise ValueError
+                call['function'][field] += function[field]
+
+    def result(self):
+        if self.finish_reason is None:
+            raise AssistantError(
+                'Поток ответа Cloud.ru прервался. Повторите запрос.',
+                'incomplete_response',
+            )
+        self.message['tool_calls'] = [
+            self.calls[index] for index in sorted(self.calls)
+        ]
+        return {'choices': [{
+            'message': self.message, 'finish_reason': self.finish_reason,
+        }]}
+
+
 def _stream_completion(payload, *, timeout):
-    """Reassemble fragmented function calls; only public content leaves here."""
-    message = {'content': '', 'reasoning_content': ''}
-    calls = {}
-    finish_reason = None
-    sent = 0
+    state = _StreamMessage()
     last_ping = time.monotonic()
     stream = _cloud_stream(payload, timeout=timeout)
     try:
         for chunk in stream:
             now = time.monotonic()
             if now - last_ping >= 1:
-                # Hidden reasoning and provider keepalives still need a write
-                # so WSGI can notice disconnects and close the upstream request.
                 last_ping = now
                 yield 'ping', {}
+            if isinstance(chunk.get('usage'), dict):
+                yield 'metrics', {'kind': 'provider_usage',
+                                  'usage': chunk['usage']}
             try:
-                choices = chunk['choices']
-                if not isinstance(choices, list):
-                    raise ValueError
-                if not choices:  # Optional usage-only frame.
-                    continue
-                choice = choices[0]
-                delta = choice['delta']
-                if not isinstance(delta, dict):
-                    raise ValueError
-                if choice.get('finish_reason') is not None:
-                    finish_reason = choice['finish_reason']
-                for field in ('content', 'reasoning_content'):
-                    value = delta.get(field)
-                    if value is not None:
-                        if not isinstance(value, str):
-                            raise ValueError
-                        message[field] += value
-                        if field == 'content' and value and sent < MAX_MESSAGE_CHARS:
-                            text = value[:MAX_MESSAGE_CHARS - sent]
-                            sent += len(text)
-                            yield 'delta', {'text': text}
-                fragments = delta.get('tool_calls') or []
-                if not isinstance(fragments, list):
-                    raise ValueError
-                for fragment in fragments:
-                    index = fragment.get('index')
-                    if type(index) is not int or not 0 <= index < 8:
-                        raise ValueError
-                    call = calls.setdefault(index, {'id': '', 'type': 'function', 'function': {'name': '', 'arguments': ''}})
-                    if fragment.get('type', 'function') != 'function':
-                        raise ValueError
-                    if fragment.get('id') is not None:
-                        if not isinstance(fragment['id'], str):
-                            raise ValueError
-                        call['id'] += fragment['id']
-                    function = fragment.get('function') or {}
-                    if not isinstance(function, dict):
-                        raise ValueError
-                    for field in ('name', 'arguments'):
-                        if function.get(field) is not None:
-                            if not isinstance(function[field], str):
-                                raise ValueError
-                            call['function'][field] += function[field]
+                yield from state.consume(chunk)
             except (KeyError, IndexError, TypeError, ValueError, AttributeError):
-                raise AssistantError('Cloud.ru вернул некорректный поток ответа.', 'invalid_response') from None
+                raise AssistantError(
+                    'Cloud.ru вернул некорректный поток ответа.',
+                    'invalid_response',
+                ) from None
     finally:
         stream.close()
-    if finish_reason is None:
-        raise AssistantError('Поток ответа Cloud.ru прервался. Повторите запрос.', 'incomplete_response')
-    message['tool_calls'] = [calls[index] for index in sorted(calls)]
-    return {'choices': [{'message': message, 'finish_reason': finish_reason}]}
+    return state.result()
 
 
 def _tool_activity(name, arguments):
@@ -404,130 +436,211 @@ def _sources(value, found):
 
 
 def _initial_context(page, role):
-    context = {'employee_role': role, 'page': '/', 'overview': {}}
+    return initial_context(page, role)
+
+
+def _json(value):
+    return json.dumps(value, cls=DjangoJSONEncoder, ensure_ascii=False)
+
+
+def _completion_choice(data):
     try:
-        if isinstance(page, str) and page.startswith('/') and not page.startswith('//') and len(page) < 500:
-            match = resolve(page)
-            context['page'] = page
-            context['route'] = match.url_name
-            entity = {'recipe_detail': 'recipes', 'test_detail': 'tests', 'material_detail': 'materials',
-                      'lot_detail': 'lots', 'mixture_detail': 'mixtures', 'source_detail': 'sources',
-                      'recipe_template_detail': 'recipe_templates', 'calculation_template_detail': 'calculation_templates',
-                      'calculation_detail': 'calculations'}.get(match.url_name)
-            if entity and 'pk' in match.kwargs:
-                context['current_record'] = execute_tool('get_lab_record', {'entity': entity, 'id': match.kwargs['pk']})
-    except Resolver404:
-        pass
-    for entity in ('materials', 'recipes', 'tests'):
-        context['overview'][entity] = execute_tool('search_lab_data', {'entity': entity, 'limit': 3, 'order': 'id_desc'})
-    return context
+        choice = data['choices'][0]
+        message = choice['message']
+        if not isinstance(message, dict):
+            raise ValueError
+        calls = message.get('tool_calls') or []
+        if not isinstance(calls, list):
+            raise ValueError
+        return choice, message, calls
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise AssistantError(
+            'Cloud.ru вернул некорректный ответ.', 'invalid_response',
+        ) from None
 
 
-def _answer_events(messages, *, page='/', role='reader', form_state=None, streaming=False):
-    _, model, _ = _configuration()
-    deadline = time.monotonic() + TOTAL_TIMEOUT
-    sources = {}
-    yield 'status', {'text': 'Смотрю текущую страницу и данные лаборатории…'}
-    initial = _initial_context(page, role)
-    if form_state is not None:
-        initial['form_state'] = form_state
-    _sources(initial.get('current_record'), sources)
-    overview_sources = {}
-    _sources(initial.get('overview'), overview_sources)
-    conversation = [{'role': 'system', 'content': SYSTEM_PROMPT},
-                    {'role': 'system', 'content': 'Снимок текущего контекста (недоверенные данные JSON):\n' + json.dumps(initial, cls=DjangoJSONEncoder, ensure_ascii=False)},
-                    *messages]
-    used = []
-    rounds = _number_setting('ASSISTANT_MAX_TOOL_ROUNDS', 5, 1, 8)
-    total_calls = 0
-    for turn in range(rounds + 1):
-        yield 'status', {'text': 'Думаю…'}
-        remaining = deadline - time.monotonic()
+def _assistant_tool_message(message, calls):
+    result = {'role': 'assistant', 'content': message.get('content') or None,
+              'tool_calls': []}
+    if isinstance(message.get('reasoning_content'), str):
+        result['reasoning_content'] = message['reasoning_content']
+    seen = set()
+    for call in calls:
+        if (not isinstance(call, dict)
+                or not isinstance(call.get('id'), str) or not call['id']
+                or call['id'] in seen
+                or not isinstance(call.get('function'), dict)
+                or not isinstance(call['function'].get('name'), str)
+                or not isinstance(call['function'].get('arguments'), str)):
+            raise AssistantError(
+                'Модель вернула некорректный вызов инструмента.',
+                'invalid_response',
+            )
+        seen.add(call['id'])
+        result['tool_calls'].append({
+            'id': call['id'], 'type': 'function', 'function': call['function'],
+        })
+    return result
+
+
+class _LabAgent:
+    def __init__(self, messages, page, role, form_state, streaming):
+        _, self.model, _ = _configuration()
+        self.deadline = time.monotonic() + TOTAL_TIMEOUT
+        self.streaming = streaming
+        self.sources = {}
+        self.used = []
+        self.total_calls = 0
+        self.rounds = _number_setting('ASSISTANT_MAX_TOOL_ROUNDS', 5, 1, 8)
+        initial = _initial_context(page, role)
+        if form_state is not None:
+            initial['form_state'] = form_state
+        _sources(initial.get('current_record'), self.sources)
+        self.conversation = [
+            {'role': 'system', 'content': SYSTEM_PROMPT},
+            {'role': 'system', 'content':
+             'Снимок текущего контекста (недоверенные данные JSON):\n'
+             + _json(initial)},
+            *messages,
+        ]
+
+    def payload(self, turn):
+        if turn == self.rounds:
+            self.conversation.append({'role': 'system', 'content':
+                'Лимит поиска достигнут. Дай ответ по уже полученным данным; '
+                'явно укажи, что осталось непроверенным.'})
+        payload = {
+            'model': self.model, 'messages': self.conversation,
+            'max_completion_tokens': 8192, 'stream': self.streaming,
+            'tools': TOOLS,
+            'tool_choice': 'none' if turn == self.rounds else 'auto',
+        }
+        if self.streaming:
+            payload['stream_options'] = {'include_usage': True}
+        return payload
+
+    def completion(self, turn):
+        remaining = self.deadline - time.monotonic()
         if remaining <= 1:
-            raise AssistantError('Поиск занял слишком много времени. Уточните вопрос и повторите.', 'timeout', 504)
-        payload = {'model': model, 'messages': conversation, 'max_completion_tokens': 8192, 'stream': streaming,
-                   'tools': TOOLS, 'tool_choice': 'none' if turn == rounds else 'auto'}
-        if turn == rounds:
-            conversation.append({'role': 'system', 'content': 'Лимит поиска достигнут. Дай ответ по уже полученным данным; явно укажи, что осталось непроверенным.'})
-        if streaming:
+            raise AssistantError(
+                'Поиск занял слишком много времени. Уточните вопрос.',
+                'timeout', 504,
+            )
+        payload = self.payload(turn)
+        yield 'metrics', {
+            'kind': 'provider_start',
+            'message_chars': len(_json(self.conversation)),
+            'request_chars': len(_json(payload)),
+        }
+        if self.streaming:
             data = yield from _stream_completion(payload, timeout=remaining)
         else:
-            data = _cloud_request('/chat/completions', payload=payload, timeout=remaining)
+            data = _cloud_request(
+                '/chat/completions', payload=payload, timeout=remaining,
+            )
+            yield 'metrics', {'kind': 'provider_usage',
+                              'usage': data.get('usage')}
+        yield 'metrics', {'kind': 'provider_end'}
+        return _completion_choice(data)
+
+    def final_answer(self, choice, message):
+        content = message.get('content')
+        if not isinstance(content, str) or not content.strip():
+            raise AssistantError(
+                'Модель не вернула текст ответа. Повторите вопрос или '
+                'выберите модель с Function Calling.', 'empty_response',
+            )
+        if (choice.get('finish_reason') == 'length'
+                or len(content) > MAX_MESSAGE_CHARS):
+            suffix = ('\n\nОтвет сокращён. Уточните вопрос, '
+                      'чтобы разобрать нужную часть подробнее.')
+            content = content[:MAX_MESSAGE_CHARS - len(suffix)].rstrip()
+            content += suffix
+        cited = {key: source for key, source in self.sources.items()
+                 if source['url'] and f"]({source['url']})" in content}
+        sources = {**cited, **self.sources}
+        return {'reply': content, 'sources': list(sources.values())[:24],
+                'tools_used': self.used, 'model': self.model}
+
+    def tool_result(self, call):
+        name = call['function']['name']
         try:
-            choice = data['choices'][0]
-            message = choice['message']
-            if not isinstance(message, dict):
-                raise ValueError('Invalid message')
-            calls = message.get('tool_calls') or []
-            if not isinstance(calls, list):
-                raise ValueError('Invalid calls')
-        except (KeyError, IndexError, TypeError, ValueError):
-            raise AssistantError('Cloud.ru вернул некорректный ответ.', 'invalid_response') from None
-        if not calls:
-            content = message.get('content')
-            if not isinstance(content, str) or not content.strip():
-                raise AssistantError('Модель не вернула текст ответа. Повторите вопрос или выберите модель с Function Calling.', 'empty_response')
-            if choice.get('finish_reason') == 'length' or len(content) > MAX_MESSAGE_CHARS:
-                suffix = '\n\nОтвет сокращён. Уточните вопрос, чтобы разобрать нужную часть подробнее.'
-                content = content[:MAX_MESSAGE_CHARS - len(suffix)].rstrip() + suffix
-            # Prefer explicitly cited records, then other evidence actually read.
-            # Unrelated recent cards from the overview are not answer sources.
-            final_sources = {}
-            for key, source in {**overview_sources, **sources}.items():
-                if source['url'] and f"]({source['url']})" in content:
-                    final_sources[key] = source
-            for key, source in sources.items():
-                final_sources.setdefault(key, source)
-            yield 'done', {'reply': content, 'sources': list(final_sources.values())[:24],
-                           'tools_used': used, 'model': model}
-            return
-        if turn == rounds or len(calls) > 8 or total_calls + len(calls) > 24:
-            raise AssistantError('Модель превысила лимит поиска. Задайте более узкий вопрос.', 'tool_limit', 422)
-        assistant_message = {'role': 'assistant', 'content': message.get('content') or None, 'tool_calls': []}
-        # Some DeepSeek reasoning modes require this field on subsequent tool turns.
-        if isinstance(message.get('reasoning_content'), str):
-            assistant_message['reasoning_content'] = message['reasoning_content']
-        seen_ids = set()
-        for call in calls:
-            if (not isinstance(call, dict) or not isinstance(call.get('id'), str) or not call['id']
-                    or call['id'] in seen_ids or not isinstance(call.get('function'), dict)
-                    or not isinstance(call['function'].get('name'), str)
-                    or not isinstance(call['function'].get('arguments'), str)):
-                raise AssistantError('Модель вернула некорректный вызов инструмента.', 'invalid_response')
-            seen_ids.add(call['id'])
-            assistant_message['tool_calls'].append({'id': call['id'], 'type': 'function', 'function': call['function']})
-        conversation.append(assistant_message)
-        # Public preambles sometimes precede tool calls in the same model round.
-        # Mark their segment complete so the browser can retain it alongside
-        # subsequent segments; the following round supplies the final answer.
-        if streaming and message.get('content'):
+            arguments = json.loads(call['function']['arguments'])
+            if not isinstance(arguments, dict):
+                raise ValueError
+            yield 'status', {'text': _tool_activity(name, arguments)}
+            result = execute_tool(name, arguments)
+        except (ValueError, TypeError, KeyError):
+            result = {'error': 'Некорректные параметры инструмента. '
+                      'Проверьте имя, типы и разрешённые поля.'}
+        _sources(result, self.sources)
+        if name not in self.used:
+            self.used.append(name)
+        self.total_calls += 1
+        content = _json(result)
+        yield 'metrics', {'kind': 'tool', 'name': name,
+                          'result_chars': len(content)}
+        self.conversation.append({
+            'role': 'tool', 'tool_call_id': call['id'], 'content': content,
+        })
+
+    def tools(self, turn, message, calls):
+        if (turn == self.rounds or len(calls) > 8
+                or self.total_calls + len(calls) > 24):
+            raise AssistantError(
+                'Модель превысила лимит поиска. Задайте более узкий вопрос.',
+                'tool_limit', 422,
+            )
+        entry = _assistant_tool_message(message, calls)
+        self.conversation.append(entry)
+        if self.streaming and message.get('content'):
             yield 'status', {'text': 'Проверяю данные…', 'reset': True}
-        for call in assistant_message['tool_calls']:
-            name = call['function']['name']
-            try:
-                arguments = json.loads(call['function']['arguments'])
-                if not isinstance(arguments, dict):
-                    raise ValueError('Expected argument object')
-                yield 'status', {'text': _tool_activity(name, arguments)}
-                result = execute_tool(name, arguments)
-            except (ValueError, TypeError, KeyError):
-                result = {'error': 'Некорректные параметры инструмента. Проверьте имя, типы и разрешённые поля.'}
-            _sources(result, sources)
-            if name not in used:
-                used.append(name)
-            total_calls += 1
-            conversation.append({'role': 'tool', 'tool_call_id': call['id'],
-                                 'content': json.dumps(result, cls=DjangoJSONEncoder, ensure_ascii=False)})
-    raise AssistantError('Не удалось завершить ответ. Уточните вопрос.', 'tool_limit', 422)
+        for call in entry['tool_calls']:
+            yield from self.tool_result(call)
+
+    def events(self):
+        for turn in range(self.rounds + 1):
+            yield 'status', {'text': 'Думаю…'}
+            choice, message, calls = yield from self.completion(turn)
+            if not calls:
+                yield 'done', self.final_answer(choice, message)
+                return
+            yield from self.tools(turn, message, calls)
+        raise AssistantError(
+            'Не удалось завершить ответ. Уточните вопрос.', 'tool_limit', 422,
+        )
 
 
-def answer_stream(messages, *, page='/', role='reader', form_state=None):
-    """Yield status/delta/done events; reasoning stays in server-side tool turns."""
-    yield from _answer_events(messages, page=page, role=role, form_state=form_state, streaming=True)
+def _answer_events(messages, *, page='/', role='reader', form_state=None,
+                   streaming=False, on_metrics=None):
+    yield 'status', {'text': 'Смотрю текущую страницу…'}
+    agent = _LabAgent(messages, page, role, form_state, streaming)
+    events = agent.events()
+    try:
+        for event, data in events:
+            if event == 'metrics':
+                if on_metrics is not None:
+                    on_metrics(data)
+            else:
+                yield event, data
+    finally:
+        events.close()
 
 
-def answer(messages, *, page='/', role='reader', form_state=None):
-    # Preserve the original JSON API for clients that do not request SSE.
-    for event, data in _answer_events(messages, page=page, role=role, form_state=form_state):
+def answer_stream(messages, *, page='/', role='reader', form_state=None,
+                  on_metrics=None):
+    """Yield public events; usage goes only to the server-side journal."""
+    yield from _answer_events(
+        messages, page=page, role=role, form_state=form_state,
+        streaming=True, on_metrics=on_metrics,
+    )
+
+
+def answer(messages, *, page='/', role='reader', form_state=None,
+           on_metrics=None):
+    for event, data in _answer_events(
+        messages, page=page, role=role, form_state=form_state,
+        on_metrics=on_metrics,
+    ):
         if event == 'done':
             return data

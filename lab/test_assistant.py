@@ -126,7 +126,9 @@ class AssistantWorkflowTests(TestCase):
         context = json.loads(cloud.call_args.kwargs['payload']['messages'][1]['content'].split('\n', 1)[1])
         self.assertEqual(context['current_record']['version_label'], 'AI.1')
         self.assertEqual(context['employee_role'], 'reader')
-        self.assertEqual(context['overview']['materials']['total'], 1)
+        self.assertNotIn('overview', context)
+        self.assertNotIn('components', context['current_record'])
+        self.assertIn('components', context['current_record']['available_sections'])
 
     @patch('lab.assistant._cloud_request')
     def test_current_form_snapshot_reaches_provider_without_changing_stored_record(self, cloud):
