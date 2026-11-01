@@ -23,14 +23,17 @@
       </div>
     </div>
     <div class="assistant-messages" id="assistant-messages" role="log" aria-label="Переписка с помощником" aria-live="polite" aria-relevant="additions"></div>
-    <div class="assistant-pending" id="assistant-pending" role="status" hidden><span class="assistant-pulse" aria-hidden="true"></span>Проверяю данные и готовлю ответ…</div>
+    <div class="assistant-pending" id="assistant-pending" hidden>
+      <div class="assistant-activity" role="status"><span class="assistant-pulse" aria-hidden="true">✦</span><span class="assistant-activity-text" id="assistant-activity-text">Думаю…</span><span class="assistant-elapsed" id="assistant-elapsed" aria-hidden="true"></span></div>
+      <details class="assistant-steps" id="assistant-steps" hidden><summary id="assistant-steps-summary">Действия</summary><ol id="assistant-steps-list"></ol></details>
+    </div>
     <div class="assistant-error" id="assistant-error" role="alert" hidden><p id="assistant-error-text"></p><button type="button" id="assistant-retry">Повторить запрос</button></div>
   </div>
   <form class="assistant-compose" id="assistant-form">
     {% csrf_token %}
     <label class="assistant-sr-only" for="assistant-input">Вопрос помощнику</label>
     <textarea id="assistant-input" rows="3" maxlength="6000" placeholder="Спросите об опыте или гипотезе…" aria-describedby="assistant-input-hint" required></textarea>
-    <div class="assistant-compose-bottom"><span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка</span><button id="assistant-cancel" type="button" hidden>Остановить</button><button id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button></div>
+    <div class="assistant-compose-bottom"><span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка<br>↑/↓ — последние 25 запросов при пустом вводе</span><button id="assistant-cancel" type="button" hidden>Остановить</button><button id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button></div>
   </form>
   <p class="assistant-disclosure">Вопросы, данные текущих форм и найденные записи передаются в Cloud.ru. Ответы ИИ проверяйте по источникам.</p>
 </aside>

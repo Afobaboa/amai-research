@@ -1,19 +1,54 @@
-"""Authenticated JSON endpoints; the browser never talks to Cloud.ru directly."""
+"""Authenticated JSON/SSE endpoints; provider credentials stay on the server."""
 import json
 import logging
 import time
 from functools import wraps
+from uuid import uuid4
 
 from django.core.cache import cache
-from django.http import JsonResponse, RawPostDataException
+from django.http import JsonResponse, RawPostDataException, StreamingHttpResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from .assistant import AssistantError, answer, configuration_status, validate_form_state, validate_messages
+from .assistant import AssistantError, answer, answer_stream, configuration_status, validate_form_state, validate_messages
 from .models import EmployeeProfile
 
 logger = logging.getLogger(__name__)
 MAX_BODY_BYTES = 256000
+
+
+class _EventStream:
+    """Release the request guard even if the response is closed before iteration."""
+    def __init__(self, events, release):
+        self.release = release
+        self.events = self.frames(events)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self.events)
+
+    def frames(self, events):
+        def frame(event, data):
+            return f'event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n'
+        try:
+            for event, data in events:
+                yield frame(event, data)
+        except AssistantError as error:
+            yield frame('error', {'error': str(error), 'code': error.code})
+        except Exception:
+            logger.error('Assistant stream failed with an internal error.')
+            yield frame('error', {'error': 'Не удалось подготовить ответ. Повторите запрос позже.', 'code': 'internal_error'})
+        finally:
+            events.close()
+            self.release()
+
+    def close(self):
+        try:
+            self.events.close()
+        finally:
+            self.release()
 
 
 def assistant_required(view):
@@ -59,12 +94,24 @@ def chat(request):
     # In-memory cache is deliberately only a per-process guard, not a global quota.
     employee_key = f'assistant:employee:{request.employee.pk}'
     lock_key = employee_key + ':busy'
-    if not cache.add(lock_key, True, timeout=200):
+    lock_token = uuid4().hex
+    if not cache.add(lock_key, lock_token, timeout=200):
         return JsonResponse({'error': 'Предыдущий ответ ещё готовится. Дождитесь его завершения.', 'code': 'busy'}, status=429)
+    def release():
+        if cache.get(lock_key) == lock_token:
+            cache.delete(lock_key)
+    streaming = False
     try:
         rate_key = employee_key + ':minute:' + str(int(time.time() // 60))
         if not cache.add(rate_key, 1, timeout=65) and cache.incr(rate_key) > 20:
             raise AssistantError('Слишком много запросов. Повторите через минуту.', 'rate_limit', 429)
+        if request.accepts('text/event-stream') and 'text/event-stream' in request.headers.get('Accept', ''):
+            events = answer_stream(messages, page=page, role=request.employee.role, form_state=form_state)
+            response = StreamingHttpResponse(_EventStream(events, release), content_type='text/event-stream; charset=utf-8')
+            response['X-Accel-Buffering'] = 'no'
+            response['Cache-Control'] = 'no-cache, no-store, no-transform'
+            streaming = True
+            return response
         result = answer(messages, page=page, role=request.employee.role, form_state=form_state)
         return JsonResponse(result)
     except AssistantError as error:
@@ -74,4 +121,5 @@ def chat(request):
         logger.error('Assistant request failed with an internal error.')
         return JsonResponse({'error': 'Не удалось подготовить ответ. Повторите запрос позже.', 'code': 'internal_error'}, status=500)
     finally:
-        cache.delete(lock_key)
+        if not streaming:
+            release()

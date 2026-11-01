@@ -224,6 +224,168 @@ def list_models():
     return [row['id'] for row in data if isinstance(row, dict) and isinstance(row.get('id'), str)]
 
 
+def _cloud_stream(payload, *, timeout):
+    """Read bounded SSE frames without buffering the provider's whole response."""
+    key, _, base = _configuration()
+    timeout = max(1, min(timeout, _number_setting('CLOUD_RU_TIMEOUT', 90, 5, TOTAL_TIMEOUT)))
+    deadline = time.monotonic() + timeout
+    request = Request(base + '/chat/completions',
+                      data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+                      headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
+                               'Accept': 'text/event-stream'}, method='POST')
+    try:
+        with build_opener(_NoRedirects()).open(request, timeout=timeout) as response:
+            total = 0
+            frame = []
+            keepalive = False
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                # urllib exposes its HTTP socket here. Shorten each read as the
+                # deadline approaches, including streams that send frequent tokens.
+                sock = getattr(getattr(getattr(response, 'fp', None), 'raw', None), '_sock', None)
+                if sock is not None:
+                    sock.settimeout(remaining)
+                line = response.readline(MAX_RESPONSE_BYTES + 1)
+                total += len(line)
+                if total > MAX_RESPONSE_BYTES:
+                    raise AssistantError('Cloud.ru вернул слишком большой ответ. Сократите вопрос.', 'invalid_response')
+                if not line:
+                    raise AssistantError('Поток ответа Cloud.ru прервался. Повторите запрос.', 'incomplete_response')
+                line = line.decode('utf-8').rstrip('\r\n')
+                if line:
+                    if line.startswith('data:'):
+                        frame.append(line[5:].lstrip(' '))
+                    elif line.startswith(':'):
+                        keepalive = True
+                    continue
+                if not frame:
+                    if keepalive:
+                        # Surface liveness without forwarding provider comments.
+                        yield {'choices': []}
+                        keepalive = False
+                    continue
+                data = '\n'.join(frame)
+                frame = []
+                if data == '[DONE]':
+                    return
+                chunk = json.loads(data)
+                if not isinstance(chunk, dict) or 'error' in chunk:
+                    raise ValueError('Invalid stream frame')
+                yield chunk
+    except HTTPError as error:
+        if error.code in (401, 403):
+            raise AssistantError('Cloud.ru отклонил доступ. Проверьте Key Secret, срок действия ключа и доступ к Foundation Models.', 'provider_auth') from None
+        if error.code == 429:
+            raise AssistantError('Cloud.ru временно ограничил запросы. Проверьте квоту и повторите позже.', 'provider_rate_limit', 429) from None
+        if error.code in (400, 404, 422):
+            raise AssistantError('Cloud.ru не принял запрос. Проверьте CLOUD_RU_MODEL и поддержку Function Calling у выбранной модели.', 'provider_request') from None
+        raise AssistantError('Cloud.ru временно недоступен. Повторите запрос позже.', 'provider_error') from None
+    except (TimeoutError, socket.timeout):
+        raise AssistantError('Cloud.ru не успел ответить. Попробуйте более короткий вопрос.', 'timeout', 504) from None
+    except URLError:
+        raise AssistantError('Не удалось соединиться с Cloud.ru. Проверьте доступ сервера к интернету.', 'provider_unavailable') from None
+    except OSError:
+        raise AssistantError('Поток ответа Cloud.ru прервался. Повторите запрос.', 'incomplete_response') from None
+    except (ValueError, UnicodeError):
+        raise AssistantError('Cloud.ru вернул некорректный поток ответа. Повторите запрос.', 'invalid_response') from None
+
+
+def _stream_completion(payload, *, timeout):
+    """Reassemble fragmented function calls; only public content leaves here."""
+    message = {'content': '', 'reasoning_content': ''}
+    calls = {}
+    finish_reason = None
+    sent = 0
+    last_ping = time.monotonic()
+    stream = _cloud_stream(payload, timeout=timeout)
+    try:
+        for chunk in stream:
+            now = time.monotonic()
+            if now - last_ping >= 1:
+                # Hidden reasoning and provider keepalives still need a write
+                # so WSGI can notice disconnects and close the upstream request.
+                last_ping = now
+                yield 'ping', {}
+            try:
+                choices = chunk['choices']
+                if not isinstance(choices, list):
+                    raise ValueError
+                if not choices:  # Optional usage-only frame.
+                    continue
+                choice = choices[0]
+                delta = choice['delta']
+                if not isinstance(delta, dict):
+                    raise ValueError
+                if choice.get('finish_reason') is not None:
+                    finish_reason = choice['finish_reason']
+                for field in ('content', 'reasoning_content'):
+                    value = delta.get(field)
+                    if value is not None:
+                        if not isinstance(value, str):
+                            raise ValueError
+                        message[field] += value
+                        if field == 'content' and value and sent < MAX_MESSAGE_CHARS:
+                            text = value[:MAX_MESSAGE_CHARS - sent]
+                            sent += len(text)
+                            yield 'delta', {'text': text}
+                fragments = delta.get('tool_calls') or []
+                if not isinstance(fragments, list):
+                    raise ValueError
+                for fragment in fragments:
+                    index = fragment.get('index')
+                    if type(index) is not int or not 0 <= index < 8:
+                        raise ValueError
+                    call = calls.setdefault(index, {'id': '', 'type': 'function', 'function': {'name': '', 'arguments': ''}})
+                    if fragment.get('type', 'function') != 'function':
+                        raise ValueError
+                    if fragment.get('id') is not None:
+                        if not isinstance(fragment['id'], str):
+                            raise ValueError
+                        call['id'] += fragment['id']
+                    function = fragment.get('function') or {}
+                    if not isinstance(function, dict):
+                        raise ValueError
+                    for field in ('name', 'arguments'):
+                        if function.get(field) is not None:
+                            if not isinstance(function[field], str):
+                                raise ValueError
+                            call['function'][field] += function[field]
+            except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+                raise AssistantError('Cloud.ru вернул некорректный поток ответа.', 'invalid_response') from None
+    finally:
+        stream.close()
+    if finish_reason is None:
+        raise AssistantError('Поток ответа Cloud.ru прервался. Повторите запрос.', 'incomplete_response')
+    message['tool_calls'] = [calls[index] for index in sorted(calls)]
+    return {'choices': [{'message': message, 'finish_reason': finish_reason}]}
+
+
+def _tool_activity(name, arguments):
+    if name == 'list_project_files':
+        return 'Ищу описание нужного раздела…'
+    if name == 'read_project_file':
+        return 'Изучаю интерфейс и документацию…'
+    entity = arguments.get('entity')
+    entity = entity if isinstance(entity, str) else ''
+    query = arguments.get('q')
+    subjects = {'tests': 'эксперименты', 'recipes': 'рецептуры', 'materials': 'материалы',
+                'results': 'результаты', 'lots': 'партии сырья', 'sources': 'источники'}
+    if name == 'search_lab_data' and entity in subjects and isinstance(query, str) and query.strip():
+        query = ' '.join(query.split())[:80]
+        return f'Ищу {subjects[entity]}: «{query}»…'
+    labels = {'materials': 'Смотрю материалы…', 'lots': 'Проверяю партии сырья…',
+              'mixtures': 'Смотрю типы смесей…', 'recipes': 'Изучаю рецептуры…',
+              'tests': 'Смотрю эксперименты…', 'results': 'Изучаю результаты и статистику…',
+              'metrics': 'Проверяю показатели измерений…', 'sources': 'Изучаю источники…',
+              'source_cells': 'Проверяю первичные данные…',
+              'recipe_templates': 'Смотрю шаблоны рецептур…',
+              'calculation_templates': 'Изучаю шаблоны расчётов…',
+              'calculations': 'Проверяю сохранённые расчёты…'}
+    return labels.get(entity, 'Проверяю данные…')
+
+
 def _sources(value, found):
     if isinstance(value, dict):
         url = value.get('url')
@@ -261,10 +423,11 @@ def _initial_context(page, role):
     return context
 
 
-def answer(messages, *, page='/', role='reader', form_state=None):
+def _answer_events(messages, *, page='/', role='reader', form_state=None, streaming=False):
     _, model, _ = _configuration()
     deadline = time.monotonic() + TOTAL_TIMEOUT
     sources = {}
+    yield 'status', {'text': 'Смотрю текущую страницу и данные лаборатории…'}
     initial = _initial_context(page, role)
     if form_state is not None:
         initial['form_state'] = form_state
@@ -278,14 +441,18 @@ def answer(messages, *, page='/', role='reader', form_state=None):
     rounds = _number_setting('ASSISTANT_MAX_TOOL_ROUNDS', 5, 1, 8)
     total_calls = 0
     for turn in range(rounds + 1):
+        yield 'status', {'text': 'Думаю…'}
         remaining = deadline - time.monotonic()
         if remaining <= 1:
             raise AssistantError('Поиск занял слишком много времени. Уточните вопрос и повторите.', 'timeout', 504)
-        payload = {'model': model, 'messages': conversation, 'max_completion_tokens': 8192, 'stream': False,
+        payload = {'model': model, 'messages': conversation, 'max_completion_tokens': 8192, 'stream': streaming,
                    'tools': TOOLS, 'tool_choice': 'none' if turn == rounds else 'auto'}
         if turn == rounds:
             conversation.append({'role': 'system', 'content': 'Лимит поиска достигнут. Дай ответ по уже полученным данным; явно укажи, что осталось непроверенным.'})
-        data = _cloud_request('/chat/completions', payload=payload, timeout=remaining)
+        if streaming:
+            data = yield from _stream_completion(payload, timeout=remaining)
+        else:
+            data = _cloud_request('/chat/completions', payload=payload, timeout=remaining)
         try:
             choice = data['choices'][0]
             message = choice['message']
@@ -311,8 +478,9 @@ def answer(messages, *, page='/', role='reader', form_state=None):
                     final_sources[key] = source
             for key, source in sources.items():
                 final_sources.setdefault(key, source)
-            return {'reply': content, 'sources': list(final_sources.values())[:24],
-                    'tools_used': used, 'model': model}
+            yield 'done', {'reply': content, 'sources': list(final_sources.values())[:24],
+                           'tools_used': used, 'model': model}
+            return
         if turn == rounds or len(calls) > 8 or total_calls + len(calls) > 24:
             raise AssistantError('Модель превысила лимит поиска. Задайте более узкий вопрос.', 'tool_limit', 422)
         assistant_message = {'role': 'assistant', 'content': message.get('content') or None, 'tool_calls': []}
@@ -329,12 +497,18 @@ def answer(messages, *, page='/', role='reader', form_state=None):
             seen_ids.add(call['id'])
             assistant_message['tool_calls'].append({'id': call['id'], 'type': 'function', 'function': call['function']})
         conversation.append(assistant_message)
+        # Public preambles sometimes precede tool calls in the same model round.
+        # Mark their segment complete so the browser can retain it alongside
+        # subsequent segments; the following round supplies the final answer.
+        if streaming and message.get('content'):
+            yield 'status', {'text': 'Проверяю данные…', 'reset': True}
         for call in assistant_message['tool_calls']:
             name = call['function']['name']
             try:
                 arguments = json.loads(call['function']['arguments'])
                 if not isinstance(arguments, dict):
                     raise ValueError('Expected argument object')
+                yield 'status', {'text': _tool_activity(name, arguments)}
                 result = execute_tool(name, arguments)
             except (ValueError, TypeError, KeyError):
                 result = {'error': 'Некорректные параметры инструмента. Проверьте имя, типы и разрешённые поля.'}
@@ -345,3 +519,15 @@ def answer(messages, *, page='/', role='reader', form_state=None):
             conversation.append({'role': 'tool', 'tool_call_id': call['id'],
                                  'content': json.dumps(result, cls=DjangoJSONEncoder, ensure_ascii=False)})
     raise AssistantError('Не удалось завершить ответ. Уточните вопрос.', 'tool_limit', 422)
+
+
+def answer_stream(messages, *, page='/', role='reader', form_state=None):
+    """Yield status/delta/done events; reasoning stays in server-side tool turns."""
+    yield from _answer_events(messages, page=page, role=role, form_state=form_state, streaming=True)
+
+
+def answer(messages, *, page='/', role='reader', form_state=None):
+    # Preserve the original JSON API for clients that do not request SSE.
+    for event, data in _answer_events(messages, page=page, role=role, form_state=form_state):
+        if event == 'done':
+            return data

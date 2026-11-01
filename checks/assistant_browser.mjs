@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
+import {createServer} from 'node:http';
 
 const require = createRequire(import.meta.url);
 const {chromium} = require(process.env.KUDO_PLAYWRIGHT_MODULE || 'playwright');
@@ -20,7 +21,8 @@ delete env.SITE_PASSWORD_HASH;
 for (const key of Object.keys(env)) if (key.startsWith('CLOUD_RU_') || key.startsWith('ASSISTANT_')) delete env[key];
 const artifacts = join(root, 'var', 'assistant-browser-artifacts');
 mkdirSync(artifacts, {recursive:true});
-let server, browser, stopped;
+let server, browser, stopped, streamServer;
+const streamSockets = new Set();
 try {
   for (const args of [['migrate','--noinput'], ['seed_demo','--confirm-demo']]) {
     const run = spawnSync(python, ['manage.py', ...args], {cwd:root, env, encoding:'utf8'});
@@ -51,6 +53,32 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     server.on('error', error => { clearTimeout(timer); reject(error); });
     server.on('exit', status => { clearTimeout(timer); reject(new Error(`Test server exited ${status}: ${errors}`)); });
   });
+  // Unlike route.fulfill(), a real local HTTP fixture can keep an SSE response
+  // open while the browser displays statuses and partial text. Tests decide
+  // exactly when to send each chunk; no timing assumptions or model calls.
+  let receiveStream;
+  streamServer = createServer((request, response) => {
+    response.setHeader('Access-Control-Allow-Origin', base);
+    response.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-CSRFToken');
+    response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    if (request.method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
+    const chunks = [];
+    request.on('data', chunk => chunks.push(chunk));
+    request.on('end', () => {
+      if (!receiveStream) { response.writeHead(503); response.end(); return; }
+      response.writeHead(200, {'Content-Type':'text/event-stream; charset=utf-8', 'Cache-Control':'no-cache'});
+      response.flushHeaders();
+      const receive = receiveStream;
+      receiveStream = null;
+      receive({request, response, payload:JSON.parse(Buffer.concat(chunks).toString('utf8'))});
+    });
+  });
+  streamServer.on('connection', socket => {
+    streamSockets.add(socket);
+    socket.on('close', () => streamSockets.delete(socket));
+  });
+  await new Promise(resolve => streamServer.listen(0, '127.0.0.1', resolve));
+  const streamUrl = `http://127.0.0.1:${streamServer.address().port}/stream/`;
   browser = await chromium.launch({headless:!process.argv.includes('--headed'),args:['--no-sandbox','--disable-dev-shm-usage']});
   const context = await browser.newContext({viewport:{width:1440,height:1000}});
   const page = await context.newPage();
@@ -93,6 +121,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     if (mode === 'pending') await new Promise(resolve => { pendingResolve = resolve; });
     try {
       if (mode === 'error') await route.fulfill({status:503,json:{error:'Cloud.ru временно недоступен.',code:'provider_unavailable'}});
+      else if (mode === 'history') await route.fulfill({json:{reply:'Запрос принят.',sources:[]}});
       else await route.fulfill({json:{reply,sources:[{title:'DEMO-316',url:'/recipes/1/'},{title:'Небезопасная ссылка',url:'javascript:alert(1)'}]}});
     } catch (error) { if (mode !== 'pending' && !String(error).includes('closed')) throw error; }
   });
@@ -389,11 +418,216 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.ok(JSON.stringify(boundedDraft).length <= 24000, 'Form context has a separate request budget');
   assert.ok(boundedFields.every(field => typeof field.value !== 'string' || field.value.length <= 2000));
   await checkBackendDraft(captured.at(-1));
+
+  await page.goto(base + '/', {waitUntil:'networkidle'});
+  await page.locator('#assistant-new').click();
+  await page.locator('#lab-assistant').evaluate((node, url) => { node.dataset.chatUrl = url; }, streamUrl);
+  const openStream = async (question, retry = false) => {
+    let timer;
+    const incoming = new Promise((resolve, reject) => {
+      receiveStream = resolve;
+      timer = setTimeout(() => { receiveStream = null; reject(new Error('Streaming fixture received no request')); }, 10000);
+    });
+    try {
+      if (retry) await page.locator('#assistant-retry').click();
+      else {
+        await page.locator('#assistant-input').fill(question);
+        await page.locator('#assistant-send').click();
+      }
+      const stream = await incoming;
+      assert.match(stream.request.headers.accept, /text\/event-stream/);
+      assert.ok(stream.request.headers['x-csrftoken']);
+      captured.push(stream.payload);
+      return stream.response;
+    } finally { clearTimeout(timer); }
+  };
+  const event = (response, name, data) => response.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+  const history = () => page.evaluate(() => JSON.parse(sessionStorage.getItem(`kudo-assistant-v1:${document.getElementById('lab-assistant').dataset.employee}`)));
+  const streaming = await openStream('Сравни эксперименты в потоке');
+  event(streaming, 'status', {text:'Смотрю эксперименты'});
+  await page.waitForFunction(() => document.getElementById('assistant-pending').textContent.includes('Смотрю эксперименты'));
+  assert.equal(await page.locator('#assistant-cancel').isVisible(), true);
+  assert.equal(await page.locator('.assistant-message.is-assistant').count(), 0, 'Activity updates do not invent an answer');
+  event(streaming, 'status', {text:'Изучаю статистику'});
+  await page.waitForFunction(() => document.getElementById('assistant-pending').textContent.includes('Изучаю статистику'));
+
+  const preamble = '## Я проверю исходные данные\n\nСверю **эксперименты** с измерениями.';
+  const firstPart = '## Явные результаты\n\nСравнение **опытов**';
+  const bytes = Buffer.from(`event: delta\r\ndata: ${JSON.stringify({text:preamble})}\r\n\r\n`);
+  const split = bytes.indexOf(Buffer.from('Я')) + 1;
+  streaming.write(bytes.subarray(0, split));
+  streaming.write(bytes.subarray(split, bytes.length - 1));
+  streaming.write(bytes.subarray(bytes.length - 1));
+  await page.waitForFunction(() => document.querySelector('.assistant-message.is-assistant')?.textContent.includes('Я проверю исходные данные'));
+  assert.equal(await page.locator('#assistant-cancel').isVisible(), true, 'Text appears while the response is still open');
+  assert.equal((await history()).filter(item => item.role === 'assistant').length, 0, 'Partial answers stay outside saved history');
+  assert.equal((await page.locator('.assistant-message.is-assistant').textContent()).includes('\uFFFD'), false, 'UTF-8 split across chunks decodes cleanly');
+  await page.screenshot({path:join(artifacts,'desktop-streaming.png'),fullPage:true});
+
+  event(streaming, 'status', {text:'Смотрю испытание A',reset:true});
+  await page.waitForFunction(() => document.getElementById('assistant-activity-text').textContent.includes('Смотрю испытание A'));
+  assert.match(await page.locator('.assistant-message.is-assistant').textContent(), /Я проверю исходные данные/, 'A tool round preserves its public preamble');
+  assert.equal((await history()).filter(item => item.role === 'assistant').length, 0, 'An unfinished turn stays outside the sent conversation history');
+  const nextPreamble = 'Изучил опыт A. Теперь проверю **статистику**.';
+  event(streaming, 'delta', {text:nextPreamble});
+  await page.waitForFunction(() => document.querySelector('.assistant-message.is-assistant')?.textContent.includes('Теперь проверю'));
+  event(streaming, 'status', {text:'Изучаю статистику опыта A',reset:true});
+  await page.waitForFunction(() => document.getElementById('assistant-activity-text').textContent.includes('Изучаю статистику опыта A'));
+  assert.match(await page.locator('.assistant-message.is-assistant').textContent(), /Я проверю исходные данные/);
+  assert.match(await page.locator('.assistant-message.is-assistant').textContent(), /Теперь проверю статистику/);
+  event(streaming, 'delta', {text:firstPart});
+  await page.waitForFunction(() => document.querySelector('.assistant-message.is-assistant')?.textContent.includes('Явные результаты'));
+
+  const secondPart = '\n\n| Опыт | Плотность |\n| --- | ---: |\n| A | 31 |';
+  // SSE permits multiple data lines in one event. Their joined JSON remains
+  // valid, and the resulting answer still uses the normal safe Markdown path.
+  streaming.write(`event: delta\ndata: {"text":\ndata: ${JSON.stringify(secondPart)}}\n\n`);
+  await page.waitForFunction(() => document.querySelector('.assistant-message.is-assistant')?.textContent.includes('Плотность'));
+  event(streaming, 'done', {reply:firstPart + secondPart, sources:[{title:'Потоковый опыт A',url:'/tests/1/'}],model:'deepseek-test'});
+  streaming.end();
+  await page.locator('#assistant-pending').waitFor({state:'hidden'});
+  assert.equal(await page.locator('.assistant-message.is-assistant h4').last().textContent(), 'Явные результаты');
+  assert.equal(await page.locator('.assistant-message.is-assistant strong').last().textContent(), 'опытов');
+  assert.equal(await page.locator('.assistant-table-scroll tbody td').last().textContent(), '31');
+  assert.equal(await page.locator('.assistant-sources a[href="/tests/1/"]').textContent(), 'Потоковый опыт A');
+  assert.equal((await history()).at(-1).content, firstPart + secondPart);
+  assert.deepEqual((await history()).at(-1).progress, [preamble,nextPreamble], 'Completed turns keep public stage text separately from the final answer');
+  await page.reload({waitUntil:'networkidle'});
+  assert.match(await page.locator('.assistant-message.is-assistant').textContent(), /Я проверю исходные данные/);
+  assert.match(await page.locator('.assistant-message.is-assistant').textContent(), /Теперь проверю статистику/);
+  assert.match(await page.locator('.assistant-message.is-assistant').textContent(), /Явные результаты/);
+  await page.locator('#lab-assistant').evaluate((node, url) => { node.dataset.chatUrl = url; }, streamUrl);
+
+  const cancelled = await openStream('Покажи ещё данные');
+  assert.deepEqual(Object.keys(captured.at(-1).messages[1]).sort(), ['content','role'], 'Public stage annotations are not sent back as provider history');
+  assert.equal(captured.at(-1).messages[1].content, firstPart + secondPart);
+  event(cancelled, 'delta', {text:'Частичный ответ перед остановкой'});
+  await page.waitForFunction(() => document.querySelector('.assistant-message.is-assistant:last-child')?.textContent.includes('Частичный ответ'));
+  await page.locator('#assistant-cancel').click();
+  await page.locator('#assistant-error').waitFor({state:'visible'});
+  assert.match(await page.locator('#assistant-error-text').textContent(), /остановлен/);
+  assert.match(await page.locator('.assistant-message.is-assistant').last().textContent(), /Ответ прерван/);
+  assert.equal((await history()).some(item => item.content.includes('Частичный ответ')), false, 'Cancellation does not save an unfinished model turn');
+  cancelled.end();
+  const retried = await openStream('', true);
+  assert.deepEqual(captured.at(-1).messages.map(item => item.role), ['user','assistant','user']);
+  assert.equal(captured.at(-1).messages.some(item => item.content.includes('Частичный ответ')), false);
+  event(retried, 'delta', {text:'Полный ответ после повтора'});
+  event(retried, 'done', {reply:'Полный ответ после повтора',sources:[]});
+  retried.end();
+  await page.locator('#assistant-pending').waitFor({state:'hidden'});
+  assert.equal(await page.locator('.assistant-message.is-assistant').count(), 2, 'Retry replaces the interrupted draft');
+  assert.equal((await history()).at(-1).content, 'Полный ответ после повтора');
+
+  const interrupted = await openStream('Проверка обрыва соединения');
+  event(interrupted, 'delta', {text:'Ответ перед обрывом'});
+  interrupted.end();
+  await page.locator('#assistant-error').waitFor({state:'visible'});
+  assert.equal(await page.locator('#assistant-cancel').isVisible(), false);
+  assert.match(await page.locator('.assistant-message.is-assistant').last().textContent(), /Ответ прерван/);
+  assert.equal((await history()).some(item => item.content.includes('Ответ перед обрывом')), false, 'EOF without done does not complete a turn');
+
+  const failed = await openStream('Проверка ошибки в потоке');
+  event(failed, 'status', {text:'Думаю'});
+  event(failed, 'error', {error:'Cloud.ru прервал поток.',code:'provider_error'});
+  failed.end();
+  await page.locator('#assistant-error').waitFor({state:'visible'});
+  assert.match(await page.locator('#assistant-error-text').textContent(), /Cloud.ru прервал поток/);
+
+  const discarded = await openStream('Вопрос перед новым диалогом');
+  event(discarded, 'delta', {text:'Эту черновую часть нужно убрать'});
+  await page.waitForFunction(() => document.querySelector('.assistant-message.is-assistant:last-child')?.textContent.includes('черновую часть'));
+  await page.locator('#assistant-new').click();
+  event(discarded, 'done', {reply:'Поздний ответ старого диалога',sources:[]});
+  discarded.end();
+  assert.equal(await page.locator('.assistant-message').count(), 0);
+  assert.equal(await page.locator('#assistant-welcome').isVisible(), true);
+  assert.deepEqual(await history(), []);
+
+  // Prompt recall is independent of the shorter conversation context, remains
+  // local to this employee, and only takes over arrows in an empty composer.
+  const prompts = () => page.evaluate(() => JSON.parse(localStorage.getItem(`kudo-assistant-v1:${document.getElementById('lab-assistant').dataset.employee}:prompts`) || '[]'));
+  await page.evaluate(() => localStorage.setItem(`kudo-assistant-v1:${document.getElementById('lab-assistant').dataset.employee}:prompts`, '[]'));
+  await page.reload({waitUntil:'networkidle'});
+  mode = 'history';
+  const composer = page.locator('#assistant-input');
+  const questions = Array.from({length:27}, (_, index) => `Запрос из истории № ${index + 1}`);
+  for (const question of questions) {
+    await composer.fill(question);
+    await page.locator('#assistant-send').click();
+    await page.locator('#assistant-pending').waitFor({state:'hidden'});
+  }
+  assert.deepEqual(await prompts(), questions.slice(-25), 'Only the latest 25 submitted questions remain in local prompt history');
+  assert.match(await page.locator('#assistant-input-hint').textContent(), /↑.*↓/);
+  assert.match(await page.locator('#assistant-input-hint').textContent(), /пуст|истори/i);
+  await page.locator('#assistant-new').click();
+  assert.deepEqual(await prompts(), questions.slice(-25), 'A new conversation keeps prompt recall available');
+  await composer.press('ArrowDown');
+  assert.equal(await composer.inputValue(), '');
+  await composer.press('ArrowUp');
+  assert.equal(await composer.inputValue(), questions.at(-1));
+  await composer.press('ArrowUp');
+  assert.equal(await composer.inputValue(), questions.at(-2));
+  await composer.press('ArrowDown');
+  assert.equal(await composer.inputValue(), questions.at(-1));
+  await composer.press('ArrowDown');
+  assert.equal(await composer.inputValue(), '', 'Down past the newest question restores the empty composer');
+  for (let index = 0; index < 30; index++) await composer.press('ArrowUp');
+  assert.equal(await composer.inputValue(), questions[2], 'Up stops at the oldest retained question');
+  for (let index = 0; index < 30; index++) await composer.press('ArrowDown');
+  assert.equal(await composer.inputValue(), '');
+
+  const untouchedComposition = await composer.evaluate(node => {
+    const event = new KeyboardEvent('keydown', {key:'ArrowUp',bubbles:true,cancelable:true,isComposing:true});
+    node.dispatchEvent(event);
+    return {value:node.value,prevented:event.defaultPrevented};
+  });
+  assert.deepEqual(untouchedComposition, {value:'',prevented:false}, 'IME navigation does not start prompt recall');
+  for (const modifier of ['ctrlKey','altKey','metaKey','shiftKey']) {
+    assert.deepEqual(await composer.evaluate((node, modifier) => {
+      const event = new KeyboardEvent('keydown', {key:'ArrowUp',bubbles:true,cancelable:true,[modifier]:true});
+      node.dispatchEvent(event);
+      return {value:node.value,prevented:event.defaultPrevented};
+    }, modifier), {value:'',prevented:false}, `${modifier} keeps its normal arrow behavior`);
+  }
+  await composer.fill('Первая строка\nВторая строка');
+  await composer.evaluate(node => node.setSelectionRange(node.value.length, node.value.length));
+  await composer.press('ArrowUp');
+  assert.equal(await composer.inputValue(), 'Первая строка\nВторая строка');
+  assert.ok(await composer.evaluate(node => node.selectionStart < node.value.length), 'Nonempty multiline arrows move the caret');
+  await composer.press('ArrowDown');
+  assert.equal(await composer.inputValue(), 'Первая строка\nВторая строка');
+  await composer.fill('');
+  await composer.press('ArrowUp');
+  await composer.press('End');
+  await composer.pressSequentially(' исправленный');
+  const editedQuestion = await composer.inputValue();
+  await composer.press('ArrowUp');
+  assert.equal(await composer.inputValue(), editedQuestion, 'Editing a recalled question exits history navigation');
+  await composer.fill('');
+  await page.reload({waitUntil:'networkidle'});
+  await composer.press('ArrowUp');
+  assert.equal(await composer.inputValue(), questions.at(-1), 'Prompt recall survives page reload');
+  assert.deepEqual(await prompts(), questions.slice(-25));
+
+  mode = 'error';
+  await composer.fill('Запрос с повтором');
+  await page.locator('#assistant-send').click();
+  await page.locator('#assistant-error').waitFor({state:'visible'});
+  const beforeRetry = await prompts();
+  assert.equal(beforeRetry.length, 25);
+  assert.equal(beforeRetry.at(-1), 'Запрос с повтором', 'Failed submitted questions are available for recall');
+  mode = 'history';
+  await page.locator('#assistant-retry').click();
+  await page.locator('#assistant-pending').waitFor({state:'hidden'});
+  assert.deepEqual(await prompts(), beforeRetry, 'Retry does not duplicate the submitted question');
   assert.deepEqual(errors, []);
-  console.log('Assistant browser checks passed: desktop/tablet/mobile, Markdown tables and safe rendering, pointer/keyboard resizing, unsaved form context and limits, fresh retry snapshots, width and history persistence, sources, retry, cancellation, bounded history, keyboard/modal access and configuration.');
+  console.log('Assistant browser checks passed: progressive SSE statuses/text, UTF-8 and event boundaries, preserved public stage text and completion, sources, stream errors/EOF, cancellation and retry, dialog reset, desktop/tablet/mobile, Markdown tables and safe rendering, pointer/keyboard resizing, unsaved form context and limits, fresh retry snapshots, width and conversation persistence, latest-25 local prompt recall and caret/IME behavior, keyboard/modal access and configuration.');
   console.log(`Screenshots: ${artifacts}`);
 } finally {
   await browser?.close();
+  for (const socket of streamSockets) socket.destroy();
+  if (streamServer) await new Promise(resolve => streamServer.close(resolve));
   if (server) {
     server.kill('SIGTERM');
     const timeout = setTimeout(() => server.kill('SIGKILL'), 3000);

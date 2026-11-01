@@ -36,6 +36,14 @@ class AssistantWorkflowTests(TestCase):
     def post(self, **extra):
         return self.client.post('/assistant/chat/', json.dumps({'messages': [{'role': 'user', 'content': 'Покажи материалы'}], **extra}), content_type='application/json')
 
+    def stream_post(self, **extra):
+        return self.client.post('/assistant/chat/', json.dumps({'messages': [{'role': 'user', 'content': 'Покажи материалы'}], **extra}),
+                                content_type='application/json', HTTP_ACCEPT='text/event-stream')
+
+    def stream_events(self, response):
+        frames = b''.join(response.streaming_content).decode().strip().split('\n\n')
+        return [(frame.split('\n')[0].removeprefix('event: '), json.loads(frame.split('\n', 1)[1].removeprefix('data: '))) for frame in frames]
+
     def draft(self):
         return {'title': 'Новая рецептура', 'forms': [{'method': 'post', 'fields': [
             {'name': 'title', 'label': 'Название', 'type': 'text', 'value': 'Пробный состав', 'changed': True},
@@ -256,10 +264,176 @@ class AssistantWorkflowTests(TestCase):
         answer.assert_not_called()
         self.assertIsNone(cache.get(key + ':busy'))
 
+    @patch('lab.assistant._cloud_stream')
+    def test_streaming_tool_fragments_progress_and_citations_without_reasoning(self, cloud):
+        payloads = []
+        def provider(payload, *, timeout):
+            payloads.append(deepcopy(payload))
+            def chunk(delta, finish=None):
+                return {'choices': [{'delta': delta, 'finish_reason': finish}]}
+            if len(payloads) == 1:
+                yield chunk({'reasoning_content': 'private thought', 'content': 'Сначала проверю. '})
+                yield chunk({'tool_calls': [{'index': 0, 'id': 'read_material', 'function': {'name': 'get_lab_', 'arguments': '{"entity":"mater'}}]})
+                yield chunk({'tool_calls': [{'index': 0, 'function': {'name': 'record', 'arguments': f'ials","id":{self.material.pk}' + '}'}}]}, 'tool_calls')
+            else:
+                yield chunk({'reasoning_content': 'more private thought'})
+                yield chunk({'content': '[Полиол]'})
+                yield chunk({'content': f'(/materials/{self.material.pk}/): 1.05 г/мл.'})
+                yield chunk({}, 'stop')
+        cloud.side_effect = provider
+        self.sign_in()
+        response = self.stream_post(form_state=self.draft())
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.streaming)
+        self.assertIn('text/event-stream', response['Content-Type'])
+        self.assertEqual(response['X-Accel-Buffering'], 'no')
+        lock = f'assistant:employee:{self.reader.pk}:busy'
+        self.assertIsNotNone(cache.get(lock))
+        events = self.stream_events(response)
+        self.assertEqual(events[0][0], 'status')
+        self.assertIn(('status', {'text': 'Смотрю материалы…'}), events)
+        self.assertTrue(any(data.get('reset') for event, data in events if event == 'status'))
+        deltas = [data['text'] for event, data in events if event == 'delta']
+        self.assertIn('[Полиол]', deltas)
+        self.assertEqual(events[-1][0], 'done')
+        final = events[-1][1]
+        self.assertEqual(final['reply'], f'[Полиол](/materials/{self.material.pk}/): 1.05 г/мл.')
+        self.assertIn('get_lab_record', final['tools_used'])
+        self.assertIn(f'/materials/{self.material.pk}/', [row['url'] for row in final['sources']])
+        self.assertNotIn('private thought', json.dumps(events))
+        self.assertTrue(all(payload['stream'] for payload in payloads))
+        self.assertEqual(payloads[1]['messages'][-2]['reasoning_content'], 'private thought')
+        self.assertIn('form_state', payloads[0]['messages'][1]['content'])
+        self.assertIsNone(cache.get(lock))
+
+    @patch('lab.assistant._cloud_stream')
+    def test_stream_failure_is_explicit_and_releases_guard(self, cloud):
+        def provider(*args, **kwargs):
+            yield {'choices': [{'delta': {'content': 'Частичный ответ'}}]}
+            raise assistant.AssistantError('Соединение прервано.', 'incomplete_response')
+        cloud.side_effect = provider
+        self.sign_in()
+        events = self.stream_events(self.stream_post())
+        self.assertIn(('delta', {'text': 'Частичный ответ'}), events)
+        self.assertEqual(events[-1], ('error', {'error': 'Соединение прервано.', 'code': 'incomplete_response'}))
+        self.assertFalse(any(event == 'done' for event, _ in events))
+        self.assertIsNone(cache.get(f'assistant:employee:{self.reader.pk}:busy'))
+
+    @patch('lab.assistant._cloud_stream')
+    def test_closing_stream_closes_provider_and_releases_guard(self, cloud):
+        closed = []
+        def provider(*args, **kwargs):
+            try:
+                yield {'choices': [{'delta': {'content': 'Начало'}}]}
+                yield {'choices': [{'delta': {}, 'finish_reason': 'stop'}]}
+            finally:
+                closed.append(True)
+        cloud.side_effect = provider
+        self.sign_in()
+        response = self.stream_post()
+        iterator = iter(response.streaming_content)
+        while b'event: delta' not in next(iterator):
+            pass
+        response.close()
+        self.assertEqual(closed, [True])
+        self.assertIsNone(cache.get(f'assistant:employee:{self.reader.pk}:busy'))
+        # A response abandoned before its first event must release its guard too.
+        unopened = self.stream_post()
+        unopened.close()
+        self.assertIsNone(cache.get(f'assistant:employee:{self.reader.pk}:busy'))
+
+    @patch('lab.assistant._cloud_stream')
+    def test_streaming_validation_and_missing_configuration_never_contact_provider(self, cloud):
+        self.sign_in()
+        invalid = self.stream_post(messages=[])
+        self.assertEqual(invalid.status_code, 400)
+        self.assertFalse(invalid.streaming)
+        with override_settings(CLOUD_RU_API_KEY=''):
+            events = self.stream_events(self.stream_post())
+        self.assertEqual(events[-1][0], 'error')
+        self.assertEqual(events[-1][1]['code'], 'not_configured')
+        cloud.assert_not_called()
+
 
 @override_settings(CLOUD_RU_API_KEY='transport-secret', CLOUD_RU_MODEL='deepseek-ai/DeepSeek-V4-Pro',
                    CLOUD_RU_BASE_URL='https://foundation-models.api.cloud.ru/v1')
 class CloudTransportTests(SimpleTestCase):
+    def test_activity_names_the_actual_search_with_bounded_text(self):
+        self.assertEqual(assistant._tool_activity('search_lab_data', {'entity': 'tests', 'q': '  зимняя\n пена '}),
+                         'Ищу эксперименты: «зимняя пена»…')
+        self.assertEqual(assistant._tool_activity('search_lab_data', {'entity': 'results'}),
+                         'Изучаю результаты и статистику…')
+        self.assertLess(len(assistant._tool_activity('search_lab_data', {'entity': 'tests', 'q': 'x' * 5000})), 120)
+
+    @patch('lab.assistant.build_opener')
+    def test_sse_transport_yields_before_provider_finishes_and_closes(self, opener):
+        chunks = [
+            {'choices': [{'delta': {'content': 'Привет'}}]},
+            {'choices': [{'delta': {'content': '!'}, 'finish_reason': 'stop'}]},
+        ]
+        wire = ': keepalive\r\n\r\n' + ''.join('data: ' + json.dumps(chunk, ensure_ascii=False) + '\r\n\r\n' for chunk in chunks) + 'data: [DONE]\r\n\r\n'
+        body = BytesIO(wire.encode())
+        response = opener.return_value.open.return_value
+        response.__enter__.return_value = body
+        stream = assistant._cloud_stream({'stream': True}, timeout=20)
+        self.assertEqual(next(stream), {'choices': []})
+        self.assertEqual(next(stream), chunks[0])
+        self.assertLess(body.tell(), len(wire.encode()))
+        request = opener.return_value.open.call_args.args[0]
+        self.assertEqual(request.get_header('Accept'), 'text/event-stream')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer transport-secret')
+        stream.close()
+        response.__exit__.assert_called_once()
+
+    @patch('lab.assistant.build_opener')
+    def test_sse_transport_rejects_missing_terminal_invalid_and_oversized_frames(self, opener):
+        for wire, code in ((b'data: {"choices":[]}\n\n', 'incomplete_response'),
+                           (b'data: broken\n\n', 'invalid_response'),
+                           (b'data: {"error":"transport-secret"}\n\n', 'invalid_response'),
+                           (b'data: []\n\n', 'invalid_response'),
+                           (b'data: ' + b'x' * assistant.MAX_RESPONSE_BYTES, 'invalid_response')):
+            with self.subTest(code=code, size=len(wire)):
+                opener.return_value.open.return_value.__enter__.return_value = BytesIO(wire)
+                with self.assertRaises(assistant.AssistantError) as caught:
+                    list(assistant._cloud_stream({'stream': True}, timeout=20))
+                self.assertEqual(caught.exception.code, code)
+                self.assertNotIn('transport-secret', str(caught.exception))
+
+    @patch('lab.assistant.build_opener')
+    def test_sse_transport_sanitizes_auth_timeout_and_network_errors(self, opener):
+        for failure, code in ((HTTPError('https://foundation-models.api.cloud.ru/v1/chat/completions', 401, 'transport-secret', {}, BytesIO(b'private prompt')), 'provider_auth'),
+                              (TimeoutError(), 'timeout'), (URLError('transport-secret'), 'provider_unavailable')):
+            opener.return_value.open.side_effect = failure
+            with self.assertRaises(assistant.AssistantError) as caught:
+                list(assistant._cloud_stream({'stream': True}, timeout=20))
+            self.assertEqual(caught.exception.code, code)
+            self.assertNotIn('transport-secret', str(caught.exception))
+
+    @patch('lab.assistant._cloud_stream')
+    def test_hidden_reasoning_emits_only_heartbeat_and_closes_on_disconnect(self, cloud):
+        closed = []
+        def provider(*args, **kwargs):
+            try:
+                yield {'choices': [{'delta': {'reasoning_content': 'never reveal these thoughts'}}]}
+                yield {'choices': []}
+            finally:
+                closed.append(True)
+        cloud.side_effect = provider
+        with patch('lab.assistant.time.monotonic', side_effect=[0, 2]):
+            events = assistant._stream_completion({'stream': True}, timeout=20)
+            self.assertEqual(next(events), ('ping', {}))
+            events.close()
+        self.assertEqual(closed, [True])
+
+    @patch('lab.assistant._cloud_stream')
+    def test_stream_completion_requires_finish_and_valid_tool_fragment(self, cloud):
+        for chunks in ([{'choices': [{'delta': {'content': 'unfinished'}}]}],
+                       [{'choices': [{'delta': {'tool_calls': [{'index': 8}]}, 'finish_reason': 'tool_calls'}]}],
+                       [{'choices': [{'delta': {'tool_calls': [{'index': 0, 'function': 'invalid'}]}}]}]):
+            cloud.return_value = (chunk for chunk in chunks)
+            with self.assertRaises(assistant.AssistantError):
+                list(assistant._stream_completion({'stream': True}, timeout=20))
+
     @patch('lab.assistant.build_opener')
     def test_request_uses_bearer_and_openai_compatible_path(self, opener):
         response = MagicMock()

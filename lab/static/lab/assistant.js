@@ -10,10 +10,16 @@
   const storageKey = `kudo-assistant-v1:${panel.dataset.employee}`;
   const preferenceKey = `${storageKey}:open`;
   const widthKey = `${storageKey}:width`;
+  const promptsKey = `${storageKey}:prompts`;
   const maxMessages = 16;
   let messages = [], controller = null, configured = null, open = false;
+  let prompts = [], promptIndex = null;
   let turn = 0, savedOpen = null;
   let preferredWidth = 374, drag = null;
+  let following = true, activityTimer = null, activityStarted = 0, activitySteps = [];
+  scroll.addEventListener('scroll', () => { following = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80; }, {passive:true});
+  const followResponse = () => { if (following) scroll.scrollTop = scroll.scrollHeight; };
+  const progressParts = value => Array.isArray(value) ? value.filter(part => typeof part === 'string' && part.trim()).slice(0, 8).map(part => part.slice(0, 12000)) : [];
   try {
     savedOpen = sessionStorage.getItem(preferenceKey);
     const savedWidth = Number(sessionStorage.getItem(widthKey));
@@ -22,10 +28,29 @@
     if (Array.isArray(saved)) {
       for (const item of saved.slice(-maxMessages)) {
         const expected = messages.length % 2 === 0 ? 'user' : 'assistant';
-        if (item && item.role === expected && typeof item.content === 'string' && item.content.trim() && item.content.length <= 12000) messages.push(item);
+        if (item && item.role === expected && typeof item.content === 'string' && item.content.trim() && item.content.length <= 12000) {
+          messages.push({...item, progress:progressParts(item.progress)});
+        }
       }
     }
   } catch { /* A disabled or full browser store must not block the chat. */ }
+
+  const loadPrompts = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(promptsKey) || 'null');
+      if (Array.isArray(saved)) prompts = saved.filter(text => typeof text === 'string' && text.trim() && text.length <= 6000).slice(-25);
+    } catch { /* Recall also works in memory when local storage is unavailable. */ }
+  };
+  // Make questions from an existing conversation available on first use, too.
+  prompts = messages.filter(message => message.role === 'user' && message.content.length <= 6000).map(message => message.content).slice(-25);
+  loadPrompts();
+  const rememberPrompt = text => {
+    loadPrompts();
+    prompts.push(text);
+    prompts = prompts.slice(-25);
+    promptIndex = null;
+    try { localStorage.setItem(promptsKey, JSON.stringify(prompts)); } catch {}
+  };
 
   const persist = () => {
     try { sessionStorage.setItem(storageKey, JSON.stringify(messages.slice(-maxMessages))); }
@@ -136,13 +161,7 @@
       inline(paragraph, line);
     }
   };
-  const showMessage = message => {
-    const article = element('article', `assistant-message is-${message.role}`);
-    article.append(element('div', 'assistant-message-label', message.role === 'assistant' ? '✦  Помощник' : 'Вы'));
-    const body = element('div', 'assistant-message-body');
-    if (message.role === 'assistant') markdown(body, message.content);
-    else body.textContent = message.content;
-    article.append(body);
+  const showSources = (article, message) => {
     if (message.role === 'assistant' && Array.isArray(message.sources) && message.sources.length) {
       const sources = element('div', 'assistant-sources');
       sources.append(element('span', 'assistant-sources-label', 'Источники'));
@@ -155,12 +174,30 @@
       }
       article.append(sources);
     }
+  };
+  const showMessage = message => {
+    const article = element('article', `assistant-message is-${message.role}`);
+    article.append(element('div', 'assistant-message-label', message.role === 'assistant' ? '✦  Помощник' : 'Вы'));
+    if (message.role === 'assistant') {
+      for (const part of progressParts(message.progress)) {
+        const stage = element('div', 'assistant-message-body assistant-message-stage');
+        markdown(stage, part);
+        article.append(stage);
+      }
+    }
+    const body = element('div', 'assistant-message-body');
+    if (message.role === 'assistant') markdown(body, message.content);
+    else body.textContent = message.content;
+    article.append(body);
+    showSources(article, message);
     messagesNode.append(article);
+    return article;
   };
   const render = () => {
     messagesNode.replaceChildren();
     messages.forEach(showMessage);
     $('welcome').hidden = messages.length > 0;
+    following = true;
     scroll.scrollTop = scroll.scrollHeight;
   };
   const widthBounds = () => {
@@ -255,7 +292,32 @@
     $('error').hidden = false;
     scroll.scrollTop = scroll.scrollHeight;
   };
+  const activity = text => {
+    if (typeof text !== 'string' || !text.trim()) return;
+    text = text.trim().slice(0, 240);
+    if (activitySteps.at(-1) === text) return;
+    $('activity-text').textContent = text;
+    activitySteps.push(text);
+    activitySteps = activitySteps.slice(-32);
+    $('steps-list').replaceChildren(...activitySteps.map(step => element('li', '', step)));
+    $('steps-summary').textContent = `Действия · ${activitySteps.length}`;
+    $('steps').hidden = activitySteps.length < 2;
+    followResponse();
+  };
   const busy = value => {
+    clearInterval(activityTimer);
+    activityTimer = null;
+    if (value) {
+      activityStarted = Date.now();
+      activitySteps = [];
+      $('steps').open = false;
+      $('elapsed').textContent = '';
+      activity('Думаю…');
+      activityTimer = setInterval(() => {
+        const seconds = Math.floor((Date.now() - activityStarted) / 1000);
+        $('elapsed').textContent = seconds < 60 ? `${seconds} с` : `${Math.floor(seconds / 60)} мин ${seconds % 60} с`;
+      }, 1000);
+    }
     $('pending').hidden = !value;
     $('cancel').hidden = !value;
     $('send').hidden = value;
@@ -264,7 +326,7 @@
     input.readOnly = value;
     messagesNode.setAttribute('aria-busy', String(value));
     panel.querySelectorAll('[data-assistant-prompt]').forEach(node => { node.disabled = value; });
-    scroll.scrollTop = scroll.scrollHeight;
+    followResponse();
   };
   const loadStatus = async () => {
     try {
@@ -353,6 +415,44 @@
     // Form drafts are captured only for this request, never in chat history.
     return count ? state : undefined;
   };
+  const readStream = async (response, onEvent, signal) => {
+    if (!response.body) throw new Error('Не удалось открыть поток ответа. Повторите запрос.');
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    let buffer = '', received = 0;
+    try {
+      while (true) {
+        signal.throwIfAborted();
+        const {value, done} = await reader.read();
+        signal.throwIfAborted();
+        buffer += decoder.decode(value, {stream:!done});
+        received += value?.byteLength || 0;
+        if (buffer.length > 256000 || received > 2000000) throw new Error('Поток ответа слишком большой. Попробуйте сузить вопрос.');
+        let boundary;
+        while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
+          const block = buffer.slice(0, boundary.index);
+          buffer = buffer.slice(boundary.index + boundary[0].length);
+          let event = 'message';
+          const data = [];
+          for (const line of block.split(/\r?\n/)) {
+            if (line.startsWith('event:')) event = line.slice(6).trim();
+            else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+          }
+          if (!data.length || !['status', 'delta', 'done', 'error'].includes(event)) continue;
+          let payload;
+          try { payload = JSON.parse(data.join('\n')); }
+          catch { throw new Error('Не удалось прочитать поток ответа. Повторите запрос.'); }
+          if (!payload || typeof payload !== 'object') throw new Error('Сервер вернул некорректный ответ. Повторите запрос.');
+          if (event === 'error') throw new Error(typeof payload.error === 'string' ? payload.error : 'Не удалось подготовить ответ. Повторите запрос.');
+          onEvent(event, payload);
+          if (event === 'done') return payload;
+        }
+        if (done) throw new Error('Соединение прервалось до завершения ответа. Повторите запрос.');
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+  };
   const send = async (retry = false) => {
     if (controller || configured === false) return;
     const text = input.value.trim();
@@ -363,6 +463,7 @@
       // user/assistant pairs are ever followed by another user message.
       if (messages.at(-1)?.role === 'user') messages.pop();
       messages.push({role:'user', content:text});
+      rememberPrompt(text);
       input.value = '';
     }
     if (messages.at(-1)?.role !== 'user') return;
@@ -370,35 +471,117 @@
     persist(); render();
     const ownController = new AbortController(), ownTurn = ++turn;
     controller = ownController; busy(true);
+    let draft = null, draftBody = null, draftText = '', frame = null;
+    const draftStages = [];
+    const paintDraft = () => {
+      frame = null;
+      if (ownTurn !== turn) return;
+      if (!draftText) { draftBody?.replaceChildren(); return; }
+      if (!draft) {
+        draft = showMessage({role:'assistant', content:''});
+        draft.classList.add('is-streaming');
+        draft.setAttribute('aria-label', 'Помощник печатает ответ');
+        draftBody = draft.querySelector('.assistant-message-body');
+      }
+      draftBody.replaceChildren();
+      markdown(draftBody, draftText);
+      followResponse();
+    };
     const timeout = setTimeout(() => ownController.abort('timeout'), 190000);
     try {
       const response = await fetch(panel.dataset.chatUrl, {
         method:'POST', credentials:'same-origin', signal:ownController.signal,
-        headers:{'Content-Type':'application/json', Accept:'application/json', 'X-CSRFToken':$('form').querySelector('[name=csrfmiddlewaretoken]').value},
+        headers:{'Content-Type':'application/json', Accept:'text/event-stream', 'X-CSRFToken':$('form').querySelector('[name=csrfmiddlewaretoken]').value},
         body:JSON.stringify({messages:messages.map(({role,content}) => ({role,content})), page:location.pathname, form_state:formState()}),
       });
-      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Сеанс завершён или сервер недоступен. Обновите страницу и войдите снова.');
-      const data = await response.json();
-      if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Не удалось получить ответ. Попробуйте ещё раз.');
+      const contentType = response.headers.get('content-type') || '';
+      let data;
+      if (response.ok && contentType.includes('text/event-stream')) {
+        data = await readStream(response, (event, payload) => {
+          if (ownTurn !== turn) return;
+          if (event === 'status') {
+            if (payload.reset === true && draftText.trim()) {
+              if (frame !== null) cancelAnimationFrame(frame);
+              paintDraft();
+              // A tool call starts a new segment; keep the public text already shown.
+              draftStages.push(draftText);
+              draftBody.classList.add('assistant-message-stage');
+              draftText = '';
+              draftBody = element('div', 'assistant-message-body');
+              draft.append(draftBody);
+            }
+            activity(payload.text);
+          } else if (event === 'delta' && typeof payload.text === 'string') {
+            activity('Пишу ответ…');
+            const next = (draftText + payload.text).slice(0, 12000);
+            if (next !== draftText) {
+              draftText = next;
+              if (frame === null) frame = requestAnimationFrame(paintDraft);
+            }
+          }
+        }, ownController.signal);
+      } else {
+        if (!contentType.includes('application/json')) throw new Error('Сеанс завершён или сервер недоступен. Обновите страницу и войдите снова.');
+        data = await response.json();
+        if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Не удалось получить ответ. Попробуйте ещё раз.');
+      }
       if (typeof data.reply !== 'string' || !data.reply.trim()) throw new Error('Модель вернула пустой ответ. Попробуйте ещё раз.');
       if (ownTurn !== turn) return;
-      messages.push({role:'assistant', content:data.reply.slice(0, 12000), sources:Array.isArray(data.sources) ? data.sources : []});
-      persist(); render();
+      if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      const keepFollowing = following;
+      messages.push({role:'assistant', content:data.reply.slice(0, 12000), progress:progressParts(draftStages), sources:Array.isArray(data.sources) ? data.sources : []});
+      persist();
+      if (draft) {
+        // Complete the current body in place, leaving earlier stages untouched.
+        draft.classList.remove('is-streaming');
+        draft.removeAttribute('aria-label');
+        draftBody.replaceChildren();
+        markdown(draftBody, messages.at(-1).content);
+        showSources(draft, messages.at(-1));
+      } else showMessage(messages.at(-1));
+      following = keepFollowing;
+      followResponse();
     } catch (failure) {
       if (ownTurn !== turn) return;
+      if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
+      paintDraft();
+      if (draft) {
+        draft.classList.remove('is-streaming');
+        draft.classList.add('is-interrupted');
+        draft.setAttribute('aria-label', 'Прерванный ответ помощника');
+        draft.append(element('div', 'assistant-interrupted', 'Ответ прерван'));
+      }
       error(ownController.signal.aborted ? (ownController.signal.reason === 'timeout' ? 'Ответ занял слишком много времени. Попробуйте сузить вопрос и повторить запрос.' : 'Запрос остановлен. Его можно повторить.') : failure.message || 'Нет соединения с сервером. Попробуйте ещё раз.');
     } finally {
       clearTimeout(timeout);
+      if (frame !== null) cancelAnimationFrame(frame);
       if (ownTurn === turn) { controller = null; busy(false); }
     }
   };
   $('form').addEventListener('submit', event => { event.preventDefault(); void send(); });
-  input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void send(); } });
+  input.addEventListener('input', () => { promptIndex = null; });
+  input.addEventListener('keydown', event => {
+    if (event.isComposing) return;
+    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); return; }
+    if (!['ArrowUp', 'ArrowDown'].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || input.readOnly || controller) return;
+    if (input.selectionStart !== input.selectionEnd) return;
+    if (promptIndex === null) {
+      if (input.value !== '' || event.key !== 'ArrowUp') return;
+      loadPrompts();
+      if (!prompts.length) return;
+      promptIndex = prompts.length;
+    }
+    event.preventDefault();
+    promptIndex = Math.max(0, Math.min(prompts.length, promptIndex + (event.key === 'ArrowUp' ? -1 : 1)));
+    input.value = prompts[promptIndex] || '';
+    if (promptIndex === prompts.length) promptIndex = null;
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
   $('retry').addEventListener('click', () => { void send(true); });
   $('cancel').addEventListener('click', () => controller?.abort('cancelled'));
   $('new').addEventListener('click', () => {
     turn++; controller?.abort('new'); controller = null;
-    messages = []; input.value = ''; persist(); render(); busy(false); $('error').hidden = true; input.focus();
+    messages = []; input.value = ''; promptIndex = null; persist(); render(); busy(false); $('error').hidden = true; input.focus();
   });
   panel.querySelectorAll('[data-assistant-prompt]').forEach(node => node.addEventListener('click', () => { input.value = node.dataset.assistantPrompt; input.focus(); void send(); }));
   document.querySelector('.logout-form')?.addEventListener('submit', () => { try { sessionStorage.removeItem(storageKey); } catch {} });
