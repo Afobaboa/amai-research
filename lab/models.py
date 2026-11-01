@@ -64,6 +64,44 @@ class EmployeeProfile(models.Model):
         return self.full_name
 
 
+class AssistantRequestLog(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "В работе"
+        COMPLETED = "completed", "Завершён"
+        FAILED = "failed", "Ошибка"
+        INTERRUPTED = "interrupted", "Прерван"
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    employee = models.ForeignKey(EmployeeProfile, on_delete=models.SET_NULL, null=True, related_name="assistant_logs")
+    employee_name = models.CharField("Сотрудник на момент запроса", max_length=180)
+    employee_role = models.CharField("Роль на момент запроса", max_length=20)
+    created_at = models.DateTimeField("Начало", auto_now_add=True, db_index=True)
+    finished_at = models.DateTimeField("Завершение", null=True, blank=True)
+    duration_ms = models.PositiveIntegerField("Длительность, мс", null=True, blank=True)
+    status = models.CharField("Статус", max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    page = models.CharField("Страница", max_length=2048, blank=True)
+    model = models.CharField("Модель", max_length=255, blank=True)
+    messages = models.JSONField("Переданная история", default=list)
+    question = models.TextField("Вопрос")
+    reply = models.TextField("Ответ или частичный текст", blank=True)
+    progress = models.JSONField("Публичные пояснения перед ответом", default=list, blank=True)
+    sources = models.JSONField("Источники", default=list, blank=True)
+    tools_used = models.JSONField("Инструменты", default=list, blank=True)
+    error_code = models.CharField("Код ошибки", max_length=80, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        verbose_name = "Запрос помощнику"
+        verbose_name_plural = "Журнал помощника"
+        constraints = [models.CheckConstraint(
+            condition=Q(status__in=["pending", "completed", "failed", "interrupted"]),
+            name="assistant_log_valid_status",
+        )]
+
+    def __str__(self):
+        return f"{self.employee_name}: {self.question[:80]}"
+
+
 class SourceFile(models.Model):
     class Kind(models.TextChoices):
         FILE = "file", "Файл"

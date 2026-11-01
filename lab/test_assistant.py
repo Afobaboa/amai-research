@@ -10,7 +10,7 @@ from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 
 from . import assistant
-from .models import EmployeeProfile, Material, MixtureType, RecipeVersion
+from .models import AssistantRequestLog, EmployeeProfile, Material, MixtureType, RecipeVersion
 
 
 @override_settings(CLOUD_RU_API_KEY='test-secret-never-show', CLOUD_RU_MODEL='deepseek-ai/DeepSeek-V4-Pro',
@@ -110,6 +110,11 @@ class AssistantWorkflowTests(TestCase):
         self.assertIn('Полиол', tool_result['content'])
         self.assertEqual(calls[1]['messages'][-2]['reasoning_content'], 'private reasoning')
         self.assertEqual(Material.objects.count(), before)
+        record = AssistantRequestLog.objects.get()
+        self.assertEqual(record.status, 'completed')
+        self.assertEqual(record.reply, response.json()['reply'])
+        self.assertEqual(record.tools_used, response.json()['tools_used'])
+        self.assertNotIn('private reasoning', str(record.messages) + record.reply + str(record.progress))
         self.assertIsNone(cache.get(f'assistant:employee:{self.reader.pk}:busy'))
 
     @patch('lab.assistant._cloud_request')
@@ -304,6 +309,11 @@ class AssistantWorkflowTests(TestCase):
         self.assertTrue(all(payload['stream'] for payload in payloads))
         self.assertEqual(payloads[1]['messages'][-2]['reasoning_content'], 'private thought')
         self.assertIn('form_state', payloads[0]['messages'][1]['content'])
+        record = AssistantRequestLog.objects.get()
+        self.assertEqual(record.status, 'completed')
+        self.assertEqual(record.progress, ['Сначала проверю. '])
+        self.assertEqual(record.sources, final['sources'])
+        self.assertNotIn('private thought', str(record.messages) + record.reply + str(record.progress))
         self.assertIsNone(cache.get(lock))
 
     @patch('lab.assistant._cloud_stream')

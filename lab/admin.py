@@ -58,6 +58,20 @@ class ReadOnlyRecordAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(models.AssistantRequestLog)
+class AssistantRequestLogAdmin(ReadOnlyRecordAdmin):
+    readonly_fields = [field.name for field in models.AssistantRequestLog._meta.fields]
+    list_display = ["created_at", "employee_name", "question_preview", "status", "model", "duration_ms"]
+    list_filter = ["status", "employee", "model"]
+    search_fields = ["employee_name", "question", "reply"]
+    date_hierarchy = "created_at"
+    list_select_related = ["employee"]
+
+    @admin.display(description="Вопрос")
+    def question_preview(self, obj):
+        return obj.question[:100]
+
+
 @admin.register(models.RecipeVersion)
 class RecipeVersionAdmin(ReadOnlyRecordAdmin):
     list_display = ["version_label", "title", "mixture_type", "status", "created_by", "created_at"]

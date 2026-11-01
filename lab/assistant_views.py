@@ -11,6 +11,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from .assistant import AssistantError, answer, answer_stream, configuration_status, validate_form_state, validate_messages
+from .assistant_logging import RequestJournal
 from .models import EmployeeProfile
 
 logger = logging.getLogger(__name__)
@@ -19,8 +20,9 @@ MAX_BODY_BYTES = 256000
 
 class _EventStream:
     """Release the request guard even if the response is closed before iteration."""
-    def __init__(self, events, release):
+    def __init__(self, events, release, journal):
         self.release = release
+        self.journal = journal
         self.events = self.frames(events)
 
     def __iter__(self):
@@ -34,20 +36,28 @@ class _EventStream:
             return f'event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n'
         try:
             for event, data in events:
+                self.journal.observe(event, data)
                 yield frame(event, data)
         except AssistantError as error:
+            self.journal.fail(error.code)
             yield frame('error', {'error': str(error), 'code': error.code})
         except Exception:
+            self.journal.fail('internal_error')
             logger.error('Assistant stream failed with an internal error.')
             yield frame('error', {'error': 'Не удалось подготовить ответ. Повторите запрос позже.', 'code': 'internal_error'})
         finally:
-            events.close()
-            self.release()
+            try:
+                events.close()
+            finally:
+                self.journal.interrupt()
+                self.release()
 
     def close(self):
         try:
             self.events.close()
         finally:
+            # Also handles close() before frames() has ever been iterated.
+            self.journal.interrupt()
             self.release()
 
 
@@ -101,22 +111,29 @@ def chat(request):
         if cache.get(lock_key) == lock_token:
             cache.delete(lock_key)
     streaming = False
+    journal = None
     try:
         rate_key = employee_key + ':minute:' + str(int(time.time() // 60))
         if not cache.add(rate_key, 1, timeout=65) and cache.incr(rate_key) > 20:
             raise AssistantError('Слишком много запросов. Повторите через минуту.', 'rate_limit', 429)
+        journal = RequestJournal(request.employee, messages, page)
         if request.accepts('text/event-stream') and 'text/event-stream' in request.headers.get('Accept', ''):
             events = answer_stream(messages, page=page, role=request.employee.role, form_state=form_state)
-            response = StreamingHttpResponse(_EventStream(events, release), content_type='text/event-stream; charset=utf-8')
+            response = StreamingHttpResponse(_EventStream(events, release, journal), content_type='text/event-stream; charset=utf-8')
             response['X-Accel-Buffering'] = 'no'
             response['Cache-Control'] = 'no-cache, no-store, no-transform'
             streaming = True
             return response
         result = answer(messages, page=page, role=request.employee.role, form_state=form_state)
+        journal.complete(result)
         return JsonResponse(result)
     except AssistantError as error:
+        if journal is not None:
+            journal.fail(error.code)
         return JsonResponse({'error': str(error), 'code': error.code}, status=error.status)
     except Exception:
+        if journal is not None:
+            journal.fail('internal_error')
         # Do not log exception text: database/provider errors can contain user data.
         logger.error('Assistant request failed with an internal error.')
         return JsonResponse({'error': 'Не удалось подготовить ответ. Повторите запрос позже.', 'code': 'internal_error'}, status=500)
