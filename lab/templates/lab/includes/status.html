@@ -1,0 +1,1 @@
+<span class="badge {{ status }}">{% if status == 'draft' %}Черновик{% elif status == 'published' %}Опубликована{% elif status == 'active' %}В работе{% elif status == 'completed' %}Завершено{% elif status == 'confirmed' %}Связь подтверждена{% elif status == 'candidate' %}Кандидат{% elif status == 'rejected' %}Отклонена{% else %}{{ status }}{% endif %}</span>

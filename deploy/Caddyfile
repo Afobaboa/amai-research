@@ -1,0 +1,18 @@
+{$SITE_DOMAIN} {
+    encode gzip zstd
+
+    # Caddy receives connections directly. Do not trust forwarded client IPs.
+    # An empty or omitted allowlist permits only loopback.
+    route {
+        @blocked not remote_ip {$ALLOWED_IPS:127.0.0.1/32 ::1/128}
+        respond @blocked "Access denied" 403
+
+        handle_path /static/* {
+            root * /srv/static
+            file_server
+        }
+        handle {
+            reverse_proxy web:8000
+        }
+    }
+}
