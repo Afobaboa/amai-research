@@ -3,6 +3,7 @@
 The settings inspection runs in a child interpreter and never connects to a DB.
 """
 import json
+from contextlib import closing
 import importlib.util
 import os
 from pathlib import Path
@@ -69,7 +70,7 @@ class LocalProfileTests(unittest.TestCase):
     def test_local_login_and_http_work_despite_production_environment(self):
         values = inspect_profile()
         self.assertTrue(values['debug'])
-        self.assertTrue(values['demo'])
+        self.assertFalse(values['demo'])
         self.assertTrue(values['local_password'])
         self.assertIn('127.0.0.1', values['hosts'])
         self.assertNotIn('production.example', values['hosts'])
@@ -112,6 +113,7 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertEqual(env['DJANGO_SETTINGS_MODULE'], 'config.local')
         self.assertEqual(env['LIMS_LOCAL_DB'], str(explicit_database))
         self.assertEqual(env['DEBUG'], '1')
+        self.assertEqual(env['DEMO_MODE'], '0')
         for key in ('DATABASE_URL', 'SITE_PASSWORD_HASH', 'SQLITE_PATH', 'SECRET_KEY',
                     'ALLOWED_HOSTS', 'CSRF_TRUSTED_ORIGINS'):
             self.assertNotIn(key, env)
@@ -182,6 +184,16 @@ class LocalRunnerTests(unittest.TestCase):
                 self.runner.run_manage([command])
                 self.assertEqual(build.call_args.kwargs['with_assistant'], expected)
 
+    def test_initialization_and_legacy_alias_load_real_data(self):
+        for command in (self.runner.init_data, self.runner.init_demo):
+            with self.subTest(command=command.__name__), \
+                    mock.patch.object(self.runner, 'run_manage') as run:
+                command()
+                self.assertEqual(run.call_args_list, [
+                    mock.call(['migrate', '--noinput']),
+                    mock.call(['seed_initial']),
+                ])
+
     def test_backend_failure_removes_only_its_scratch_directory(self):
         scratch_paths = []
 
@@ -220,11 +232,11 @@ class LocalRunnerTests(unittest.TestCase):
         self.assertEqual(child.call_args.kwargs['env']['DJANGO_SETTINGS_MODULE'], 'config.local')
 
 
-    def test_demo_upgrade_keeps_recoverable_database_backup_when_migration_fails(self):
+    def test_data_upgrade_keeps_recoverable_database_backup_when_migration_fails(self):
         with tempfile.TemporaryDirectory(prefix='lims-upgrade-check-') as directory:
             project = Path(directory)
             database = project / 'selected.sqlite3'
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 connection.execute('create table user_data (note text)')
                 connection.execute('insert into user_data values (?)', ('Сохранённая пользовательская запись',))
             failure = subprocess.CalledProcessError(1, ['manage.py', 'migrate'])
@@ -233,11 +245,11 @@ class LocalRunnerTests(unittest.TestCase):
                     mock.patch.object(self.runner, 'run_manage', side_effect=failure), \
                     mock.patch('builtins.print'):
                 with self.assertRaises(subprocess.CalledProcessError):
-                    self.runner.upgrade_demo()
+                    self.runner.upgrade_data()
             backups = list((project / 'var' / 'backups').glob('*.sqlite3'))
             self.assertEqual(len(backups), 1)
             for path in (database, backups[0]):
-                with sqlite3.connect(path) as connection:
+                with closing(sqlite3.connect(path)) as connection:
                     self.assertEqual(connection.execute('select note from user_data').fetchone()[0],
                                      'Сохранённая пользовательская запись')
 

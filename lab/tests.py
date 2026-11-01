@@ -223,18 +223,6 @@ class WorkflowTests(TestCase):
         with self.assertRaises(ValidationError):
             event.delete()
 
-    def test_demo_seed_is_explicit_and_idempotent(self):
-        with self.assertRaises(Exception):
-            call_command("seed_demo", stdout=StringIO())
-        call_command("seed_demo", confirm_demo=True, stdout=StringIO())
-        count = TestSession.objects.count()
-        call_command("seed_demo", confirm_demo=True, stdout=StringIO())
-        self.assertEqual(TestSession.objects.count(), count)
-        self.assertEqual(TestSession.objects.filter(identifier__startswith="DEMO-").count(), 10)
-        with override_settings(DEMO_MODE=False):
-            with self.assertRaises(Exception):
-                call_command("seed_demo", confirm_demo=True, stdout=StringIO())
-
     def test_search_and_history_links(self):
         self.sign_in(self.reader)
         self.assertContains(self.client.get(reverse("recipe_list"), {"q": "TEST.1"}), "TEST.1")

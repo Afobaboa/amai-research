@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Portable entry points for local development and isolated backend checks."""
 import argparse
+from contextlib import closing
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -57,7 +58,10 @@ def build_environment(database_path=None, *, with_assistant=False):
     if with_assistant:
         env.update(read_assistant_environment(ROOT / '.env'))
         env.update({key: os.environ[key] for key in ASSISTANT_ENV_KEYS if key in os.environ})
-    env.update(DJANGO_SETTINGS_MODULE='config.local', DEBUG='1', DEMO_MODE='1', PYTHONUNBUFFERED='1')
+    env.update(
+        DJANGO_SETTINGS_MODULE='config.local', DEBUG='1',
+        DEMO_MODE='0', PYTHONUNBUFFERED='1',
+    )
     if database_path is not None:
         env['LIMS_LOCAL_DB'] = str(database_path)
     return env
@@ -77,16 +81,16 @@ def setup():
         venv.EnvBuilder(with_pip=True).create(ROOT / '.venv')
     subprocess.run([str(PYTHON), '-m', 'pip', 'install', '-r', 'requirements.txt'],
                    cwd=ROOT, check=True)
-    init_demo()
+    init_data()
 
 
-def init_demo():
+def init_data():
     run_manage(['migrate', '--noinput'])
-    run_manage(['seed_demo', '--confirm-demo'])
+    run_manage(['seed_initial'])
 
 
-def upgrade_demo():
-    """Back up the selected local SQLite before schema and fixture upgrades."""
+def upgrade_data():
+    """Back up the selected local SQLite before schema and initial-data updates."""
     database = Path(os.environ.get('LIMS_LOCAL_DB', str(ROOT / 'var' / 'local.sqlite3'))).expanduser()
     if not database.is_absolute():
         database = ROOT / database
@@ -94,13 +98,27 @@ def upgrade_demo():
         backups = ROOT / 'var' / 'backups'
         backups.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
-        backup = backups / f'{database.stem}-before-winter-{stamp}-{uuid4().hex[:8]}.sqlite3'
-        with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as original:
-            with sqlite3.connect(backup) as destination:
+        backup = backups / (
+            f'{database.stem}-before-initial-data-{stamp}-{uuid4().hex[:8]}.sqlite3'
+        )
+        connection = sqlite3.connect(
+            database.resolve().as_uri() + '?mode=ro', uri=True,
+        )
+        with closing(connection) as original:
+            with closing(sqlite3.connect(backup)) as destination:
                 original.backup(destination)
         print(f'Резервная копия: {backup}', flush=True)
-    run_manage(['migrate', '--noinput'])
-    run_manage(['seed_demo', '--confirm-demo', '--upgrade-winter'])
+    init_data()
+
+
+def init_demo():
+    """Compatibility alias: old commands now initialize real source data."""
+    init_data()
+
+
+def upgrade_demo():
+    """Compatibility alias preserving backups for earlier installations."""
+    upgrade_data()
 
 
 def test_backend():
@@ -131,17 +149,20 @@ def dev(port):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['setup', 'init-demo', 'upgrade-demo', 'dev', 'test-backend', 'check', 'manage'])
+    parser.add_argument('command', choices=[
+        'setup', 'init-data', 'upgrade-data', 'init-demo', 'upgrade-demo',
+        'dev', 'test-backend', 'check', 'manage',
+    ])
     parser.add_argument('--port', type=int, default=8000)
     args, extra = parser.parse_known_args()
     if args.command != 'manage' and extra:
         parser.error('Неизвестные аргументы: ' + ' '.join(extra))
     if args.command == 'setup':
         setup()
-    elif args.command == 'init-demo':
-        init_demo()
-    elif args.command == 'upgrade-demo':
-        upgrade_demo()
+    elif args.command in {'init-data', 'init-demo'}:
+        init_data()
+    elif args.command in {'upgrade-data', 'upgrade-demo'}:
+        upgrade_data()
     elif args.command == 'dev':
         if not 1 <= args.port <= 65535:
             parser.error('Порт должен находиться в диапазоне 1–65535.')

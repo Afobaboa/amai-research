@@ -12,7 +12,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const scratch = mkdtempSync(join(tmpdir(), 'lims-browser-'));
 const env = {
   ...process.env,
-  DJANGO_SETTINGS_MODULE: 'config.local', DEBUG: '1', DEMO_MODE: '1',
+  DJANGO_SETTINGS_MODULE: 'config.local', DEBUG: '1', DEMO_MODE: '0',
   LIMS_LOCAL_DB: join(scratch, 'browser.sqlite3'),
   LIMS_LOCAL_MEDIA: join(scratch, 'media'),
   SQLITE_PATH: join(scratch, 'browser.sqlite3'),
@@ -145,7 +145,7 @@ try {
   mkdirSync(artifactsRoot, {recursive:true});
   artifacts = mkdtempSync(join(artifactsRoot, 'run-'));
   init(['migrate', '--noinput']);
-  init(['seed_demo', '--confirm-demo']);
+  init(['seed_initial']);
   await startServer(port);
   browser = await chromium.launch({headless:!headed,args:['--no-sandbox','--disable-dev-shm-usage']});
   if (interrupted || cleanupPromise) {
@@ -172,18 +172,19 @@ try {
   assert.match(await page.locator('.field-error').innerText(),/Неверный пароль/);
   await page.locator('#id_password').fill('lims-demo');
   await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:/Продолжить/}).click()]);
-  await option(page,'#id_employee','Анна Волкова');
+  await option(page,'#id_employee','Гущин Даниил');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:/Открыть лабораторию/}).click()]);
   await go('/');
+  assert.equal(await page.locator('.demo-banner,.demo-label').count(),0);
+  assert.doesNotMatch(await page.locator('main').innerText(),/DEMO-/);
   await page.screenshot({path:join(artifacts, 'overview.png'),fullPage:true});
   const desktopPaths = ['/recipes/','/tests/','/history/','/sources/','/materials/','/lots/','/metrics/','/mixtures/',
     '/recipe-templates/','/calculation-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
     '/mixtures/new/','/recipe-templates/new/','/calculation-templates/new/','/recipes/new/','/tests/new/',
-    '/recipes/1/','/tests/1/','/sources/1/','/lots/1/','/recipe-templates/1/','/calculation-templates/1/',
-    '/calculations/1/','/tests/6/results/new/','/tests/6/observations/new/','/tests/6/conditioning/new/'];
+    '/recipes/1/','/tests/1/','/sources/1/','/sources/4/'];
   for (const path of desktopPaths) await go(path);
   for (const [path, filename] of [['/lots/','lots.png'],['/recipe-templates/','recipe-templates.png'],
-    ['/calculation-templates/1/','calculation-template.png'],['/sources/1/','source.png'],['/calculations/1/','calculation.png']]) {
+    ['/sources/1/','source.png']]) {
     await go(path); await page.screenshot({path:join(artifacts,filename),fullPage:true});
   }
   await go('/recipes/1/');
@@ -212,19 +213,32 @@ try {
   assert.equal(await mobilePage.getByRole('button',{name:'Открыть меню',exact:true}).getAttribute('aria-expanded'),'true');
   await mobilePage.close();
   await mobile.close();
+  const checkAdditionalMobile = async paths => {
+    const mobile = await browser.newContext({viewport:{width:390,height:844},isMobile:true,storageState:await context.storageState()});
+    const page = await mobile.newPage();
+    page.on('pageerror',error=>errors.push(error.message));
+    for (const path of paths) {
+      const response = await page.goto(base+path,{waitUntil:'networkidle'});
+      assert.equal(response.status(),200,path);
+      if (await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)) overflows.push(path);
+    }
+    await mobile.close();
+  };
 
   await go('/recipes/new/');
   await page.locator('[data-add-form="components-formset"]').click();
   assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(),'3');
-  await option(page,'#id_mixture_type','DEMO-316');
+  await option(page,'#id_mixture_type','Зимняя пена');
   await page.locator('#id_version_label').fill('QA-316.0');
   await page.locator('#id_title').fill('QA нулевой компонент и полный состав');
   await page.locator('#id_status').selectOption('published');
-  await option(page,'#id_components-0-material','Полиол P-101');
+  const materials = await page.locator('#id_components-0-material option').evaluateAll(items => items.filter(item=>item.value).slice(0,3).map(item=>item.value));
+  assert.equal(materials.length,3,'Imported material catalogue has at least three entries');
+  await page.locator('#id_components-0-material').selectOption(materials[0]);
   await page.locator('#id_components-0-quantity_value').fill('0');
-  await option(page,'#id_components-1-material','Полиол P-202');
+  await page.locator('#id_components-1-material').selectOption(materials[1]);
   await page.locator('#id_components-1-quantity_value').fill('100');
-  await option(page,'#id_components-2-material','Стабилизатор S-10');
+  await page.locator('#id_components-2-material').selectOption(materials[2]);
   await page.locator('#id_filling-0-group_label').fill('A');
   await page.locator('#id_filling-0-mass_g').fill('0');
   await submit('Сохранить рецептуру');
@@ -251,25 +265,39 @@ try {
   await go(original);
   assert.match(await page.locator('.page-heading').innerText(),/QA нулевой компонент/);
 
+  // QA metrics are entered through the catalogue without assuming archive labels.
+  for (const [code,label,unit] of [
+    ['QA_TEMP','QA температура испытания','°C'],
+    ['QA_RH','QA относительная влажность','%'],
+    ['QA_YIELD','QA выход пены','л'],
+  ]) {
+    await go('/metrics/new/');
+    await page.locator('#id_code').fill(code);
+    await page.locator('#id_label').fill(label);
+    await page.locator('#id_unit_code').fill(unit);
+    await page.locator('#id_value_kind').selectOption('numeric');
+    await submit('Сохранить');
+  }
   await go('/tests/new/?recipe='+fork.split('/')[2]);
   await page.locator('#id_identifier').fill('QA-2026-001');
   await page.locator('#id_title').fill('QA нулевое измерение и история');
   await page.locator('#id_status').selectOption('active');
   await page.locator('#id_recorded_tested_on').fill('2026-11-01');
-  await option(page,'#id_conditions-0-metric','Температура испытания');
+  await option(page,'#id_conditions-0-metric','QA температура испытания');
   await page.locator('#id_conditions-0-numeric_value').fill('0');
-  await option(page,'#id_conditions-1-metric','Относительная влажность');
+  await option(page,'#id_conditions-1-metric','QA относительная влажность');
   await page.locator('#id_conditions-1-numeric_value').fill('55');
   await submit('Сохранить карточку');
   const card=new URL(page.url()).pathname;
   assert.match(card,/^\/tests\/\d+\/$/);
   assert.match(await page.locator('.results-strip').innerText(),/0 °C/);
+  await checkAdditionalMobile(['results/new/','observations/new/','conditioning/new/'].map(path=>card+path));
   await go(card+'results/new/');
-  await option(page,'#id_metric','Выход пены');
+  await option(page,'#id_metric','QA выход пены');
   await page.locator('#id_numeric_value').fill('0');
   await submit('Сохранить');
   const resultPanel=page.locator('section.panel').filter({has:page.getByRole('heading',{name:'Основное испытание',exact:true})});
-  const resultRow=resultPanel.locator('tbody tr').filter({hasText:'Выход пены'});
+  const resultRow=resultPanel.locator('tbody tr').filter({hasText:'QA выход пены'});
   assert.match(await resultRow.locator('td').nth(1).innerText(),/^0(?:[,.]0+)?$/);
   await go(card+'observations/new/');
   await option(page,'#id_run','Основное испытание');
@@ -376,7 +404,7 @@ try {
   assert.notEqual(calculationTemplateV2,calculationTemplatePath);
   await go('/recipe-templates/new/');
   await page.locator('#id_name').fill('QA шаблон зимней пены');
-  await option(page,'#id_mixture_type','DEMO-316');
+  await option(page,'#id_mixture_type','Зимняя пена');
   await page.locator('#id_calculation_template').selectOption(calculationTemplateId);
   await page.locator('#id_batch_mass_g').fill('1000');
   await page.locator('#id_components-0-specified_lot').selectOption(lotId);
@@ -431,6 +459,11 @@ try {
   assert.match(await cost(),/^400\s*₽$/);
   await go(baselineCalculation);
   assert.equal(await cost(),baselineCost);
+  await checkAdditionalMobile([lotPath,recipeTemplatePath,calculationTemplatePath,baselineCalculation]);
+  for (const [path,filename] of [[calculationTemplatePath,'calculation-template.png'],[baselineCalculation,'calculation.png']]) {
+    await go(path);
+    await page.screenshot({path:join(artifacts,filename),fullPage:true});
+  }
   await go('/history/?entity=source&q=QA');
   const historyTarget=page.locator('.event-meta a').first();
   assert.ok((await historyTarget.getAttribute('href')).startsWith('/sources/'));
@@ -439,17 +472,17 @@ try {
   console.log('Sources, uploads/SHA, provenance, materials/lots, quarantine, recipe/calculation templates and immutable recalculation all passed.');
 
   await go('/employees/');
-  await option(page,'#id_employee','Елена Морозова');
+  await option(page,'#id_employee','Иван Иванов');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:/Открыть лабораторию/}).click()]);
   await go('/recipes/');
   assert.equal(await page.locator('a[href="/recipes/new/"]').count(),0);
-  await go('/tests/6/');
+  await go(card);
   for(const word of ['Редактировать','Записать результат','Добавить наблюдение','Записать обработку']) assert.equal(await page.getByRole('link',{name:new RegExp(word)}).count(),0,`Reader controls: ${word}`);
   const csrf=await page.locator('[name="csrfmiddlewaretoken"]').first().inputValue();
-  for(const path of ['/recipes/new/','/tests/new/','/tests/6/results/new/','/tests/6/observations/new/','/tests/6/conditioning/new/',
+  for(const path of ['/recipes/new/','/tests/new/',card+'results/new/',card+'observations/new/',card+'conditioning/new/',
     '/sources/new/','/materials/new/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/',
     '/calculation-templates/new/',calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/']){
-    const response=await page.request.post(base+path,{form:{csrfmiddlewaretoken:csrf},headers:{Referer:base+'/tests/6/'}});
+    const response=await page.request.post(base+path,{form:{csrfmiddlewaretoken:csrf},headers:{Referer:base+card}});
     assert.equal(response.status(),403,`Reader direct POST ${path}`);
     assert.match(await response.text(),/читатель/);
   }
@@ -457,10 +490,10 @@ try {
   assert.equal(await page.locator(`a[href="${uploadedSource}edit/"]`).count(),0);
   assert.equal((await page.request.get(base+uploadedSource+'download/')).status(),200);
   await page.reload({waitUntil:'networkidle'});
-  assert.match(await page.locator('.profile').innerText(),/Елена Морозова/);
+  assert.match(await page.locator('.profile').innerText(),/Иван Иванов/);
   assert.deepEqual(errors,[]);
   assert.deepEqual(overflows,[],`Mobile overflow: ${overflows.join(', ')}`);
-  console.log(`PASS: isolated demo DB; login, author/reader roles, direct POST denial, 30 desktop/mobile routes, documentary sources and lots, fixed recipe/calculation templates, immutable saved calculations, immutable recipes, fork/edit/publish, zero and missing values, card/result/observation/treatment creation, completion locking, reload persistence, audit search. Screenshots: ${artifacts}`);
+  console.log(`PASS: isolated real initial dataset; login, author/reader roles, direct POST denial, desktop/mobile routes, documentary sources and lots, fixed recipe/calculation templates, immutable saved calculations, immutable recipes, fork/edit/publish, zero and missing values, card/result/observation/treatment creation, completion locking, reload persistence, audit search. Screenshots: ${artifacts}`);
 } catch(error) {
   if (!interrupted) {
     console.error(error);

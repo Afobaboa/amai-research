@@ -22,7 +22,7 @@ const artifacts = join(root, 'var', 'assistant-browser-artifacts');
 mkdirSync(artifacts, {recursive:true});
 let server, browser, stopped;
 try {
-  for (const args of [['migrate','--noinput'], ['seed_demo','--confirm-demo']]) {
+  for (const args of [['migrate','--noinput'], ['seed_initial']]) {
     const run = spawnSync(python, ['manage.py', ...args], {cwd:root, env, encoding:'utf8'});
     assert.equal(run.status, 0, run.stderr + run.stdout);
   }
@@ -62,7 +62,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   const reply = [
     '## Подтверждённые данные',
     '',
-    'Смотрите **рецептуру** [DEMO](/recipes/1/).',
+    'Смотрите **рецептуру** [316.1](/recipes/1/).',
     '',
     'Создать: [Новое испытание](/tests/new/?recipe=8).',
     'Старый ответ: `/tests/new/`, /tests/ и **`/tests/1/results/new/`**.',
@@ -71,7 +71,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     '',
     '| **Рецептура** | Значение | Комментарий |',
     '| :--- | ---: | :---: |',
-    String.raw`| [DEMO](/recipes/1/) | 316 | A\|B |`,
+    String.raw`| [316.1](/recipes/1/) | 316 | A\|B |`,
     '| `x|y` | 42 | <img src=x onerror="window.injected=true"> |',
     '',
     'Имя | Итог',
@@ -115,7 +115,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
       if (mode === 'error') return route.fulfill({status:503,json:{error:'Cloud.ru временно недоступен.'}});
       const job = {id:data.request_id, question:data.question, status:mode === 'pending' ? 'running':'completed',
         reply:mode === 'pending' ? '' : reply, progress:[], activity:'Смотрю эксперименты…',
-        sources:[{title:'DEMO-316',url:'/recipes/1/'},{title:'Опасная ссылка',url:'javascript:alert(1)'}]};
+        sources:[{title:'Зимняя улучшенная пена — 316.1',url:'/recipes/1/'},{title:'Опасная ссылка',url:'javascript:alert(1)'}]};
       chat.jobs.push(job); chat.title = chat.jobs[0].question; chat.active = mode === 'pending';
       return route.fulfill({status:202,json:{id:job.id}});
     }
@@ -131,7 +131,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.locator('#id_password').fill('lims-demo');
   await page.getByRole('button',{name:/Продолжить/}).click();
   assert.equal(await page.locator('#lab-assistant').count(), 0);
-  const employeeValue = await page.locator('#id_employee option').evaluateAll(nodes => nodes.find(node => node.textContent.includes('Анна Волкова')).value);
+  const employeeValue = await page.locator('#id_employee option').evaluateAll(nodes => nodes.find(node => node.textContent.includes('Гущин Даниил')).value);
   await page.locator('#id_employee').selectOption(employeeValue);
   await page.getByRole('button',{name:/Открыть лабораторию/}).click();
   await page.waitForLoadState('networkidle');

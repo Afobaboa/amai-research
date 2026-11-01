@@ -15,7 +15,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .catalog_forms import MaterialForm, MaterialLotForm, MetricForm, MixtureTypeForm, SourceCellForm, SourceForm, SourceSheetForm
-from .models import ChangeEvent, Material, MaterialLot, Metric, MixtureType, RecipeVersion, SourceFile, SourceSheet, TestSession
+from .models import (
+    ChangeEvent, Material, MaterialLot, Metric, MixtureType, RecipeVersion,
+    SourceCell, SourceFile, SourceSheet, TestSession,
+)
 from .views import author_required, site_required
 
 
@@ -149,11 +152,37 @@ def source_list(request):
 @site_required
 def source_detail(request, pk):
     source = get_object_or_404(SourceFile.objects.select_related('created_by'), pk=pk)
-    return render(request, 'lab/catalog/source_detail.html', {'source': source,
-                  'sheets': source.sheets.prefetch_related('cells'),
-                  'recipes': RecipeVersion.objects.filter(source_sheet__file=source),
-                  'cards': TestSession.objects.filter(source_sheet__file=source),
-                  'lots': source.lots.select_related('material'), 'events': events('source', pk)})
+    context = _source_fragments(request, source)
+    context.update(
+        source=source,
+        recipes=RecipeVersion.objects.filter(source_sheet__file=source),
+        cards=TestSession.objects.filter(source_sheet__file=source),
+        lots=source.lots.select_related('material'), events=events('source', pk),
+    )
+    return render(request, 'lab/catalog/source_detail.html', context)
+
+
+def _source_fragments(request, source):
+    sheets = list(source.sheets.order_by('pk'))
+    selected_id = request.GET.get('sheet')
+    selected = next(
+        (sheet for sheet in sheets if str(sheet.pk) == selected_id),
+        sheets[0] if sheets and not selected_id else None,
+    )
+    if selected_id and selected is None:
+        raise Http404('Лист не найден в этом источнике.')
+    cells = selected.cells.order_by('pk') if selected else SourceCell.objects.none()
+    paginator = Paginator(cells, 150)
+    focus_address = request.GET.get('cell', '')
+    target_id = cells.filter(address=focus_address).values_list('pk', flat=True).first()
+    page_number = request.GET.get('page')
+    if target_id is not None:
+        page_number = cells.filter(pk__lt=target_id).count() // paginator.per_page + 1
+    return {
+        'sheets': sheets, 'selected_sheet': selected,
+        'cells_page': paginator.get_page(page_number),
+        'focus_address': focus_address,
+    }
 
 
 @author_required

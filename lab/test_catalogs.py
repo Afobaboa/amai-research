@@ -199,6 +199,38 @@ class CatalogWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(SourceCell.objects.get(sheet=self.sheet, address='A1').raw_value, 'исходное')
 
+    def test_source_cells_paginate_and_deep_links_select_target_page(self):
+        SourceCell.objects.bulk_create([
+            SourceCell(sheet=self.sheet, address=f'A{index}', cell_kind='text',
+                       raw_value=f'Первичный фрагмент {index}')
+            for index in range(1, 152)
+        ])
+        url = reverse('source_detail', args=[self.source.pk])
+        first = self.client.get(url)
+        self.assertEqual(first.context['selected_sheet'], self.sheet)
+        self.assertEqual(len(first.context['cells_page']), 150)
+        self.assertNotContains(first, 'Первичный фрагмент 151')
+        last = self.client.get(url, {'sheet': self.sheet.pk, 'page': 2})
+        self.assertContains(last, 'Первичный фрагмент 151')
+        self.assertEqual(len(last.context['cells_page']), 1)
+        target = self.client.get(url, {'sheet': self.sheet.pk, 'cell': 'A151'})
+        self.assertEqual(target.context['cells_page'].number, 2)
+        self.assertContains(target, 'class="source-cell-target"')
+
+    def test_source_sheet_selection_stays_within_the_selected_source(self):
+        other_sheet = SourceSheet.objects.create(file=self.source, name='Другой лист')
+        SourceCell.objects.create(
+            sheet=other_sheet, address='B12', cell_kind='text',
+            raw_value='Значение второго листа',
+        )
+        url = reverse('source_detail', args=[self.source.pk])
+        selected = self.client.get(url, {'sheet': other_sheet.pk, 'cell': 'B12'})
+        self.assertEqual(selected.context['selected_sheet'], other_sheet)
+        self.assertContains(selected, 'Значение второго листа')
+        other_source = SourceFile.objects.create(title='Другой источник')
+        foreign_url = reverse('source_detail', args=[other_source.pk])
+        self.assertEqual(self.client.get(foreign_url, {'sheet': other_sheet.pk}).status_code, 404)
+
     def test_reader_can_view_catalogues_but_all_direct_posts_are_denied(self):
         self.sign_in(self.reader)
         for name in ['material_list', 'lot_list', 'source_list', 'metric_list', 'mixture_list']:

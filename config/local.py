@@ -7,7 +7,7 @@ from django.contrib.auth.hashers import make_password
 from .base import *  # noqa: F403
 
 DEBUG = True
-DEMO_MODE = True
+DEMO_MODE = False
 SECRET_KEY = 'local-demo-only-never-use-in-production'
 SITE_PASSWORD_HASH = make_password('lims-demo')
 SHARED_PASSWORD_HASH = SITE_PASSWORD_HASH

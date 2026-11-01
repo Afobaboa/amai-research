@@ -3,6 +3,8 @@ from decimal import Decimal
 from django import forms
 from django.forms import formset_factory
 
+from .source_fields import SourceCellField, SourceCellSelect
+
 from .models import (
     ConditioningEvent, EmployeeProfile, FillingPlanLine, Material, MaterialLot,
     Metric, MixtureType, RecipeVersion, TestSession, TestRun, SourceCell, SourceSheet,
@@ -58,6 +60,7 @@ class RecipeForm(forms.ModelForm):
         self.fields["status"].choices = [("draft", "Черновик"), ("published", "Опубликована")]
         self.fields['calculation_template'].label = 'Шаблон расчёта'
         self.fields['source_sheet'].label = 'Лист первичного источника'
+        self.fields['source_sheet'].queryset = SourceSheet.objects.select_related('file')
 
     def clean_batch_mass_g(self):
         value = self.cleaned_data.get('batch_mass_g')
@@ -71,8 +74,8 @@ class ComponentForm(forms.Form):
     material = forms.ModelChoiceField(label="Компонент", queryset=Material.objects.all(), required=False)
     specified_lot = forms.ModelChoiceField(label="Партия (если известна)", queryset=MaterialLot.objects.select_related("material"), required=False)
     quantity_value = LIMSDecimalField(label="Количество", min_value=Decimal("0"), required=False)
-    name_cell = forms.ModelChoiceField(label='Ячейка наименования', queryset=SourceCell.objects.select_related('sheet__file'), required=False)
-    quantity_cell = forms.ModelChoiceField(label='Ячейка количества', queryset=SourceCell.objects.select_related('sheet__file'), required=False)
+    name_cell = SourceCellField(label='Ячейка наименования')
+    quantity_cell = SourceCellField(label='Ячейка количества')
 
     def clean(self):
         data = super().clean()
@@ -99,8 +102,8 @@ class FillingForm(forms.Form):
     specified_lot = forms.ModelChoiceField(label="Партия", queryset=MaterialLot.objects.select_related("material"), required=False)
     mass_g = LIMSDecimalField(label="Плановая масса, г", min_value=Decimal("0"), required=False)
     mass_status = forms.ChoiceField(label='Основание массы', choices=FillingPlanLine.MassStatus.choices, required=False)
-    label_cell = forms.ModelChoiceField(label='Ячейка наименования', queryset=SourceCell.objects.select_related('sheet__file'), required=False)
-    mass_cell = forms.ModelChoiceField(label='Ячейка массы', queryset=SourceCell.objects.select_related('sheet__file'), required=False)
+    label_cell = SourceCellField(label='Ячейка наименования')
+    mass_cell = SourceCellField(label='Ячейка массы')
 
     def clean(self):
         data = super().clean()
@@ -129,7 +132,7 @@ class RecipePropertyForm(forms.Form):
     property_code = forms.CharField(label='Свойство', required=False, max_length=100, help_text='Например OHV, NCO или плотность')
     value = LIMSDecimalField(label='Значение', required=False)
     unit_code = forms.CharField(label='Единица', required=False, max_length=60)
-    source_cell = forms.ModelChoiceField(label='Первичная ячейка', queryset=SourceCell.objects.select_related('sheet__file'), required=False)
+    source_cell = SourceCellField(label='Первичная ячейка')
 
     def clean(self):
         data = super().clean()
@@ -173,7 +176,7 @@ class ConditionForm(forms.Form):
     metric = forms.ModelChoiceField(label="Условие", queryset=Metric.objects.all(), required=False)
     numeric_value = LIMSDecimalField(label="Число", required=False)
     text_value = forms.CharField(label="Текст", required=False)
-    source_cell = forms.ModelChoiceField(label='Первичная ячейка', queryset=SourceCell.objects.select_related('sheet__file'), required=False)
+    source_cell = SourceCellField(label='Первичная ячейка')
 
     def clean(self):
         data = super().clean()
@@ -199,12 +202,16 @@ class RunFields(forms.Form):
     run = forms.ModelChoiceField(label="Определение", queryset=TestRun.objects.none(), required=False, empty_label="Создать новое определение")
     scope = forms.CharField(label="Название нового определения", required=False, initial="Основное испытание", max_length=250)
     method_code = forms.CharField(label="Метод / редакция методики", required=False, max_length=150)
-    source_cell = forms.ModelChoiceField(label='Первичная ячейка', queryset=SourceCell.objects.select_related('sheet__file'), required=False)
+    source_cell = SourceCellField(label='Первичная ячейка')
 
     def __init__(self, *args, card, **kwargs):
         super().__init__(*args, **kwargs)
         self.card = card
         self.fields["run"].queryset = card.runs.all()
+        if card.source_sheet_id:
+            self.fields["source_cell"].widget.attrs[
+                "data-source-sheet"
+            ] = str(card.source_sheet_id)
 
     def clean(self):
         data = super().clean()
@@ -240,7 +247,7 @@ class ConditioningForm(forms.ModelForm):
     class Meta:
         model = ConditioningEvent
         fields = ["target_kind", "kind", "duration_value", "duration_unit", "temperature_c", "source_cell"]
-        widgets = {"duration_value": CompactNumberInput, "temperature_c": CompactNumberInput}
+        widgets = {"duration_value": CompactNumberInput, "temperature_c": CompactNumberInput, "source_cell": SourceCellSelect}
         labels = {"target_kind": "Цель обработки", "kind": "Тип обработки", "duration_value": "Длительность", "duration_unit": "Единица длительности", "temperature_c": "Температура, °C"}
 
     def clean(self):

@@ -1,4 +1,4 @@
-"""Local demo by default; production requires explicit secrets and PostgreSQL."""
+"""Application settings; production requires explicit secrets and PostgreSQL."""
 import os
 from urllib.parse import unquote, urlparse, parse_qs
 
@@ -8,10 +8,10 @@ from django.contrib.auth.hashers import make_password
 from .base import *  # noqa: F403
 
 DEBUG = os.getenv('DEBUG', 'true').lower() in ('true', '1', 'yes')
-DEMO_MODE = os.getenv('DEMO_MODE', str(DEBUG)).lower() in ('true', '1', 'yes')
+DEMO_MODE = os.getenv('DEMO_MODE', 'false').lower() in ('true', '1', 'yes')
 SECRET_KEY = os.getenv('SECRET_KEY', 'local-demo-only-never-use-in-production')
 SITE_PASSWORD_HASH = os.getenv('SITE_PASSWORD_HASH', '')
-if not SITE_PASSWORD_HASH and DEMO_MODE and DEBUG:
+if not SITE_PASSWORD_HASH and DEBUG:
     SITE_PASSWORD_HASH = make_password('lims-demo')
 SHARED_PASSWORD_HASH = SITE_PASSWORD_HASH
 if not DEBUG and (not os.getenv('SECRET_KEY') or not SITE_PASSWORD_HASH):

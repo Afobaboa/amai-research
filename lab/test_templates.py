@@ -8,7 +8,6 @@ from django.db import IntegrityError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .demo import RECIPE_NOTE
 from .models import (CalculationRecord, CalculationTemplate, ChangeEvent, EmployeeProfile, Material, MaterialLot,
                      MixtureType, RecipeComponent, RecipeGroup, RecipeTemplate, RecipeVersion, SourceFile, TestSession)
 
@@ -124,52 +123,3 @@ class TemplateWorkflowTests(TestCase):
             self.assertContains(response, 'Эта версия шаблона уже сохранена другим автором')
             self.assertEqual(model.objects.count(), before)
             self.assertFalse(ChangeEvent.objects.exists())
-
-
-@override_settings(DEMO_MODE=True)
-class WinterSeedTests(TestCase):
-    def test_new_winter_seed_is_complete_and_idempotent(self):
-        call_command('seed_demo', confirm_demo=True, stdout=StringIO())
-        self.assertEqual(RecipeVersion.objects.count(), 6)
-        self.assertEqual(TestSession.objects.count(), 10)
-        self.assertSetEqual(set(MixtureType.objects.values_list('title', flat=True)), {'Зимняя пена', 'Зимняя улучшенная пена'})
-        self.assertEqual(RecipeTemplate.objects.count(), 2)
-        self.assertEqual(CalculationTemplate.objects.count(), 2)
-        self.assertEqual(CalculationRecord.objects.count(), 6)
-        self.assertTrue(MaterialLot.objects.filter(status='quarantine').exists())
-        self.assertTrue(RecipeComponent.objects.filter(specified_lot__isnull=False).exists())
-        self.assertEqual(SourceFile.objects.get().sha256, '')
-        before = ChangeEvent.objects.count()
-        call_command('seed_demo', confirm_demo=True, stdout=StringIO())
-        self.assertEqual(ChangeEvent.objects.count(), before)
-        self.assertEqual(RecipeVersion.objects.count(), 6)
-
-    def test_upgrade_preserves_old_composition_user_changes_and_history(self):
-        author = EmployeeProfile.objects.create(full_name='DEMO · Анна Волкова', role='author')
-        mixture = MixtureType.objects.create(code='DEMO-316', title='Зимняя монтажная пена · учебная серия')
-        MixtureType.objects.create(code='DEMO-302', title='Всесезонная пена · учебная серия')
-        material = Material.objects.create(name='DEMO · Полиол P-101', density_g_ml=Decimal('1.234'), price_per_kg=Decimal('0'))
-        old = RecipeVersion.objects.create(mixture_type=mixture, version_label='DEMO-316.01', title='Базовый состав',
-                                          status='published', notes=RECIPE_NOTE, created_by=author)
-        group = RecipeGroup.objects.create(recipe_version=old, label='A', quantity_basis='mass_percent', completeness='complete')
-        component = RecipeComponent.objects.create(group=group, position=1, unbatched_material=material, quantity_value=Decimal('99.5'))
-        edited = RecipeVersion.objects.create(mixture_type=mixture, version_label='DEMO-316.02', title='Моя доработка',
-                                             notes=RECIPE_NOTE, status='published', created_by=author)
-        event = ChangeEvent.objects.create(employee=author, entity_type='recipe', entity_id=old.pk, action='created',
-                                          summary='Старая история', after={'title': old.title, 'quantity': '99.5'})
-        call_command('seed_demo', confirm_demo=True, upgrade_winter=True, stdout=StringIO())
-        component.refresh_from_db()
-        material.refresh_from_db()
-        edited.refresh_from_db()
-        event.refresh_from_db()
-        self.assertEqual(component.quantity_value, Decimal('99.5'))
-        self.assertEqual(component.unbatched_material_id, material.pk)
-        self.assertEqual(material.density_g_ml, Decimal('1.234'))
-        self.assertEqual(material.price_per_kg, Decimal('0'))
-        self.assertEqual(edited.title, 'Моя доработка')
-        self.assertEqual(event.after, {'title': 'Базовый состав', 'quantity': '99.5'})
-        self.assertEqual(RecipeVersion.objects.filter(version_label__endswith='.W1').count(), 2)
-        self.assertEqual(CalculationRecord.objects.count(), 2)
-        counts = (RecipeVersion.objects.count(), ChangeEvent.objects.count(), SourceFile.objects.count(), MaterialLot.objects.count())
-        call_command('seed_demo', confirm_demo=True, upgrade_winter=True, stdout=StringIO())
-        self.assertEqual(counts, (RecipeVersion.objects.count(), ChangeEvent.objects.count(), SourceFile.objects.count(), MaterialLot.objects.count()))

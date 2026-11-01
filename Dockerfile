@@ -11,7 +11,7 @@ RUN pip install -r requirements.txt \
 COPY --chown=lims:lims . ./
 RUN mkdir -p /app/var /app/media /app/staticfiles \
     && chown -R lims:lims /app/var /app/media /app/staticfiles \
-    && chmod +x /app/deploy/entrypoint.sh
+    && chmod +x /app/deploy/entrypoint.sh /app/deploy/initialize.sh
 USER lims
 EXPOSE 8000
 ENTRYPOINT ["/app/deploy/entrypoint.sh"]

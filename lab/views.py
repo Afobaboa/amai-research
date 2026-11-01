@@ -12,7 +12,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Max, Q
 from django.forms.models import model_to_dict
-from django.http import HttpResponseForbidden, HttpResponse
+from django.http import HttpResponseForbidden, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -507,6 +507,10 @@ def conditioning_add(request, pk):
     if card.status == "completed":
         return HttpResponseForbidden("Завершённая карточка доступна только для просмотра.")
     form = ConditioningForm(request.POST or None)
+    if card.source_sheet_id:
+        form.fields["source_cell"].widget.attrs[
+            "data-source-sheet"
+        ] = str(card.source_sheet_id)
     if request.method == 'POST' and form.is_valid():
         cell = form.cleaned_data.get('source_cell')
         if cell and card.source_sheet_id and cell.sheet_id != card.source_sheet_id:
@@ -544,3 +548,16 @@ def history(request):
 @site_required
 def sources(request):
     return render(request, "lab/sources.html", {"sources": SourceFile.objects.prefetch_related("sheets"), "materials": Material.objects.all(), "metrics": Metric.objects.all()})
+
+
+@site_required
+def source_cell_choices(request):
+    from .models import SourceCell
+    sheet = request.GET.get('sheet', '')
+    if not sheet.isdigit():
+        return JsonResponse({'cells': []})
+    cells = SourceCell.objects.filter(sheet_id=sheet).order_by('pk')
+    return JsonResponse({'cells': [
+        {'id': cell.pk, 'label': f'{cell.sheet.name}!{cell.address}'}
+        for cell in cells.select_related('sheet')[:1000]
+    ]})

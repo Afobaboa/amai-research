@@ -4,6 +4,32 @@ from django.urls import reverse
 from ..ui_text import FIELD_LABELS as LABELS
 register = template.Library()
 
+PROPERTY_LABELS = {
+    'ohv': 'Гидроксильное число',
+    'density_g_ml': 'Плотность компонента',
+    'source_price_per_kg': 'Цена из исходной рецептуры',
+    'isocyanate_nco_pct': 'Содержание NCO в изоцианате',
+    'can_volume_ml': 'Объём баллона',
+    'polyol_ratio': 'Массовые части смеси A',
+    'isocyanate_ratio': 'Массовые части изоцианата',
+    'gas_mix_mass_pct': 'Массовая доля газовой смеси',
+}
+UNIT_LABELS = {
+    'mg KOH/g': 'мг KOH/г', 'g/ml': 'г/мл', 'ml': 'мл',
+    'source_currency/kg': 'валюта не указана / кг',
+    'weight_parts': 'масс. ч.',
+}
+
+
+@register.filter
+def property_label(value):
+    return PROPERTY_LABELS.get(value, value)
+
+
+@register.filter
+def unit_label(value):
+    return UNIT_LABELS.get(value, value or '—')
+
 @register.filter
 def display_value(value):
     if value is None or value == '':
@@ -94,7 +120,8 @@ def event_changes(event):
 
 @register.filter
 def action_label(action):
-    return {'created': 'Создание', 'updated': 'Изменение', 'result_added': 'Результат',
+    return {'imported': 'Перенос из Excel',
+            'created': 'Создание', 'updated': 'Изменение', 'result_added': 'Результат',
             'observation_added': 'Наблюдение', 'conditioning_added': 'Обработка', 'calculation_saved': 'Расчёт',
             'demo_updated': 'Обновление примеров'}.get(action, 'Запись')
 

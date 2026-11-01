@@ -3,6 +3,7 @@ from django.urls import include, path
 from . import assistant_conversations, assistant_views, views
 
 urlpatterns = [
+    path('source-cell-choices/', views.source_cell_choices, name='source_cell_choices'),
     path('assistant/conversations/', assistant_conversations.conversations),
     path('assistant/conversations/<int:pk>/', assistant_conversations.conversation),
     path('assistant/conversations/<int:pk>/send/', assistant_conversations.submit),

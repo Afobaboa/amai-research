@@ -1,3 +1,113 @@
-{% extends 'lab/base.html' %}{% block title %}{{ source.title|default:source.original_path }}{% endblock %}{% block breadcrumb %}Источники / Карточка{% endblock %}{% block content %}
-<a class="back-link" href="{% url 'source_list' %}">← Все источники</a><div class="page-heading"><div><div class="eyebrow">{{ ui_text.source|upper }}</div><h1>{{ source.title|default:source.original_path }}</h1><p>{{ source.get_kind_display }} · {{ source.created_by.full_name|default:'Автор не указан' }} · {{ source.created_at|date:'d.m.Y, H:i' }}</p></div><div class="heading-actions">{% if source.attachment %}<a class="button" href="{% url 'source_download' source.pk %}">Скачать файл ↓</a>{% endif %}{% if can_write %}<a class="button" href="{% url 'source_edit' source.pk %}">Редактировать</a><a class="button primary" href="{% url 'source_sheet_create' source.pk %}">+ Лист / раздел</a>{% endif %}</div></div><div class="detail-grid"><div>{% if source.notes %}<section class="panel"><div class="panel-heading"><h2>Описание / содержание</h2></div><div class="panel-body preserve-text">{{ source.notes }}</div></section>{% endif %}{% for sheet in sheets %}<section class="panel"><div class="panel-heading"><div><h2>{{ sheet.name }}</h2><p>Раздел для связи с рецептурами и испытаниями</p></div>{% if can_write %}<a class="button small" href="{% url 'source_cell_create' source.pk sheet.pk %}">+ Фрагмент</a>{% endif %}</div><div class="table-scroll"><table><thead><tr><th>ФРАГМЕНТ</th><th>ТИП</th><th>ИСХОДНОЕ ЗНАЧЕНИЕ</th><th>ФОРМУЛА / КЭШ</th></tr></thead><tbody>{% for cell in sheet.cells.all %}<tr><td class="mono">{{ cell.address }}</td><td>{% if cell.cell_kind == 'text' %}Текст{% elif cell.cell_kind == 'numeric' %}Число{% elif cell.cell_kind == 'formula' %}Формула{% elif cell.cell_kind == 'blank' %}Пусто{% else %}Другое{% endif %}</td><td><span class="preserve-text">{{ cell.raw_value|default_if_none:'—' }}</span></td><td><span class="preserve-text">{{ cell.formula_text|default_if_none:'—' }}</span>{% if cell.cached_value is not None %}<div class="cell-subtitle">Кэш: {{ cell.cached_value }}</div>{% endif %}</td></tr>{% empty %}<tr><td colspan="4" class="muted">Фрагменты еще не записаны</td></tr>{% endfor %}</tbody></table></div></section>{% empty %}<section class="panel"><div class="empty-state"><h3>Добавьте лист или раздел</h3><p>Раздел позволит связать этот документ с рецептурой, карточкой испытания и конкретными исходными фрагментами.</p>{% if can_write %}<a class="button" href="{% url 'source_sheet_create' source.pk %}">Добавить раздел</a>{% endif %}</div></section>{% endfor %}<section class="panel"><div class="panel-heading"><h2>Рецептуры из этого источника</h2></div>{% include 'lab/catalog/recipe_usage.html' %}</section><section class="panel"><div class="panel-heading"><h2>{{ ui_text.test_links }}</h2></div><div class="table-scroll"><table><thead><tr><th>КАРТОЧКА</th><th>НАЗВАНИЕ</th><th>СТАТУС</th></tr></thead><tbody>{% for card in cards %}<tr><td><a class="record-link" href="{% url 'test_detail' card.pk %}">{{ card.identifier|default:card.pk }}</a></td><td>{{ card.title }}</td><td>{% include 'lab/includes/status.html' with status=card.status %}</td></tr>{% empty %}<tr><td colspan="3" class="muted">Связанных испытаний пока нет</td></tr>{% endfor %}</tbody></table></div></section><section class="panel"><div class="panel-heading"><h2>История источника</h2></div><div class="panel-body">{% include 'lab/includes/events.html' %}</div></section></div><aside><section class="panel"><div class="panel-heading"><h2>Происхождение</h2></div><div class="panel-body"><dl class="meta-list"><div><dt>Исходное имя / путь</dt><dd>{{ source.original_path }}</dd></div>{% if source.url %}<div><dt>Ссылка на документ</dt><dd><a class="record-link" href="{{ source.url }}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a></dd></div>{% endif %}<div><dt>SHA-256 файла</dt><dd class="mono">{{ source.sha256|default:'Файла нет' }}</dd></div><div><dt>Автор</dt><dd>{{ source.created_by.full_name|default:'Не указан' }}</dd></div></dl></div></section><section class="panel"><div class="panel-heading"><h2>Паспорта партий</h2></div><div class="panel-body">{% for lot in lots %}<p><a class="record-link" href="{% url 'lot_detail' lot.pk %}">{{ lot.material.name }} · {{ lot.lot_code }} ↗</a></p>{% empty %}<p class="muted">Источник пока не указан в партиях.</p>{% endfor %}</div></section><div class="info-note">Файл хранится как первичный документ. Добавление источника и его фрагментов не запускает импорт Excel и не проверяет формулы.</div></aside></div>
+{% extends 'lab/base.html' %}
+{% block title %}{{ source.title|default:source.original_path }}{% endblock %}
+{% block breadcrumb %}Источники / Карточка{% endblock %}
+{% block content %}
+<a class="back-link" href="{% url 'source_list' %}">← Все источники</a>
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">{{ ui_text.source|upper }}</div>
+    <h1>{{ source.title|default:source.original_path }}</h1>
+    <p>{{ source.get_kind_display }} · {{ source.created_by.full_name|default:'Автор не указан' }} · {{ source.created_at|date:'d.m.Y, H:i' }}</p>
+  </div>
+  <div class="heading-actions">
+    {% if source.attachment %}<a class="button" href="{% url 'source_download' source.pk %}">Скачать файл ↓</a>{% endif %}
+    {% if can_write %}
+    <a class="button" href="{% url 'source_edit' source.pk %}">Редактировать</a>
+    <a class="button primary" href="{% url 'source_sheet_create' source.pk %}">+ Лист / раздел</a>
+    {% endif %}
+  </div>
+</div>
+<div class="detail-grid">
+  <div>
+    {% if source.notes %}
+    <section class="panel">
+      <div class="panel-heading"><h2>Описание / содержание</h2></div>
+      <div class="panel-body preserve-text">{{ source.notes }}</div>
+    </section>
+    {% endif %}
+    {% if selected_sheet %}
+    <section class="panel">
+      <form method="get" class="filter-bar source-picker">
+        <div class="field">
+          <label for="source-sheet">Лист / раздел ({{ sheets|length }})</label>
+          <select name="sheet" id="source-sheet">
+            {% for sheet in sheets %}
+            <option value="{{ sheet.pk }}"{% if sheet.pk == selected_sheet.pk %} selected{% endif %}>{{ sheet.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="source-cell">Ячейка</label>
+          <input name="cell" id="source-cell" value="{{ focus_address }}" placeholder="Например B12" maxlength="40">
+        </div>
+        <button class="button small" type="submit">Открыть</button>
+      </form>
+      <div class="panel-heading">
+        <div><h2>{{ selected_sheet.name }}</h2><p>Исходные ячейки и комментарии листа</p></div>
+        {% if can_write %}<a class="button small" href="{% url 'source_cell_create' source.pk selected_sheet.pk %}">+ Фрагмент</a>{% endif %}
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>ФРАГМЕНТ</th><th>ТИП</th><th>ИСХОДНОЕ ЗНАЧЕНИЕ</th><th>ФОРМУЛА / КЭШ</th></tr></thead>
+          <tbody>
+            {% for cell in cells_page %}
+            <tr id="cell-{{ cell.pk }}"{% if cell.address == focus_address %} class="source-cell-target"{% endif %}>
+              <td class="mono">{{ cell.address }}</td>
+              <td>{% if cell.cell_kind == 'comment' %}Комментарий Excel{% elif cell.formula_text or cell.cell_kind == 'formula' %}Формула{% elif cell.cell_kind == 'text' or cell.cell_kind == 's' or cell.cell_kind == 'inlineStr' or cell.cell_kind == 'str' %}Текст{% elif cell.cell_kind == 'numeric' or cell.cell_kind == 'n' %}Число{% elif cell.cell_kind == 'blank' %}Пусто{% else %}Другое{% endif %}</td>
+              <td><span class="preserve-text">{{ cell.raw_value|default_if_none:'—' }}</span></td>
+              <td><span class="preserve-text">{{ cell.formula_text|default_if_none:'—' }}</span>{% if cell.cached_value is not None %}<div class="cell-subtitle">Кэш: {{ cell.cached_value }}</div>{% endif %}</td>
+            </tr>
+            {% empty %}<tr><td colspan="4" class="muted">Фрагменты еще не записаны</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span>Фрагментов: {{ cells_page.paginator.count }}</span>
+        <nav class="pagination" aria-label="Страницы фрагментов">
+          {% if cells_page.has_previous %}<a href="?sheet={{ selected_sheet.pk }}&page={{ cells_page.previous_page_number }}">←</a>{% endif %}
+          <span>{{ cells_page.number }} / {{ cells_page.paginator.num_pages }}</span>
+          {% if cells_page.has_next %}<a href="?sheet={{ selected_sheet.pk }}&page={{ cells_page.next_page_number }}">→</a>{% endif %}
+        </nav>
+      </div>
+    </section>
+    {% else %}
+    <section class="panel"><div class="empty-state">
+      <h3>Добавьте лист или раздел</h3>
+      <p>Раздел позволит связать этот документ с рецептурой, карточкой испытания и конкретными исходными фрагментами.</p>
+      {% if can_write %}<a class="button" href="{% url 'source_sheet_create' source.pk %}">Добавить раздел</a>{% endif %}
+    </div></section>
+    {% endif %}
+    <section class="panel">
+      <div class="panel-heading"><h2>Рецептуры из этого источника</h2></div>
+      {% include 'lab/catalog/recipe_usage.html' %}
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>{{ ui_text.test_links }}</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>КАРТОЧКА</th><th>НАЗВАНИЕ</th><th>СТАТУС</th></tr></thead>
+        <tbody>{% for card in cards %}<tr><td><a class="record-link" href="{% url 'test_detail' card.pk %}">{{ card.identifier|default:card.pk }}</a></td><td>{{ card.title }}</td><td>{% include 'lab/includes/status.html' with status=card.status %}</td></tr>{% empty %}<tr><td colspan="3" class="muted">Связанных испытаний пока нет</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>История источника</h2></div>
+      <div class="panel-body">{% include 'lab/includes/events.html' %}</div>
+    </section>
+  </div>
+  <aside>
+    <section class="panel">
+      <div class="panel-heading"><h2>Происхождение</h2></div>
+      <div class="panel-body"><dl class="meta-list">
+        <div><dt>Исходное имя / путь</dt><dd>{{ source.original_path }}</dd></div>
+        {% if source.url %}<div><dt>Ссылка на документ</dt><dd><a class="record-link" href="{{ source.url }}" target="_blank" rel="noopener noreferrer">Открыть источник ↗</a></dd></div>{% endif %}
+        <div><dt>SHA-256 файла</dt><dd class="mono">{{ source.sha256|default:'Файла нет' }}</dd></div>
+        <div><dt>Автор</dt><dd>{{ source.created_by.full_name|default:'Не указан' }}</dd></div>
+      </dl></div>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><h2>Паспорта партий</h2></div>
+      <div class="panel-body">{% for lot in lots %}<p><a class="record-link" href="{% url 'lot_detail' lot.pk %}">{{ lot.material.name }} · {{ lot.lot_code }} ↗</a></p>{% empty %}<p class="muted">Источник пока не указан в партиях.</p>{% endfor %}</div>
+    </section>
+    <div class="info-note">Ячейки показывают первичные записи, формулы и сохранённый кэш. Добавление источника вручную не запускает перенос таблиц и не проверяет формулы.</div>
+  </aside>
+</div>
 {% endblock %}

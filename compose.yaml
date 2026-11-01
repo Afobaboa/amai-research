@@ -1,3 +1,17 @@
+x-app-environment: &app_environment
+  DEBUG: "0"
+  DEMO_MODE: ${DEMO_MODE:-0}
+  SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+  SITE_PASSWORD_HASH: ${SITE_PASSWORD_HASH:?Set SITE_PASSWORD_HASH in .env}
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:?Set ALLOWED_HOSTS in .env}
+  CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:?Set CSRF_TRUSTED_ORIGINS in .env}
+  DATABASE_URL: postgresql://${POSTGRES_USER:-lims}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-lims}
+  CLOUD_RU_API_KEY: ${CLOUD_RU_API_KEY:-}
+  CLOUD_RU_MODEL: ${CLOUD_RU_MODEL:-deepseek-ai/DeepSeek-V4-Pro}
+  CLOUD_RU_BASE_URL: ${CLOUD_RU_BASE_URL:-https://foundation-models.api.cloud.ru/v1}
+  CLOUD_RU_TIMEOUT: ${CLOUD_RU_TIMEOUT:-90}
+  ASSISTANT_MAX_TOOL_ROUNDS: ${ASSISTANT_MAX_TOOL_ROUNDS:-5}
+
 services:
   db:
     image: postgres:17-alpine
@@ -14,25 +28,25 @@ services:
       timeout: 5s
       retries: 12
 
-  web:
+  initialize:
     build: .
-    restart: unless-stopped
-    environment: &app_environment
-      DEBUG: "0"
-      DEMO_MODE: ${DEMO_MODE:-0}
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
-      SITE_PASSWORD_HASH: ${SITE_PASSWORD_HASH:?Set SITE_PASSWORD_HASH in .env}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:?Set ALLOWED_HOSTS in .env}
-      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:?Set CSRF_TRUSTED_ORIGINS in .env}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-lims}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-lims}
-      CLOUD_RU_API_KEY: ${CLOUD_RU_API_KEY:-}
-      CLOUD_RU_MODEL: ${CLOUD_RU_MODEL:-deepseek-ai/DeepSeek-V4-Pro}
-      CLOUD_RU_BASE_URL: ${CLOUD_RU_BASE_URL:-https://foundation-models.api.cloud.ru/v1}
-      CLOUD_RU_TIMEOUT: ${CLOUD_RU_TIMEOUT:-90}
-      ASSISTANT_MAX_TOOL_ROUNDS: ${ASSISTANT_MAX_TOOL_ROUNDS:-5}
+    restart: "no"
+    entrypoint: ["/app/deploy/initialize.sh"]
+    command: []
+    environment: *app_environment
     depends_on:
       db:
         condition: service_healthy
+
+  web:
+    build: .
+    restart: unless-stopped
+    environment: *app_environment
+    depends_on:
+      db:
+        condition: service_healthy
+      initialize:
+        condition: service_completed_successfully
     expose:
       - "8000"
     volumes:
@@ -47,6 +61,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      initialize:
+        condition: service_completed_successfully
 
 
   caddy:
