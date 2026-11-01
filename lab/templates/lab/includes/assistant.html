@@ -1,0 +1,35 @@
+<button class="assistant-launcher" id="assistant-launcher" type="button" aria-controls="lab-assistant" aria-expanded="false"><span aria-hidden="true">✦</span> Помощник</button>
+<div class="assistant-backdrop" id="assistant-backdrop" hidden></div>
+<aside class="assistant" id="lab-assistant" aria-labelledby="assistant-title" data-employee="{{ employee.pk }}" data-status-url="/assistant/status/" data-chat-url="/assistant/chat/" hidden>
+  <header class="assistant-header">
+    <span class="assistant-mark" aria-hidden="true">✦</span>
+    <div class="assistant-heading"><h2 id="assistant-title">Помощник лаборатории</h2><span id="assistant-model">Cloud.ru · подключение…</span></div>
+    <button class="assistant-icon" id="assistant-new" type="button" title="Новый диалог" aria-label="Новый диалог">↺</button>
+    <button class="assistant-icon" id="assistant-close" type="button" title="Свернуть помощника" aria-label="Свернуть помощника">×</button>
+  </header>
+  <div class="assistant-context"><span class="assistant-context-dot"></span><span>Материалы, рецептуры и испытания</span><span class="assistant-readonly">Чтение</span></div>
+  <div class="assistant-status" id="assistant-status" role="status" hidden></div>
+  <div class="assistant-scroll" id="assistant-scroll">
+    <div class="assistant-welcome" id="assistant-welcome">
+      <span class="assistant-welcome-mark" aria-hidden="true">✦</span>
+      <p class="assistant-eyebrow">ОТ ВОПРОСА К СЛЕДУЮЩЕМУ ОПЫТУ</p>
+      <h3>Разберёмся вместе</h3>
+      <p>Помогу сравнить эксперименты, обсудить гипотезу и найти нужный раздел. Проверю данные и покажу источники.</p>
+      <div class="assistant-suggestions">
+        <button type="button" data-assistant-prompt="Какие эксперименты есть в базе и что по их результатам стоит исследовать дальше?">Что исследовать дальше? <span aria-hidden="true">↗</span></button>
+        <button type="button" data-assistant-prompt="Сравни последние рецептуры и связанные с ними испытания. Какие различия подтверждены данными?">Сравнить рецептуры <span aria-hidden="true">↗</span></button>
+        <button type="button" data-assistant-prompt="Как создать рецептуру, связать её с испытанием и записать результаты? Проверь интерфейс и документацию.">Как работать с системой? <span aria-hidden="true">↗</span></button>
+      </div>
+    </div>
+    <div class="assistant-messages" id="assistant-messages" role="log" aria-label="Переписка с помощником" aria-live="polite" aria-relevant="additions"></div>
+    <div class="assistant-pending" id="assistant-pending" role="status" hidden><span class="assistant-pulse" aria-hidden="true"></span>Проверяю данные и готовлю ответ…</div>
+    <div class="assistant-error" id="assistant-error" role="alert" hidden><p id="assistant-error-text"></p><button type="button" id="assistant-retry">Повторить запрос</button></div>
+  </div>
+  <form class="assistant-compose" id="assistant-form">
+    {% csrf_token %}
+    <label class="assistant-sr-only" for="assistant-input">Вопрос помощнику</label>
+    <textarea id="assistant-input" rows="3" maxlength="6000" placeholder="Спросите об опыте или гипотезе…" aria-describedby="assistant-input-hint" required></textarea>
+    <div class="assistant-compose-bottom"><span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка</span><button id="assistant-cancel" type="button" hidden>Остановить</button><button id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button></div>
+  </form>
+  <p class="assistant-disclosure">Вопросы и найденные данные передаются в Cloud.ru. Ответы ИИ проверяйте по источникам.</p>
+</aside>

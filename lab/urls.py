@@ -1,8 +1,10 @@
 from django.urls import include, path
 
-from . import views
+from . import assistant_views, views
 
 urlpatterns = [
+    path('assistant/status/', assistant_views.status, name='assistant_status'),
+    path('assistant/chat/', assistant_views.chat, name='assistant_chat'),
     path('', include('lab.catalog_urls')),
     path('', include('lab.template_urls')),
     path("login/", views.login_view, name="login"),

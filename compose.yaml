@@ -25,6 +25,11 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:?Set ALLOWED_HOSTS in .env}
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:?Set CSRF_TRUSTED_ORIGINS in .env}
       DATABASE_URL: postgresql://${POSTGRES_USER:-lims}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-lims}
+      CLOUD_RU_API_KEY: ${CLOUD_RU_API_KEY:-}
+      CLOUD_RU_MODEL: ${CLOUD_RU_MODEL:-deepseek-ai/DeepSeek-V4-Pro}
+      CLOUD_RU_BASE_URL: ${CLOUD_RU_BASE_URL:-https://foundation-models.api.cloud.ru/v1}
+      CLOUD_RU_TIMEOUT: ${CLOUD_RU_TIMEOUT:-90}
+      ASSISTANT_MAX_TOOL_ROUNDS: ${ASSISTANT_MAX_TOOL_ROUNDS:-5}
     depends_on:
       db:
         condition: service_healthy

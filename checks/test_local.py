@@ -116,6 +116,72 @@ class LocalRunnerTests(unittest.TestCase):
                     'ALLOWED_HOSTS', 'CSRF_TRUSTED_ORIGINS'):
             self.assertNotIn(key, env)
 
+    def test_tests_and_migrations_do_not_inherit_api_credentials_or_read_dotenv(self):
+        with mock.patch.dict(os.environ, {'CLOUD_RU_API_KEY': 'do-not-use-real-key',
+                                         'ASSISTANT_MAX_TOOL_ROUNDS': '8'}), \
+                mock.patch.object(self.runner, 'read_assistant_environment') as read:
+            env = self.runner.build_environment()
+            read.assert_not_called()
+        self.assertNotIn('CLOUD_RU_API_KEY', env)
+        self.assertNotIn('ASSISTANT_MAX_TOOL_ROUNDS', env)
+
+    def test_dev_dotenv_loads_only_assistant_settings_without_executing_shell(self):
+        with tempfile.TemporaryDirectory(prefix='lims-assistant-env-') as directory:
+            project = Path(directory)
+            marker = project / 'must-not-be-created'
+            (project / '.env').write_text(
+                "DATABASE_URL='postgresql://production/never-use'\n"
+                "SECRET_KEY='production-secret'\n"
+                "SITE_PASSWORD_HASH='broken quote must not be parsed\n"
+                "CLOUD_RU_API_KEY='sample#quoted-key' # comment\n"
+                "CLOUD_RU_MODEL=deepseek-ai/DeepSeek-V4-Pro\n"
+                f"CLOUD_RU_BASE_URL='$(touch {marker})'\n"
+                "ASSISTANT_MAX_TOOL_ROUNDS=4\n",
+                encoding='utf-8',
+            )
+            with mock.patch.object(self.runner, 'ROOT', project), \
+                    mock.patch.dict(os.environ, {}, clear=True):
+                env = self.runner.build_environment(with_assistant=True)
+            self.assertEqual(env['CLOUD_RU_API_KEY'], 'sample#quoted-key')
+            self.assertEqual(env['CLOUD_RU_BASE_URL'], f'$(touch {marker})')
+            self.assertEqual(env['ASSISTANT_MAX_TOOL_ROUNDS'], '4')
+            self.assertFalse(marker.exists())
+            for key in ('DATABASE_URL', 'SECRET_KEY', 'SITE_PASSWORD_HASH'):
+                self.assertNotIn(key, env)
+
+    def test_explicit_shell_configuration_takes_precedence_without_modifying_parent(self):
+        with tempfile.TemporaryDirectory(prefix='lims-assistant-env-') as directory:
+            project = Path(directory)
+            (project / '.env').write_text('CLOUD_RU_API_KEY=file-key\nCLOUD_RU_MODEL=file-model\n')
+            with mock.patch.object(self.runner, 'ROOT', project), \
+                    mock.patch.dict(os.environ, {'CLOUD_RU_API_KEY': 'shell-key',
+                                                 'CLOUD_RU_MODEL': ''}, clear=True):
+                before = dict(os.environ)
+                env = self.runner.build_environment(with_assistant=True)
+                self.assertEqual(dict(os.environ), before)
+            self.assertEqual(env['CLOUD_RU_API_KEY'], 'shell-key')
+            self.assertEqual(env['CLOUD_RU_MODEL'], '')
+
+    def test_malformed_dotenv_reports_only_key_and_line_number_without_secret(self):
+        with tempfile.TemporaryDirectory(prefix='lims-assistant-env-') as directory:
+            path = Path(directory) / '.env'
+            path.write_text("CLOUD_RU_API_KEY='secret-never-include-in-error\n")
+            with self.assertRaises(SystemExit) as error:
+                self.runner.read_assistant_environment(path)
+            self.assertIn('CLOUD_RU_API_KEY', str(error.exception))
+            self.assertIn('1', str(error.exception))
+            self.assertNotIn('secret-never', str(error.exception))
+
+    def test_only_interactive_manage_commands_opt_into_assistant_environment(self):
+        for command, expected in [('runserver', True), ('shell', True),
+                                  ('assistant_models', True), ('test', False),
+                                  ('check', False), ('migrate', False)]:
+            with self.subTest(command=command), \
+                    mock.patch.object(self.runner, 'build_environment', return_value={}) as build, \
+                    mock.patch.object(self.runner.subprocess, 'run'):
+                self.runner.run_manage([command])
+                self.assertEqual(build.call_args.kwargs['with_assistant'], expected)
+
     def test_backend_failure_removes_only_its_scratch_directory(self):
         scratch_paths = []
 

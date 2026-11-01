@@ -15,4 +15,4 @@ RUN mkdir -p /app/var /app/media /app/staticfiles \
 USER lims
 EXPOSE 8000
 ENTRYPOINT ["/app/deploy/entrypoint.sh"]
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-", "--error-logfile", "-"]
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--worker-class", "gthread", "--threads", "4", "--timeout", "240", "--access-logfile", "-", "--error-logfile", "-"]

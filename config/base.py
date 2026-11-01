@@ -1,4 +1,5 @@
 """Shared application settings; runtime profiles choose credentials and storage."""
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,3 +23,10 @@ SESSION_COOKIE_AGE = 60 * 60 * 12
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 X_FRAME_OPTIONS = 'DENY'
+
+# Shared by local and production profiles. These values never enter templates.
+CLOUD_RU_API_KEY = os.getenv('CLOUD_RU_API_KEY', '').strip()
+CLOUD_RU_MODEL = os.getenv('CLOUD_RU_MODEL', 'deepseek-ai/DeepSeek-V4-Pro').strip()
+CLOUD_RU_BASE_URL = os.getenv('CLOUD_RU_BASE_URL', 'https://foundation-models.api.cloud.ru/v1').rstrip('/')
+CLOUD_RU_TIMEOUT = os.getenv('CLOUD_RU_TIMEOUT', '90')
+ASSISTANT_MAX_TOOL_ROUNDS = os.getenv('ASSISTANT_MAX_TOOL_ROUNDS', '5')

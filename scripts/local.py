@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sqlite3
 import sys
@@ -13,14 +14,49 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parent.parent
 PYTHON = ROOT / '.venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+ASSISTANT_ENV_KEYS = (
+    'CLOUD_RU_API_KEY', 'CLOUD_RU_MODEL', 'CLOUD_RU_BASE_URL',
+    'CLOUD_RU_TIMEOUT', 'ASSISTANT_MAX_TOOL_ROUNDS',
+)
 
 
-def build_environment(database_path=None):
+def read_assistant_environment(path):
+    """Read only chatbot settings, without shell expansion or production config."""
+    if not path.is_file():
+        return {}
+    values = {}
+    for number, line in enumerate(path.read_text(encoding='utf-8-sig').splitlines(), 1):
+        line = line.strip()
+        if line.startswith('export '):
+            line = line[7:].lstrip()
+        key, separator, raw = line.partition('=')
+        key = key.strip()
+        if not separator or key not in ASSISTANT_ENV_KEYS:
+            continue
+        try:
+            parts = shlex.split(raw.strip(), comments=True, posix=True)
+        except ValueError:
+            raise SystemExit(f'Неверные кавычки в .env, строка {number} ({key}).') from None
+        if len(parts) > 1:
+            raise SystemExit(f'Значение {key} в .env, строка {number}, нужно заключить в кавычки.')
+        values[key] = parts[0] if parts else ''
+    return values
+
+
+def build_environment(database_path=None, *, with_assistant=False):
     """Keep local children independent of a developer's cloud configuration."""
     env = os.environ.copy()
     for key in ('DATABASE_URL', 'SITE_PASSWORD_HASH', 'SHARED_PASSWORD_HASH', 'SQLITE_PATH',
                 'SECRET_KEY', 'ALLOWED_HOSTS', 'CSRF_TRUSTED_ORIGINS', 'PYTHONPATH'):
         env.pop(key, None)
+    # Setup, migrations, and tests never inherit a paid API credential. Only
+    # interactive development and the explicit models command opt in below.
+    for key in tuple(env):
+        if key.startswith(('CLOUD_RU_', 'ASSISTANT_')):
+            env.pop(key, None)
+    if with_assistant:
+        env.update(read_assistant_environment(ROOT / '.env'))
+        env.update({key: os.environ[key] for key in ASSISTANT_ENV_KEYS if key in os.environ})
     env.update(DJANGO_SETTINGS_MODULE='config.local', DEBUG='1', DEMO_MODE='1', PYTHONUNBUFFERED='1')
     if database_path is not None:
         env['LIMS_LOCAL_DB'] = str(database_path)
@@ -31,7 +67,9 @@ def run_manage(args, *, database_path=None):
     if not PYTHON.is_file():
         raise SystemExit('Сначала выполните make setup (или python3 scripts/local.py setup).')
     subprocess.run([str(PYTHON), 'manage.py', *args], cwd=ROOT,
-                   env=build_environment(database_path), check=True)
+                   env=build_environment(database_path, with_assistant=bool(args and args[0] in {
+                       'runserver', 'shell', 'assistant_models',
+                   })), check=True)
 
 
 def setup():
