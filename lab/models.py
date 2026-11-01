@@ -812,3 +812,35 @@ class CalculationRecord(ImmutableDocument):
 
     def __str__(self):
         return f"Расчет {self.recipe_version} · {self.created_at}"
+
+
+class AssistantConversation(models.Model):
+    employee = models.ForeignKey(EmployeeProfile, on_delete=models.CASCADE)
+    title = models.CharField(max_length=100, default='Новый диалог')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-pk']
+
+
+class AssistantJob(models.Model):
+    # A browser-supplied UUID makes a repeated submission idempotent.
+    id = models.UUIDField(primary_key=True, editable=False)
+    conversation = models.ForeignKey(AssistantConversation, on_delete=models.CASCADE, related_name='jobs')
+    journal = models.OneToOneField(AssistantRequestLog, on_delete=models.PROTECT)
+    status = models.CharField(max_length=16, default='queued', db_index=True)
+    form_state = models.JSONField(null=True, blank=True)
+    reply = models.TextField(blank=True)
+    progress = models.JSONField(default=list)
+    activity = models.CharField(max_length=240, default='В очереди…')
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True)
+    finished_at = models.DateTimeField(null=True)
+
+    class Meta:
+        ordering = ['created_at', 'pk']
+        constraints = [models.UniqueConstraint(
+            fields=['conversation'], condition=Q(status__in=['queued', 'running']),
+            name='assistant_one_active_job_per_chat',
+        )]

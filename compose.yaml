@@ -17,7 +17,7 @@ services:
   web:
     build: .
     restart: unless-stopped
-    environment:
+    environment: &app_environment
       DEBUG: "0"
       DEMO_MODE: ${DEMO_MODE:-0}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
@@ -38,6 +38,16 @@ services:
     volumes:
       - media:/app/media
       - staticfiles:/app/staticfiles
+
+  assistant-worker:
+    build: .
+    restart: unless-stopped
+    entrypoint: ["python", "manage.py", "assistant_worker"]
+    environment: *app_environment
+    depends_on:
+      db:
+        condition: service_healthy
+
 
   caddy:
     image: caddy:2-alpine

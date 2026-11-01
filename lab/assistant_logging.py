@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class RequestJournal:
-    def __init__(self, employee, messages, page):
+    def __init__(self, employee, messages, page, *, record=None):
         self.usage = UsageJournal()
         self.started = time.monotonic()
         self.finished = False
         self.reply = ''
         self.progress = []
-        self.record = AssistantRequestLog.objects.create(
+        self.record = record or AssistantRequestLog.objects.create(
             employee=employee, employee_name=employee.full_name,
             employee_role=employee.role,
             messages=messages, question=messages[-1]['content'], page=page[:2048],

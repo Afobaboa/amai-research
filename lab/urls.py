@@ -1,8 +1,12 @@
 from django.urls import include, path
 
-from . import assistant_views, views
+from . import assistant_conversations, assistant_views, views
 
 urlpatterns = [
+    path('assistant/conversations/', assistant_conversations.conversations),
+    path('assistant/conversations/<int:pk>/', assistant_conversations.conversation),
+    path('assistant/conversations/<int:pk>/send/', assistant_conversations.submit),
+    path('assistant/conversations/<int:pk>/jobs/<uuid:job_id>/cancel/', assistant_conversations.cancel),
     path('assistant/status/', assistant_views.status, name='assistant_status'),
     path('assistant/chat/', assistant_views.chat, name='assistant_chat'),
     path('', include('lab.catalog_urls')),

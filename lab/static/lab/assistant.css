@@ -14,3 +14,8 @@
 .assistant-history-notice{display:flex;align-items:flex-start;gap:8px;flex-shrink:0;margin:0 16px 10px;padding:10px 12px;border:1px solid #e2c17b;border-radius:8px;background:#fff5dc;color:#725019;font-size:11px;line-height:1.6;overflow-wrap:anywhere}.assistant-history-notice>span:first-child{flex-shrink:0;font-size:16px;line-height:1.4}.assistant-history-notice strong{display:block;font-weight:600}
 
 .assistant-compose #assistant-cancel{display:grid;place-items:center;width:29px;height:29px;flex-shrink:0;padding:0;font-size:16px;line-height:1}.assistant-compose #assistant-cancel:hover{background:#e1e9d8}.assistant-compose #assistant-cancel:focus-visible{outline:2px solid #718664;outline-offset:2px}
+
+.assistant-chat-picker { display:flex; align-items:center; gap:8px; padding:10px 18px; border-bottom:1px solid var(--line, #ddd); }
+.assistant-chat-picker label { font-size:12px; }
+.assistant-chat-picker select { flex:1; min-width:0; width:100%; padding:7px; font:inherit; font-size:12px; border:1px solid #d8ddd9; border-radius:6px; background:white; }
+.assistant-chat-picker button { font:inherit; font-size:12px; cursor:pointer; }

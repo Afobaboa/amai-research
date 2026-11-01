@@ -69,9 +69,9 @@ CLOUD_RU_MODEL=deepseek-ai/DeepSeek-V4-Pro
 CLOUD_RU_BASE_URL=https://foundation-models.api.cloud.ru/v1
 ```
 
-Перезапустите `make dev`; для Docker обновите `web` командой `docker compose up -d --build web`. Проверка доступных моделей: `python3 scripts/local.py manage assistant_models` или `docker compose exec web python manage.py assistant_models`. Ключ хранится на сервере; без него остальное приложение продолжает работать.
+Примените миграции: `python3 scripts/local.py manage migrate`, затем перезапустите `make dev` (он запускает веб-сервер и обработчик очереди). Для Docker соберите образы, выполните `docker compose run --rm web python manage.py migrate`, затем `docker compose up -d --build web assistant-worker`. Проверка доступных моделей: `python3 scripts/local.py manage assistant_models` или `docker compose exec web python manage.py assistant_models`. Ключ хранится на сервере; без него остальное приложение продолжает работать.
 
-[Пошаговое получение ключа, параметры, доступ к БД/коду и диагностика](docs/assistant.md). Сведения из диалога и выбранные для ответа данные отправляются через Cloud.ru; история вкладки хранится в браузере, постоянный журнал бесед в БД не создаётся.
+[Пошаговое получение ключа, параметры, доступ к БД/коду и диагностика](docs/assistant.md). Сведения из диалога и выбранные для ответа данные отправляются через Cloud.ru; диалоги и ответы сохраняются в БД с привязкой к сотруднику. Между диалогами можно переключаться; генерация выполняется отдельным процессом и продолжается после перезагрузки или закрытия вкладки.
 
 ## Что проверять в интерфейсе
 

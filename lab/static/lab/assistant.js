@@ -11,7 +11,6 @@
   const preferenceKey = `${storageKey}:open`;
   const widthKey = `${storageKey}:width`;
   const promptsKey = `${storageKey}:prompts`;
-  const maxMessages = 16;
   const historyNoticeThreshold = 10;
   let messages = [], controller = null, configured = null, open = false;
   let prompts = [], promptIndex = null;
@@ -25,15 +24,6 @@
     savedOpen = sessionStorage.getItem(preferenceKey);
     const savedWidth = Number(sessionStorage.getItem(widthKey));
     if (Number.isFinite(savedWidth) && savedWidth > 0) preferredWidth = savedWidth;
-    const saved = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
-    if (Array.isArray(saved)) {
-      for (const item of saved.slice(-maxMessages)) {
-        const expected = messages.length % 2 === 0 ? 'user' : 'assistant';
-        if (item && item.role === expected && typeof item.content === 'string' && (item.content.trim() || (item.role === 'assistant' && item.interrupted === true)) && item.content.length <= 12000) {
-          messages.push({...item, progress:progressParts(item.progress)});
-        }
-      }
-    }
   } catch { /* A disabled or full browser store must not block the chat. */ }
 
   const loadPrompts = () => {
@@ -55,11 +45,6 @@
 
   const updateHistoryNotice = () => {
     $('history-notice').hidden = messages.length < historyNoticeThreshold;
-  };
-  const persist = () => {
-    updateHistoryNotice();
-    try { sessionStorage.setItem(storageKey, JSON.stringify(messages.slice(-maxMessages))); }
-    catch { /* The current page can still keep a conversation in memory. */ }
   };
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -291,7 +276,7 @@
     if (!open) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (controller) controller.abort('cancelled');
+      if (controller) void cancelCurrent();
       else if (drag) stopResize();
       else setOpen(false, true);
     }
@@ -362,7 +347,7 @@
       statusNode.hidden = false;
       statusNode.textContent = 'Не удалось проверить подключение. Можно попробовать отправить вопрос или обновить страницу.';
     }
-    $('send').disabled = Boolean(controller) || configured === false;
+    $('send').disabled = !ready || Boolean(controller) || configured === false;
   };
   const formState = () => {
     const state = {title:'', forms:[], truncated:false};
@@ -430,158 +415,194 @@
     // Form drafts are captured only for this request, never in chat history.
     return count ? state : undefined;
   };
-  const readStream = async (response, onEvent, signal) => {
-    if (!response.body) throw new Error('Не удалось открыть поток ответа. Повторите запрос.');
-    const reader = response.body.getReader(), decoder = new TextDecoder();
-    let buffer = '', received = 0;
+  const chatsUrl = '/assistant/conversations/';
+  const activeKey = `${storageKey}:conversation`;
+  let chatId = null, activeJob = null, ready = false, submitting = false;
+  let pollTimer = null, lastTranscript = '', nextBefore = null, pendingSubmission = null, listInitialized = false;
+  let lastQuestion = '', retainedJobs = [], olderCursor = null, historyLoaded = false;
+  try { chatId = Number(sessionStorage.getItem(activeKey)) || null; } catch {}
+  const api = async (url, body) => {
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 15000);
     try {
-      while (true) {
-        signal.throwIfAborted();
-        const {value, done} = await reader.read();
-        signal.throwIfAborted();
-        buffer += decoder.decode(value, {stream:!done});
-        received += value?.byteLength || 0;
-        if (buffer.length > 256000 || received > 2000000) throw new Error('Поток ответа слишком большой. Попробуйте сузить вопрос.');
-        let boundary;
-        while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
-          const block = buffer.slice(0, boundary.index);
-          buffer = buffer.slice(boundary.index + boundary[0].length);
-          let event = 'message';
-          const data = [];
-          for (const line of block.split(/\r?\n/)) {
-            if (line.startsWith('event:')) event = line.slice(6).trim();
-            else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
-          }
-          if (!data.length || !['status', 'delta', 'done', 'error'].includes(event)) continue;
-          let payload;
-          try { payload = JSON.parse(data.join('\n')); }
-          catch { throw new Error('Не удалось прочитать поток ответа. Повторите запрос.'); }
-          if (!payload || typeof payload !== 'object') throw new Error('Сервер вернул некорректный ответ. Повторите запрос.');
-          if (event === 'error') throw new Error(typeof payload.error === 'string' ? payload.error : 'Не удалось подготовить ответ. Повторите запрос.');
-          onEvent(event, payload);
-          if (event === 'done') return payload;
-        }
-        if (done) throw new Error('Соединение прервалось до завершения ответа. Повторите запрос.');
-      }
-    } finally {
-      await reader.cancel().catch(() => {});
-      reader.releaseLock();
-    }
-  };
-  const send = async (retry = false) => {
-    if (controller || configured === false) return;
-    const text = input.value.trim();
-    if (!retry && !text) return;
-    $('error').hidden = true;
-    if (!retry) {
-      // Keep unanswered requests restored after navigation in the visible transcript.
-      if (messages.at(-1)?.role === 'user') {
-        messages.at(-1).interrupted = true;
-        messages.push({role:'assistant', content:'', interrupted:true});
-      }
-      messages.push({role:'user', content:text});
-      rememberPrompt(text);
-      input.value = '';
-    }
-    if (retry && messages.at(-1)?.role === 'assistant' && messages.at(-1).interrupted === true) messages.pop();
-    if (messages.at(-1)?.role !== 'user') return;
-    delete messages.at(-1).interrupted;
-    while (messages.length > maxMessages - 1 || messages.reduce((total, item) => total + item.content.length, 0) > 48000) messages.splice(0, 2);
-    persist(); render();
-    const ownController = new AbortController(), ownTurn = ++turn;
-    controller = ownController; busy(true);
-    let draft = null, draftBody = null, draftText = '', frame = null;
-    const draftStages = [];
-    const paintDraft = () => {
-      frame = null;
-      if (ownTurn !== turn) return;
-      if (!draftText) { draftBody?.replaceChildren(); return; }
-      if (!draft) {
-        draft = showMessage({role:'assistant', content:''});
-        draft.classList.add('is-streaming');
-        draft.setAttribute('aria-label', 'Помощник печатает ответ');
-        draftBody = draft.querySelector('.assistant-message-body');
-      }
-      draftBody.replaceChildren();
-      markdown(draftBody, draftText);
-      followResponse();
-    };
-    const timeout = setTimeout(() => ownController.abort('timeout'), 190000);
-    try {
-      const response = await fetch(panel.dataset.chatUrl, {
-        method:'POST', credentials:'same-origin', signal:ownController.signal,
-        headers:{'Content-Type':'application/json', Accept:'text/event-stream', 'X-CSRFToken':$('form').querySelector('[name=csrfmiddlewaretoken]').value},
-        body:JSON.stringify({messages:messages.filter(message => message.interrupted !== true).map(({role,content}) => ({role,content})), page:location.pathname, form_state:formState()}),
+      const response = await fetch(url, {
+        method:body === undefined ? 'GET' : 'POST', credentials:'same-origin', signal:abort.signal,
+        headers:{Accept:'application/json', 'Content-Type':'application/json',
+          'X-CSRFToken':$('form').querySelector('[name=csrfmiddlewaretoken]').value},
+        ...(body === undefined ? {} : {body:JSON.stringify(body)}),
       });
-      const contentType = response.headers.get('content-type') || '';
-      let data;
-      if (response.ok && contentType.includes('text/event-stream')) {
-        data = await readStream(response, (event, payload) => {
-          if (ownTurn !== turn) return;
-          if (event === 'status') {
-            if (payload.reset === true && draftText.trim()) {
-              if (frame !== null) cancelAnimationFrame(frame);
-              paintDraft();
-              // A tool call starts a new segment; keep the public text already shown.
-              draftStages.push(draftText);
-              draftBody.classList.add('assistant-message-stage');
-              draftText = '';
-              draftBody = element('div', 'assistant-message-body');
-              draft.append(draftBody);
-            }
-            activity(payload.text);
-          } else if (event === 'delta' && typeof payload.text === 'string') {
-            activity('Пишу ответ…');
-            const next = (draftText + payload.text).slice(0, 12000);
-            if (next !== draftText) {
-              draftText = next;
-              if (frame === null) frame = requestAnimationFrame(paintDraft);
-            }
-          }
-        }, ownController.signal);
-      } else {
-        if (!contentType.includes('application/json')) throw new Error('Сеанс завершён или сервер недоступен. Обновите страницу и войдите снова.');
-        data = await response.json();
-        if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Не удалось получить ответ. Попробуйте ещё раз.');
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Обновите страницу и войдите снова.');
+      const data = await response.json();
+      if (!response.ok) {
+        const failure = new Error(data.error || 'Не удалось загрузить диалог.');
+        failure.status = response.status;
+        throw failure;
       }
-      if (typeof data.reply !== 'string' || !data.reply.trim()) throw new Error('Модель вернула пустой ответ. Попробуйте ещё раз.');
-      if (ownTurn !== turn) return;
-      if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
-      const keepFollowing = following;
-      messages.push({role:'assistant', content:data.reply.slice(0, 12000), progress:progressParts(draftStages), sources:Array.isArray(data.sources) ? data.sources : []});
-      persist();
-      if (draft) {
-        // Complete the current body in place, leaving earlier stages untouched.
-        draft.classList.remove('is-streaming');
-        draft.removeAttribute('aria-label');
-        draftBody.replaceChildren();
-        markdown(draftBody, messages.at(-1).content);
-        showSources(draft, messages.at(-1));
-      } else showMessage(messages.at(-1));
+      return data;
+    } finally { clearTimeout(timeout); }
+  };
+  const saveSelection = () => {
+    try { sessionStorage.setItem(activeKey, String(chatId || '')); } catch {}
+  };
+  const chatSummaries = new Map();
+  const renderChatOptions = () => {
+    const select = $('conversations');
+    // Native menus can jump or close if their options change while open.
+    // Focus also covers keyboard interaction; apply the latest data on blur.
+    if (document.activeElement === select) return;
+    const options = new Map([...select.options].map(option => [option.value, option]));
+    const desired = [{value:'', text:'Новый диалог'},
+      ...[...chatSummaries.values()].sort((a, b) => b.id - a.id).map(chat => ({
+        value:String(chat.id), text:`${chat.active ? '◌ ' : ''}${chat.title}`,
+      }))];
+    desired.forEach(({value, text}, index) => {
+      const option = options.get(value) || element('option');
+      if (!option.hasAttribute('value') || option.value !== value) option.value = value;
+      if (option.textContent !== text) option.textContent = text;
+      if (select.options[index] !== option) select.insertBefore(option, select.options[index] || null);
+    });
+    const selected = chatId ? String(chatId) : '';
+    if (select.value !== selected) select.value = selected;
+    $('more-chats').hidden = !nextBefore;
+  };
+  $('conversations').addEventListener('blur', () => requestAnimationFrame(renderChatOptions));
+  const refreshChats = async (append = false) => {
+    const data = await api(chatsUrl + (append && nextBefore ? `?before=${nextBefore}` : ''));
+    for (const chat of data.conversations) chatSummaries.set(String(chat.id), chat);
+    if (append || !listInitialized) nextBefore = data.next_before;
+    listInitialized = true;
+    renderChatOptions();
+    return data.conversations;
+  };
+  const schedulePoll = () => {
+    clearTimeout(pollTimer);
+    pollTimer = setTimeout(() => void poll(), activeJob ? 1000 : 6000);
+  };
+  const syncConversation = data => {
+    const transcript = [];
+    if (!historyLoaded) { olderCursor = data.next_before; historyLoaded = true; }
+    const jobs = new Map(retainedJobs.map(job => [job.id, job]));
+    for (const job of data.jobs) jobs.set(job.id, job);
+    retainedJobs = [...jobs.values()];
+    activeJob = null;
+    for (const job of retainedJobs) {
+      transcript.push({role:'user', content:job.question});
+      if (['queued', 'running'].includes(job.status)) activeJob = job;
+      if (job.reply || job.progress.length || ['failed', 'cancelled'].includes(job.status)) {
+        transcript.push({role:'assistant', content:job.reply, progress:job.progress,
+          sources:job.sources, interrupted:['failed', 'cancelled'].includes(job.status)});
+      }
+    }
+    lastQuestion = retainedJobs.at(-1)?.question || '';
+    const signature = JSON.stringify(transcript);
+    if (signature !== lastTranscript) {
+      const keepFollowing = following, oldTop = scroll.scrollTop;
+      messages = transcript;
+      render();
       following = keepFollowing;
-      followResponse();
+      if (!following) scroll.scrollTop = oldTop;
+      lastTranscript = signature;
+    }
+    const wasBusy = Boolean(controller);
+    controller = activeJob ? (controller || new AbortController()) : null;
+    if (wasBusy !== Boolean(controller)) busy(Boolean(controller));
+    if (activeJob) activity(activeJob.activity);
+    const last = retainedJobs.at(-1);
+    $('error').hidden = true;
+    if (last && ['failed', 'cancelled'].includes(last.status)) {
+      error(last.status === 'cancelled' ? 'Запрос остановлен. Его можно повторить.' :
+        'Не удалось завершить ответ. Его можно повторить.');
+    }
+    $('older-messages').hidden = !olderCursor;
+    ready = true;
+    $('send').disabled = Boolean(controller) || configured === false || submitting;
+  };
+  const poll = async () => {
+    const ownTurn = turn, id = chatId;
+    try {
+      if (id) {
+        const data = await api(`${chatsUrl}${id}/`);
+        if (ownTurn !== turn || id !== chatId) return;
+        syncConversation(data);
+      }
+      await refreshChats();
+      if (!id) { ready = true; $('send').disabled = configured === false || submitting; }
     } catch (failure) {
       if (ownTurn !== turn) return;
-      if (frame !== null) { cancelAnimationFrame(frame); frame = null; }
-      paintDraft();
-      messages.at(-1).interrupted = true;
-      const interrupted = {role:'assistant', content:draftText, progress:progressParts(draftStages), interrupted:true};
-      messages.push(interrupted);
-      persist();
-      if (!draft) draft = showMessage(interrupted);
-      else {
-        draft.classList.remove('is-streaming');
-        draft.classList.add('is-interrupted');
-        draft.setAttribute('aria-label', 'Прерванный ответ помощника');
-        draft.append(element('div', 'assistant-interrupted', 'Ответ прерван'));
-      }
-      error(ownController.signal.aborted ? (ownController.signal.reason === 'timeout' ? 'Ответ занял слишком много времени. Попробуйте сузить вопрос и повторить запрос.' : 'Запрос остановлен. Его можно повторить.') : failure.message || 'Нет соединения с сервером. Попробуйте ещё раз.');
+      error(failure.message + ' Переподключаюсь…', false);
     } finally {
-      clearTimeout(timeout);
-      if (frame !== null) cancelAnimationFrame(frame);
-      if (ownTurn === turn) { controller = null; busy(false); }
+      if (ownTurn === turn) schedulePoll();
     }
   };
+  const chooseChat = async id => {
+    turn++;
+    clearTimeout(pollTimer);
+    chatId = id; saveSelection();
+    ready = false; activeJob = null; controller = null;
+    pendingSubmission = null; lastQuestion = ''; lastTranscript = '';
+    retainedJobs = []; olderCursor = null; historyLoaded = false;
+    messages = []; render(); busy(false); $('send').disabled = true;
+    $('error').hidden = true;
+    input.value = ''; promptIndex = null;
+    if (id) await poll();
+    else { ready = true; $('send').disabled = configured === false; schedulePoll(); }
+  };
+  const cancelCurrent = async () => {
+    if (!activeJob || !chatId) return;
+    try {
+      await api(`${chatsUrl}${chatId}/jobs/${activeJob.id}/cancel/`, {});
+      await poll();
+    } catch (failure) { error(failure.message, false); }
+  };
+  const send = async (retry = false) => {
+    if (!ready || controller || submitting || configured === false) return;
+    const text = retry ? (pendingSubmission?.question || input.value.trim() || lastQuestion) : input.value.trim();
+    if (!text) return;
+    submitting = true;
+    $('send').disabled = true;
+    $('new').disabled = true;
+    $('conversations').disabled = true;
+    $('error').hidden = true;
+    try {
+      if (!chatId) {
+        const chat = await api(chatsUrl, {});
+        chatId = chat.id; saveSelection();
+      }
+      if (!retry || !pendingSubmission) {
+        pendingSubmission = {request_id:crypto.randomUUID(), question:text,
+          page:location.pathname, form_state:formState()};
+      }
+      await api(`${chatsUrl}${chatId}/send/`, pendingSubmission);
+      rememberPrompt(text);
+      input.value = '';
+      pendingSubmission = null;
+      await poll();
+    } catch (failure) {
+      // A transport failure may follow a committed enqueue. Retry with the same UUID.
+      if (failure.status) pendingSubmission = null;
+      error(failure.message || 'Нет соединения с сервером. Попробуйте ещё раз.');
+    } finally {
+      submitting = false;
+      $('new').disabled = false;
+      $('conversations').disabled = false;
+      $('send').disabled = Boolean(controller) || configured === false;
+    }
+  };
+  $('older-messages').addEventListener('click', async () => {
+    if (!chatId || !olderCursor) return;
+    const ownTurn = turn;
+    try {
+      const data = await api(`${chatsUrl}${chatId}/?before=${olderCursor}`);
+      if (ownTurn !== turn) return;
+      retainedJobs = [...data.jobs, ...retainedJobs];
+      olderCursor = data.next_before;
+      syncConversation({jobs:[]});
+    } catch (failure) { error(failure.message, false); }
+  });
+  $('conversations').addEventListener('change', () => void chooseChat(Number($('conversations').value)));
+  $('more-chats').addEventListener('click', () => {
+    void refreshChats(true).catch(failure => error(failure.message, false));
+  });
   $('form').addEventListener('submit', event => { event.preventDefault(); void send(); });
   input.addEventListener('input', () => { promptIndex = null; });
   input.addEventListener('keydown', event => {
@@ -602,16 +623,23 @@
     input.setSelectionRange(input.value.length, input.value.length);
   });
   $('retry').addEventListener('click', () => { void send(true); });
-  $('cancel').addEventListener('click', () => controller?.abort('cancelled'));
+  $('cancel').addEventListener('click', () => void cancelCurrent());
   $('new').addEventListener('click', () => {
-    turn++; controller?.abort('new'); controller = null;
-    messages = []; input.value = ''; promptIndex = null; persist(); render(); busy(false); $('error').hidden = true; input.focus();
+    void chooseChat(null);
+    $('conversations').value = '';
+    input.focus();
   });
   panel.querySelectorAll('[data-assistant-prompt]').forEach(node => node.addEventListener('click', () => { input.value = node.dataset.assistantPrompt; input.focus(); void send(); }));
   document.querySelector('.logout-form')?.addEventListener('submit', () => { try { sessionStorage.removeItem(storageKey); } catch {} });
   render();
   setWidth();
-  if (messages.at(-1)?.role === 'user') error('Предыдущий запрос не завершён. Его можно повторить.');
+
   setOpen(savedOpen === null ? desktop.matches : savedOpen === 'true', false, false);
   void loadStatus();
+  void (async () => {
+    try {
+      const chats = await refreshChats();
+      await chooseChat(chatId || chats[0]?.id || null);
+    } catch (failure) { error(failure.message, false); schedulePoll(); }
+  })();
 })();

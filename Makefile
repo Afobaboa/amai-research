@@ -43,3 +43,6 @@ test-frontend-headed:
 	npm run test:frontend:headed
 
 test: test-backend test-frontend
+
+worker:
+	$(PYTHON) scripts/local.py manage assistant_worker

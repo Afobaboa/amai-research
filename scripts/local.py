@@ -68,7 +68,7 @@ def run_manage(args, *, database_path=None):
         raise SystemExit('Сначала выполните make setup (или python3 scripts/local.py setup).')
     subprocess.run([str(PYTHON), 'manage.py', *args], cwd=ROOT,
                    env=build_environment(database_path, with_assistant=bool(args and args[0] in {
-                       'runserver', 'shell', 'assistant_models',
+                       'runserver', 'shell', 'assistant_models', 'assistant_worker',
                    })), check=True)
 
 
@@ -113,6 +113,22 @@ def test_backend():
                    cwd=ROOT, env=build_environment(), check=True)
 
 
+def dev(port):
+    if not PYTHON.is_file():
+        raise SystemExit('Сначала выполните make setup.')
+    worker = subprocess.Popen([str(PYTHON), 'manage.py', 'assistant_worker'],
+                              cwd=ROOT, env=build_environment(with_assistant=True))
+    try:
+        run_manage(['runserver', f'127.0.0.1:{port}'])
+    finally:
+        worker.terminate()
+        try:
+            worker.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            worker.kill()
+            worker.wait()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['setup', 'init-demo', 'upgrade-demo', 'dev', 'test-backend', 'check', 'manage'])
@@ -130,7 +146,7 @@ def main():
         if not 1 <= args.port <= 65535:
             parser.error('Порт должен находиться в диапазоне 1–65535.')
         print(f'Фронт и бэкенд: http://127.0.0.1:{args.port}/\nЛокальный пароль: lims-demo', flush=True)
-        run_manage(['runserver', f'127.0.0.1:{args.port}'])
+        dev(args.port)
     elif args.command == 'test-backend':
         test_backend()
     elif args.command == 'check':

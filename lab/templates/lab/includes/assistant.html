@@ -8,6 +8,12 @@
     <button class="assistant-icon" id="assistant-new" type="button" title="Новый диалог" aria-label="Новый диалог">↺</button>
     <button class="assistant-icon" id="assistant-close" type="button" title="Свернуть помощника" aria-label="Свернуть помощника">×</button>
   </header>
+  <div class="assistant-chat-picker">
+    <label for="assistant-conversations">Диалоги</label>
+    <select id="assistant-conversations" aria-label="Сохранённые диалоги"></select>
+    <button id="assistant-more-chats" type="button" hidden>Ещё</button>
+  </div>
+  <button class="assistant-history-notice" id="assistant-older-messages" type="button" hidden>Показать более ранние сообщения</button>
   <div class="assistant-context"><span class="assistant-context-dot"></span><span>Материалы, рецептуры и испытания</span><span class="assistant-readonly">Чтение</span></div>
   <div class="assistant-status" id="assistant-status" role="status" hidden></div>
   <div class="assistant-scroll" id="assistant-scroll">
