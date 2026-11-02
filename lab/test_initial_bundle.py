@@ -70,12 +70,33 @@ class InitialBundleTests(SimpleTestCase):
                                ("316 с фреоном 152а.xlsx", "316Ф-6")):
             self.assertEqual(self.sheet(filename, name)["test"]["matches"], [])
 
-    def test_repeat_card_is_separate_and_keeps_the_plan_candidate(self):
+    def test_repeat_card_is_separate_and_keeps_the_plan_link(self):
         first = self.sheet("316.xlsx", "316.8")["test"]
         repeat = self.sheet("316.xlsx", "316.8 (2)")["test"]
         self.assertNotEqual(first["title"], repeat["title"])
         self.assertEqual(first["matches"], repeat["matches"])
         self.assertEqual(repeat["matches"][0]["sheet"], "316.8")
+        self.assertEqual(repeat["matches"][0]["status"], "confirmed")
+
+    def test_only_unique_recipe_matches_are_confirmed(self):
+        counts = {'confirmed': 0, 'candidate': 0, 'unmatched': 0}
+        recipes = {(file['path'], sheet['name']) for file in self.data['files']
+                   for sheet in file['sheets'] if 'recipe' in sheet}
+        for file in self.data['files']:
+            for sheet in file['sheets']:
+                if 'test' not in sheet:
+                    continue
+                matches = sheet['test']['matches']
+                if not matches:
+                    counts['unmatched'] += 1
+                expected = 'confirmed' if len(matches) == 1 else 'candidate'
+                for match in matches:
+                    self.assertEqual(match['status'], expected, sheet['name'])
+                    self.assertIn((match['path'], match['sheet']), recipes)
+                    counts[match['status']] += 1
+        self.assertEqual(counts, {
+            'confirmed': 158, 'candidate': 12, 'unmatched': 3,
+        })
 
     def test_fake_100_percent_with_blank_operand_stays_missing(self):
         sheet = self.sheet("316 с фреоном 152а.xlsx", "316Ф-1")

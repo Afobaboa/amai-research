@@ -247,8 +247,15 @@ class ArchiveLoader:
                 prop.save(update_fields=['unit_code'])
 
     def load_test(self, sheet, cells, data):
-        if lab.TestSession.objects.filter(source_sheet=sheet).exists():
-            return
+        card = lab.TestSession.objects.filter(
+            source_sheet=sheet,
+        ).order_by('pk').first()
+        if card is None:
+            card = self.create_test(sheet, cells, data)
+        for row in data.get('matches', []):
+            self.pending_matches.append((card, row))
+
+    def create_test(self, sheet, cells, data):
         card = lab.TestSession.objects.create(
             source_sheet=sheet, identifier=data['identifier'],
             identifier_cell=cells.get(data.get('identifier_cell')),
@@ -264,10 +271,9 @@ class ArchiveLoader:
             results.update(self.run(card, cells, row))
             rows.extend(row.get('results', []))
         self.dependencies(results, rows)
-        for row in data.get('matches', []):
-            self.pending_matches.append((card, row))
         event(self.author, card, 'test', 'Перенесена карточка ' + card.title)
         self.counts['tests'] += 1
+        return card
 
     def metric(self, code, title, unit, kind):
         metric, _ = lab.Metric.objects.get_or_create(
@@ -338,10 +344,21 @@ class ArchiveLoader:
         for card, row in self.pending_matches:
             recipe = self.recipes.get((row['path'], row['sheet']))
             if recipe:
-                lab.RecipeMatch.objects.get_or_create(
-                    session=card, recipe_version=recipe,
-                    defaults={'status': row.get('status', 'candidate')},
-                )
+                self.link_recipe(card, recipe, row.get('status', 'candidate'))
+
+    def link_recipe(self, card, recipe, status):
+        # A manually selected recipe takes precedence over the archive link.
+        if status == 'confirmed' and card.recipe_matches.filter(
+            status='confirmed',
+        ).exclude(recipe_version=recipe).exists():
+            status = 'candidate'
+        match, created = lab.RecipeMatch.objects.get_or_create(
+            session=card, recipe_version=recipe, defaults={'status': status},
+        )
+        # Upgrade legacy candidates, but retain explicit rejections.
+        if not created and status == 'confirmed' and match.status == 'candidate':
+            match.status = status
+            match.save(update_fields=['status'])
 
 
 @transaction.atomic

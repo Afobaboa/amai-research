@@ -343,23 +343,33 @@ def match_test(test, source, index, versions):
     match = match_identifier(
         identifier, test["identifier"], index, versions,
         source_file=source.removeprefix("Пена/pena/"))
+    candidates = match["candidate_version_ids"]
+    status = "confirmed" if len(candidates) == 1 else "candidate"
+    reason = match_reason(test, match["matching_method"], status)
+    return [{"path": versions[key]["path"], "sheet": versions[key]["sheet"],
+             "status": status, "reason": reason} for key in candidates]
+
+
+def match_reason(test, method, status):
     rule = {
         "exact_full_identifier": "полное совпадение номера",
         "verified_condition_or_repeat_base": "номер без пометки выдержки или повтора",
         "verified_source_bound_condition_punctuation":
             "проверенный вариант пунктуации пометки выдержки",
-    }.get(match["matching_method"], "проверенный вариант обозначения")
+    }.get(method, "проверенный вариант обозначения")
     reason = (
         f"Поиск плановой рецептуры по записи {test['identifier']!r}. "
         f"Основание: {rule}. "
         "Проверяются исходные номера F1 и обозначения листов. "
-        "Это автоматический кандидат, не подтверждение изготовления."
     )
-    if len(match["candidate_version_ids"]) > 1:
-        reason += " В источниках несколько подходящих листов; выбор не сделан."
-    return [{"path": versions[key]["path"], "sheet": versions[key]["sheet"],
-             "status": "candidate", "reason": reason}
-            for key in match["candidate_version_ids"]]
+    if status == "confirmed":
+        return reason + (
+            "Однозначная связь с плановой рецептурой; "
+            "не подтверждает фактическое изготовление."
+        )
+    return reason + (
+        "В источниках несколько подходящих листов; выбор не сделан."
+    )
 
 
 def add_recipe_matches(files):
@@ -486,6 +496,8 @@ def report_counts(files, sheets, recipes, tests):
                for result in run["results"]]
     return {"files": len(files), "sheets": len(sheets),
             "recipes": len(recipes), "tests": len(tests),
+            "recipe_match_states": dict(Counter(
+                match["status"] for test in tests for match in test["matches"])),
             "source_cells": sum(len(s["cells"]) for s in sheets),
             "excel_comments": sum(len(s["comments"]) for s in sheets),
             "components": sum(len(g["components"]) for r in recipes
@@ -520,7 +532,8 @@ def report_policy():
         "Source cells retained; no invented or cache-only values. "
         "Historical prices are EUR/kg by explicit user instruction, "
         "without conversion; original currency headers retained. "
-        "Recipe matches are candidates, not proof of manufacture."
+        "Unique recipe matches are confirmed document links; ambiguous matches "
+        "remain candidates. These links are not proof of manufacture."
     )
 
 

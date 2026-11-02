@@ -69,6 +69,30 @@ class InitialDataTests(TestCase):
             mass_status='calculation_checked', mass_cell__formula_text__isnull=False,
         ).count(), 675)
 
+    def test_initial_cards_are_linked_to_unique_recipes(self):
+        self.assertEqual(lab.RecipeMatch.objects.filter(
+            status='confirmed',
+        ).count(), 158)
+        self.assertEqual(lab.RecipeMatch.objects.filter(
+            status='candidate',
+        ).count(), 12)
+        card = lab.TestSession.objects.get(
+            source_sheet__name='316.8 (2)',
+        )
+        self.assertEqual(card.confirmed_recipe.version_label, '316.8')
+
+    def test_initial_recipe_link_is_visible_in_test_registry(self):
+        profile = lab.EmployeeProfile.objects.get(full_name='Иван Иванов')
+        session = self.client.session
+        session.update({'site_authenticated': True, 'employee_id': profile.pk})
+        session.save()
+        recipe = lab.RecipeVersion.objects.get(
+            mixture_type__code='316', version_label='316.8',
+        )
+        response = self.client.get(reverse('test_list'), {'q': '316.8'})
+        self.assertContains(response, reverse('recipe_detail', args=[recipe.pk]))
+        self.assertNotContains(response, 'Не установлена')
+
     def test_freon_conflict_retains_mass_without_inventing_material(self):
         recipe = lab.RecipeVersion.objects.get(
             mixture_type__code='316-Ф', version_label='316Ф-1',
