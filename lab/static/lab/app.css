@@ -132,9 +132,11 @@ svg {
   border-bottom: 1px solid var(--amai-line); background: var(--amai-surface);
 }
 .breadcrumb {
-  min-width: 0; display: flex; align-items: center; gap: 12px;
+  --breadcrumb-gap: 12px;
+  min-width: 0; display: flex; align-items: center; gap: var(--breadcrumb-gap);
   color: var(--amai-muted); font-size: 14px;
 }
+.breadcrumb-separator { margin-inline: var(--breadcrumb-gap); }
 .breadcrumb strong {
   min-width: 0; font-weight: 500; color: var(--amai-ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

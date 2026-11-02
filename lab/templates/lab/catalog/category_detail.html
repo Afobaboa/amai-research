@@ -1,7 +1,7 @@
 {% extends 'lab/base.html' %}
 {% load lab_tags %}
 {% block title %}{{ category.name }}{% endblock %}
-{% block breadcrumb %}Категории материалов / {{ category.name }}{% endblock %}
+{% block breadcrumb %}Категории материалов<span class="breadcrumb-separator">/</span>{{ category.name }}{% endblock %}
 {% block content %}
 <a class="back-link" href="{% url 'category_list' %}">← Все категории материалов</a>
 <div class="page-heading">

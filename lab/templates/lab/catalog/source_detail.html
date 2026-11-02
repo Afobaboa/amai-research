@@ -1,6 +1,6 @@
 {% extends 'lab/base.html' %}
 {% block title %}{{ source.title|default:source.original_path }}{% endblock %}
-{% block breadcrumb %}Источники / Карточка{% endblock %}
+{% block breadcrumb %}Источники<span class="breadcrumb-separator">/</span>Карточка{% endblock %}
 {% block content %}
 <a class="back-link" href="{% url 'source_list' %}">← Все источники</a>
 <div class="page-heading">
