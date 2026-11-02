@@ -8,25 +8,21 @@ from django.db.models import Max
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .search import filter_search
-from .models import CalculationTemplate, ChangeEvent, Material, MaterialLot, RecipeTemplate, RecipeVersion
-from .template_forms import (CalculationTemplateForm, OPERATION_DESCRIPTIONS, RecipeTemplateForm,
+from .models import ChangeEvent, Material, MaterialLot, RecipeTemplate, RecipeVersion
+from .template_forms import (RecipeTemplateForm,
                              TemplateComponentFormSet, TemplateFillingFormSet)
 from .views import _initial_recipe, _json, _page, author_required, site_required
 
 
 def template_snapshot(template):
     data = {'name': template.name, 'version': template.version, 'description': template.description}
-    if isinstance(template, RecipeTemplate):
-        data.update(definition=template.definition, mixture_type=template.mixture_type_id,
-                    calculation_template=template.calculation_template_id, batch_mass_g=str(template.batch_mass_g))
-    else:
-        data['operations'] = template.operations
+    data.update(definition=template.definition, mixture_type=template.mixture_type_id,
+                batch_mass_g=str(template.batch_mass_g))
     return data
 
 
 def _event(request, template, summary):
-    kind = 'recipe_template' if isinstance(template, RecipeTemplate) else 'calculation_template'
-    ChangeEvent.objects.create(employee=request.employee, entity_type=kind, entity_id=template.pk,
+    ChangeEvent.objects.create(employee=request.employee, entity_type='recipe_template', entity_id=template.pk,
                                action='created', summary=summary, after=_json(template_snapshot(template)))
 
 
@@ -92,7 +88,7 @@ def definition_display(definition):
 @site_required
 def recipe_template_list(request):
     templates = RecipeTemplate.objects.select_related(
-        'mixture_type', 'calculation_template', 'created_by',
+        'mixture_type', 'created_by',
     ).all()
     q = request.GET.get('q', '').strip()
     if q:
@@ -107,7 +103,7 @@ def recipe_template_list(request):
 
 @site_required
 def recipe_template_detail(request, pk):
-    template = get_object_or_404(RecipeTemplate.objects.select_related('mixture_type', 'calculation_template', 'created_by'), pk=pk)
+    template = get_object_or_404(RecipeTemplate.objects.select_related('mixture_type', 'created_by'), pk=pk)
     groups, filling = definition_display(template.definition)
     return render(request, 'lab/templates/recipe_detail.html', {'template': template, 'groups': groups, 'filling': filling,
         'events': ChangeEvent.objects.filter(entity_type='recipe_template', entity_id=pk).select_related('employee')})
@@ -121,12 +117,12 @@ def recipe_template_create(request, source_pk=None, recipe_pk=None):
     definition = {'components': [], 'filling': []}
     if source:
         initial.update(name=source.name, version=_next_version(RecipeTemplate, source.name), description=source.description,
-                       mixture_type=source.mixture_type_id, calculation_template=source.calculation_template_id,
+                       mixture_type=source.mixture_type_id,
                        batch_mass_g=source.batch_mass_g)
         definition = source.definition
     elif recipe:
         initial.update(name=recipe.title or ('Шаблон ' + recipe.version_label), mixture_type=recipe.mixture_type_id,
-                       calculation_template=recipe.calculation_template_id, batch_mass_g=recipe.batch_mass_g)
+                       batch_mass_g=recipe.batch_mass_g)
         definition = recipe_definition(recipe)
     form = RecipeTemplateForm(request.POST or None, initial=initial)
     components = TemplateComponentFormSet(request.POST or None, prefix='components', initial=definition.get('components', []))
@@ -151,42 +147,3 @@ def recipe_template_create(request, source_pk=None, recipe_pk=None):
                         return redirect('recipe_template_detail', pk=template.pk)
     return render(request, 'lab/templates/recipe_form.html', {'form': form, 'component_formset': components, 'filling_formset': filling,
         'source': source, 'recipe': recipe, 'title': 'Новая версия шаблона рецептуры' if source else 'Новый шаблон рецептуры'})
-
-
-@site_required
-def calculation_template_list(request):
-    templates = CalculationTemplate.objects.select_related('created_by').all()
-    q = request.GET.get('q', '').strip()
-    if q:
-        templates = filter_search(templates, ('name', 'description'), q)
-    page = _page(request, templates.order_by('name', '-version', '-pk'))
-    return render(request, 'lab/templates/calculation_list.html', {
-        'templates': page, 'page_obj': page, 'q': q,
-    })
-
-
-@site_required
-def calculation_template_detail(request, pk):
-    template = get_object_or_404(CalculationTemplate.objects.select_related('created_by'), pk=pk)
-    operations = [{'code': code, 'name': OPERATION_DESCRIPTIONS[code][0], 'formula': OPERATION_DESCRIPTIONS[code][1],
-                   'unit': OPERATION_DESCRIPTIONS[code][2]} for code in template.operations if code in OPERATION_DESCRIPTIONS]
-    return render(request, 'lab/templates/calculation_detail.html', {'template': template, 'operations': operations,
-        'events': ChangeEvent.objects.filter(entity_type='calculation_template', entity_id=pk).select_related('employee')})
-
-
-@author_required
-def calculation_template_create(request, source_pk=None):
-    source = get_object_or_404(CalculationTemplate, pk=source_pk) if source_pk else None
-    initial = {'version': 1, 'operations': ['mass', 'cost', 'volume', 'totalCost', 'density']}
-    if source:
-        initial.update(name=source.name, version=_next_version(CalculationTemplate, source.name), description=source.description,
-                       operations=source.operations)
-    form = CalculationTemplateForm(request.POST or None, initial=initial)
-    if request.method == 'POST' and form.is_valid():
-        template = form.save(commit=False)
-        template.created_by = request.employee
-        if _save_template(request, form, template, f'Создан шаблон расчёта «{template.name}», версия {template.version}'):
-            messages.success(request, 'Версия шаблона расчёта сохранена.')
-            return redirect('calculation_template_detail', pk=template.pk)
-    return render(request, 'lab/templates/calculation_form.html', {'form': form, 'source': source,
-        'title': 'Новая версия шаблона расчёта' if source else 'Новый шаблон расчёта'})

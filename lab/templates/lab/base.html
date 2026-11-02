@@ -24,7 +24,6 @@
 <a class="nav-link {% if active_page == 'history' %}active{% endif %}" {% if active_page == 'history' %}aria-current="page"{% endif %} href="{% url 'history' %}"><svg><use href="#i-clock"/></svg>{{ ui_text.history }}</a>
 <div class="nav-caption nav-section">ШАБЛОНЫ</div>
 <a class="nav-link {% if 'recipe_template' in active_page %}active{% endif %}" {% if 'recipe_template' in active_page %}aria-current="page"{% endif %} href="{% url 'recipe_template_list' %}"><svg><use href="#i-file"/></svg>{{ ui_text.recipe_template_list }}</a>
-<a class="nav-link {% if 'calculation_template' in active_page %}active{% endif %}" {% if 'calculation_template' in active_page %}aria-current="page"{% endif %} href="{% url 'calculation_template_list' %}"><svg><use href="#i-grid"/></svg>{{ ui_text.calculation_template_list }}</a>
 <div class="nav-caption nav-section">СПРАВОЧНИКИ И ИСТОЧНИКИ</div>
 <a class="nav-link {% if 'mixture' in active_page %}active{% endif %}" {% if 'mixture' in active_page %}aria-current="page"{% endif %} href="{% url 'mixture_list' %}"><svg><use href="#i-flask"/></svg>{{ ui_text.mixture_list }}</a>
 <a class="nav-link {% if 'material' in active_page %}active{% endif %}" {% if 'material' in active_page %}aria-current="page"{% endif %} href="{% url 'material_list' %}"><svg><use href="#i-box"/></svg>{{ ui_text.material_list }}</a>

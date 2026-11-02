@@ -28,7 +28,7 @@ from .models import (
     ChangeEvent, ConditioningEvent, EmployeeProfile, FillingPlanLine, Material,
     Metric, Observation, RecipeComponent, RecipeGroup, RecipeMatch, RecipeVersion,
     Result, SessionCondition, SourceFile, TestRun, TestSession, RecipeProperty,
-    RecipeTemplate, CalculationTemplate, CalculationRecord, MaterialLot,
+    RecipeTemplate, CalculationRecord, MaterialLot,
 )
 
 
@@ -154,7 +154,7 @@ def recipe_list(request):
 def recipe_detail(request, pk):
     from .calculations import calculate_recipe
     recipe = get_object_or_404(RecipeVersion.objects.select_related("mixture_type", "created_by", "source_sheet__file"), pk=pk)
-    records = recipe.calculations.select_related('template', 'created_by')
+    records = recipe.calculations.select_related('created_by')
     saved_calculation = None
     if recipe.status != 'draft':
         saved_calculation = records.filter(outputs__purpose='publication').order_by('created_at', 'pk').first() or records.order_by('created_at', 'pk').first()
@@ -211,7 +211,7 @@ def _initial_properties(recipe):
 def _template_snapshot(template):
     return _json({'id': template.pk, 'name': template.name, 'version': template.version,
                   'definition': template.definition, 'mixture_type': template.mixture_type_id,
-                  'calculation_template': template.calculation_template_id, 'batch_mass_g': template.batch_mass_g}) if template else {}
+                  'batch_mass_g': template.batch_mass_g}) if template else {}
 
 
 def _validate_plan(form, rows, fills, properties):
@@ -336,13 +336,13 @@ def recipe_create(request, source_pk=None, pk=None):
     selected_template = get_object_or_404(RecipeTemplate, pk=selected) if selected else None
     initial = {'status': 'draft', 'batch_mass_g': 1000}
     if selected_template and not editing and not source:
-        initial.update({'recipe_template': selected_template.pk, 'mixture_type': selected_template.mixture_type_id, 'title': selected_template.name, 'calculation_template': selected_template.calculation_template_id, 'batch_mass_g': selected_template.batch_mass_g})
+        initial.update({'recipe_template': selected_template.pk, 'mixture_type': selected_template.mixture_type_id, 'title': selected_template.name, 'batch_mass_g': selected_template.batch_mass_g})
         initial_components = selected_template.definition.get('components', [])
         initial_filling = selected_template.definition.get('filling', [])
     else:
         initial_components, initial_filling = _initial_recipe(editing or source)
     if source:
-        initial.update({'mixture_type': source.mixture_type_id, 'title': source.title, 'notes': source.notes, 'version_label': source.version_label + '-новая', 'recipe_template': source.recipe_template_id, 'calculation_template': source.calculation_template_id, 'batch_mass_g': source.batch_mass_g, 'source_sheet': source.source_sheet_id})
+        initial.update({'mixture_type': source.mixture_type_id, 'title': source.title, 'notes': source.notes, 'version_label': source.version_label + '-новая', 'recipe_template': source.recipe_template_id, 'batch_mass_g': source.batch_mass_g, 'source_sheet': source.source_sheet_id})
     initial_properties = _initial_properties(editing or source)
     form = RecipeForm(request.POST or None, initial=initial if not editing else None, instance=editing)
     component_formset = ComponentFormSet(request.POST or None, prefix='components', initial=initial_components)
@@ -418,7 +418,7 @@ def recipe_calculate(request, pk):
 
 @site_required
 def calculation_detail(request, pk):
-    record = get_object_or_404(CalculationRecord.objects.select_related('recipe_version', 'template', 'created_by'), pk=pk)
+    record = get_object_or_404(CalculationRecord.objects.select_related('recipe_version', 'created_by'), pk=pk)
     return render(request, 'lab/calculation_detail.html', {'record': record, 'calculation': record.outputs, 'calculation_inputs': record.inputs})
 
 

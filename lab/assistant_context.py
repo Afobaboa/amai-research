@@ -9,7 +9,6 @@ CARD_ENTITIES = {
     'material_detail': 'materials', 'lot_detail': 'lots',
     'mixture_detail': 'mixtures', 'source_detail': 'sources',
     'recipe_template_detail': 'recipe_templates',
-    'calculation_template_detail': 'calculation_templates',
     'calculation_detail': 'calculations',
 }
 

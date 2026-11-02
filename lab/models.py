@@ -40,6 +40,7 @@ def source_upload_path(instance, filename):
 
 
 def default_calculation_operations():
+    """Retained for historical migrations; all operations are always enabled."""
     return ["mass", "cost", "volume", "totalCost", "density"]
 
 
@@ -242,7 +243,6 @@ class RecipeVersion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(EmployeeProfile, on_delete=models.PROTECT, null=True, blank=True, related_name="recipes")
     recipe_template = models.ForeignKey("RecipeTemplate", on_delete=models.PROTECT, null=True, blank=True, related_name="recipes")
-    calculation_template = models.ForeignKey("CalculationTemplate", on_delete=models.PROTECT, null=True, blank=True, related_name="recipes")
     batch_mass_g = models.DecimalField("Масса смеси для расчета, г", max_digits=22, decimal_places=8, default=Decimal("1000"), validators=[MinValueValidator(Decimal("0.00000001"))])
     template_snapshot = models.JSONField(default=dict, blank=True)
 
@@ -751,34 +751,6 @@ class ImmutableDocument(models.Model):
         raise ValidationError("Сохраненную версию нельзя удалять.")
 
 
-class CalculationTemplate(ImmutableDocument):
-    name = models.CharField("Название", max_length=255)
-    version = models.PositiveIntegerField("Версия", default=1, validators=[MinValueValidator(1)])
-    description = models.TextField("Описание", blank=True)
-    operations = models.JSONField("Операции", default=default_calculation_operations)
-    created_by = models.ForeignKey(EmployeeProfile, on_delete=models.PROTECT, null=True, blank=True, related_name="calculation_templates")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["name", "-version", "-pk"]
-        constraints = [
-            models.UniqueConstraint(fields=["name", "version"], name="calculation_template_unique_version"),
-            models.CheckConstraint(condition=Q(version__gt=0), name="calculation_template_positive_version"),
-        ]
-
-    def clean(self):
-        super().clean()
-        operations = self.operations
-        allowed = default_calculation_operations()
-        if not isinstance(operations, list) or not operations or any(not isinstance(op, str) or op not in allowed for op in operations):
-            raise ValidationError({"operations": "Выберите операции из списка поддерживаемых расчетов."})
-        if len(set(operations)) != len(operations):
-            raise ValidationError({"operations": "Каждая операция указывается один раз."})
-
-    def __str__(self):
-        return f"{self.name} · версия {self.version}"
-
-
 def _definition_decimal(value, label):
     if value is None or value == "":
         return
@@ -799,7 +771,6 @@ class RecipeTemplate(ImmutableDocument):
     version = models.PositiveIntegerField("Версия", default=1, validators=[MinValueValidator(1)])
     description = models.TextField("Описание", blank=True)
     mixture_type = models.ForeignKey(MixtureType, on_delete=models.PROTECT, null=True, blank=True, related_name="recipe_templates")
-    calculation_template = models.ForeignKey(CalculationTemplate, on_delete=models.PROTECT, null=True, blank=True, related_name="recipe_templates")
     batch_mass_g = models.DecimalField("Расчетная масса смеси, г", max_digits=22, decimal_places=8, default=Decimal("1000"), validators=[MinValueValidator(Decimal("0.00000001"))])
     definition = models.JSONField("Структура рецептуры", default=dict, blank=True)
     created_by = models.ForeignKey(EmployeeProfile, on_delete=models.PROTECT, null=True, blank=True, related_name="recipe_templates")
@@ -860,7 +831,6 @@ class RecipeTemplate(ImmutableDocument):
 
 class CalculationRecord(ImmutableDocument):
     recipe_version = models.ForeignKey(RecipeVersion, on_delete=models.PROTECT, related_name="calculations")
-    template = models.ForeignKey(CalculationTemplate, on_delete=models.PROTECT, null=True, blank=True, related_name="calculations")
     group = models.ForeignKey(RecipeGroup, on_delete=models.PROTECT, null=True, blank=True, related_name="calculations")
     inputs = models.JSONField("Исходные данные", default=dict)
     outputs = models.JSONField("Результаты", default=dict)

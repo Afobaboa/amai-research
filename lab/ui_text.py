@@ -29,8 +29,6 @@ UI_TEXT = {
     'source_detail': 'Карточка источника', 'source_edit': 'Редактировать источник',
     'recipe_template_list': 'Шаблоны рецептур', 'recipe_template_create': 'Новый шаблон рецептуры',
     'recipe_template_detail': 'Шаблон рецептуры', 'recipe_template_fork': 'Новая версия шаблона',
-    'calculation_template_list': 'Шаблоны расчётов', 'calculation_template_create': 'Новый шаблон расчёта',
-    'calculation_template_detail': 'Шаблон расчёта', 'calculation_template_fork': 'Новая версия шаблона',
     'calculation_detail': 'Сохранённый расчёт', 'history': 'История изменений',
 }
 NAVIGATION_ROUTES = tuple(key for key in UI_TEXT if key not in ('density_g_ml', 'price_per_kg'))
@@ -128,7 +126,7 @@ FIELD_LABELS.update({
     # Relation names also label their Django *_id attributes in tool output.
     'id': 'Номер записи', 'group': 'Группа состава', 'component': 'Компонент',
     'filling_plan_line': 'Строка плана заправки', 'input_result': 'Исходный результат',
-    'test_run': 'Определение', 'session': 'Испытание', 'template': 'Шаблон расчёта',
+    'test_run': 'Определение', 'session': 'Испытание', 'template': 'Настройки расчёта',
     'file': 'Файл источника', 'name_cell': 'Ячейка названия компонента',
     'quantity_cell': 'Ячейка количества', 'label_cell': 'Ячейка названия строки заправки',
     'mass_cell': 'Ячейка массы', 'scope_cell': 'Ячейка названия определения',
@@ -162,7 +160,6 @@ ASSISTANT_LABELS = {
     'metrics': UI_TEXT['metric_list'], 'sources': UI_TEXT['source_list'],
     'source_cells': 'Ячейки источников',
     'recipe_templates': UI_TEXT['recipe_template_list'],
-    'calculation_templates': UI_TEXT['calculation_template_list'],
     'calculations': SECTION_LABELS['calculations'],
     'summary': 'Краткая сводка', 'all': 'Все сведения карточки',
     'search_lab_data': 'Поиск лабораторных данных',

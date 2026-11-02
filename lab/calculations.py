@@ -4,10 +4,7 @@ from decimal import Decimal, InvalidOperation, localcontext
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
-from .models import (
-    CalculationRecord, RecipeVersion, currency_symbol,
-    default_calculation_operations,
-)
+from .models import CalculationRecord, RecipeVersion, currency_symbol
 
 
 OPERATIONS = {
@@ -208,15 +205,11 @@ def _calculate_group(group, batch):
     return output, {**metadata, 'components': inputs}
 
 
-def _template_snapshot(template):
-    if template is not None:
-        template.clean()
+def _calculation_settings():
+    """Keep the saved snapshot format while always enabling every operation."""
     return {
-        'id': template.pk if template else None,
-        'name': template.name if template else 'Масса, объем и стоимость',
-        'version': template.version if template else 1,
-        'operations': list(template.operations) if template else (
-            default_calculation_operations()),
+        'id': None, 'name': 'Расчёт состава', 'version': 1,
+        'operations': list(OPERATIONS),
     }
 
 
@@ -232,13 +225,12 @@ def _filling_snapshot(recipe):
             for row in rows]
 
 
-def calculate_recipe(recipe, template=None, batch_mass_g=None):
+def calculate_recipe(recipe, batch_mass_g=None):
     """Calculate each group independently, keeping filling plans separate."""
-    template = template or recipe.calculation_template
     batch = _decimal(recipe.batch_mass_g if batch_mass_g is None else batch_mass_g)
     if batch is None or batch <= 0:
         raise ValidationError("Масса смеси должна быть конечной и больше нуля.")
-    template_snapshot = _template_snapshot(template)
+    settings = _calculation_settings()
     outputs, snapshots = [], []
     with localcontext() as context:
         context.prec = 32
@@ -252,23 +244,23 @@ def calculate_recipe(recipe, template=None, batch_mass_g=None):
         issues.append("В рецептуре нет групп состава.")
     inputs = {
         "recipe_id": recipe.pk, "version_label": recipe.version_label,
-        "batch_mass_g": _text(batch), "template": template_snapshot,
+        "batch_mass_g": _text(batch), "template": settings,
         "groups": snapshots,
         "filling_plan": _filling_snapshot(recipe),
     }
-    return {"batch_mass_g": _text(batch), "template": template_snapshot, "groups": outputs,
+    return {"batch_mass_g": _text(batch), "template": settings, "groups": outputs,
             "issues": issues, "disclaimer": DISCLAIMER, "inputs": inputs}
 
 
 @transaction.atomic
-def save_calculation(recipe, employee, template=None, batch_mass_g=None, *, purpose="manual"):
+def save_calculation(recipe, employee, batch_mass_g=None, *, purpose="manual"):
     """Persist an append-only snapshot. The calling UI records its audit event."""
     if purpose not in {"manual", "publication"}:
         raise ValidationError("Неизвестное назначение сохраненного расчета.")
     locked = RecipeVersion.objects.select_for_update().get(pk=recipe.pk)
-    data = calculate_recipe(locked, template=template, batch_mass_g=batch_mass_g)
+    data = calculate_recipe(locked, batch_mass_g=batch_mass_g)
     data["purpose"] = purpose
     return CalculationRecord.objects.create(
-        recipe_version=locked, template=template or locked.calculation_template,
+        recipe_version=locked,
         inputs=data.pop("inputs"), outputs=data, created_by=employee,
     )

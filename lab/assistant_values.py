@@ -110,9 +110,8 @@ def annotate_choice_values(data, model):
     def operation_names(value, path, *, annotate):
         if not isinstance(value, dict) or not isinstance(value.get('operations'), list):
             return
-        # Use the exact labels of the operation selector shown to the author.
-        from .template_forms import OPERATION_CHOICES
-        vocabulary = dict(OPERATION_CHOICES)
+        from .calculations import OPERATIONS
+        vocabulary = {code: operation['label'] for code, operation in OPERATIONS.items()}
         codes = value['operations']
         for code in codes:
             if isinstance(code, str) and code in vocabulary:
@@ -157,8 +156,6 @@ def annotate_choice_values(data, model):
         if not isinstance(value, dict):
             return
         choices(value, current_model, path, annotate=True)
-        if current_model is m.CalculationTemplate:
-            operation_names(value, path, annotate=True)
         if current_model is m.CalculationRecord:
             for key in ('inputs', 'outputs'):
                 calculation_snapshot(value.get(key), '.'.join(filter(None, (path, key))))

@@ -479,7 +479,6 @@ async function checkLiveRecipes(page, go) {
 async function checkLiveTemplatesAndHistory(page, go) {
   for (const [path, query, title] of [
     ['/recipe-templates/', 'qa_шаблон.зимней-пены', 'QA шаблон зимней пены'],
-    ['/calculation-templates/', 'qa_плотность-и.стоимость', 'QA плотность и стоимость'],
   ]) {
     await go(path);
     await typeLiveQuery(page, query);
@@ -870,8 +869,8 @@ try {
   assert.doesNotMatch(await page.locator('main').innerText(),/DEMO-/);
   await page.screenshot({path:join(artifacts, 'overview.png'),fullPage:true});
   const desktopPaths = ['/recipes/','/tests/','/history/','/sources/','/materials/','/material-categories/','/material-categories/new/','/lots/','/metrics/','/mixtures/',
-    '/recipe-templates/','/calculation-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
-    '/mixtures/new/','/recipe-templates/new/','/calculation-templates/new/','/recipes/new/','/tests/new/',
+    '/recipe-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
+    '/mixtures/new/','/recipe-templates/new/','/recipes/new/','/tests/new/',
     '/recipes/1/','/tests/1/','/sources/1/','/sources/4/','/feedback/'];
   for (const path of desktopPaths) {
     await go(path);
@@ -1186,25 +1185,10 @@ try {
   assert.equal(await page.locator(`a[href="${uploadedSource}"]`).count(),1);
 
   // Fixed template versions can be composed and instantiated through forms.
-  await go('/calculation-templates/new/');
-  await page.locator('#id_name').fill('QA плотность и стоимость');
-  await page.locator('#id_description').fill('QA проверка выбранных расчётных операций');
-  await page.locator('[name="operations"][value="volume"]').uncheck();
-  await page.locator('[name="operations"][value="volume"]').check();
-  await submit('Сохранить шаблон расчёта');
-  const calculationTemplatePath=new URL(page.url()).pathname;
-  const calculationTemplateId=calculationTemplatePath.split('/')[2];
-  assert.ok((await page.locator('main').innerText()).includes('Плотность'));
-  await go(calculationTemplatePath+'fork/');
-  assert.equal(await page.locator('#id_version').inputValue(),'2');
-  await page.locator('#id_description').fill('QA вторая версия расчёта');
-  await submit('Сохранить шаблон расчёта');
-  const calculationTemplateV2=new URL(page.url()).pathname;
-  assert.notEqual(calculationTemplateV2,calculationTemplatePath);
   await go('/recipe-templates/new/');
   await page.locator('#id_name').fill('QA шаблон зимней пены');
   await option(page,'#id_mixture_type','Зимняя пена');
-  await page.locator('#id_calculation_template').selectOption(calculationTemplateId);
+  assert.equal(await page.locator('#id_calculation_template').count(), 0);
   await page.locator('#id_batch_mass_g').fill('1000');
   await page.locator('#id_components-0-specified_lot').selectOption(lotId);
   await page.locator('#id_components-0-quantity_value').fill('100');
@@ -1257,8 +1241,8 @@ try {
   assert.match(await cost(),/^400\s*₽$/);
   await go(baselineCalculation);
   assert.equal(await cost(),baselineCost);
-  await checkAdditionalMobile([categoryPath,categoryPath+'edit/',lotPath,recipeTemplatePath,calculationTemplatePath,baselineCalculation]);
-  for (const [path,filename] of [[calculationTemplatePath,'calculation-template.png'],[baselineCalculation,'calculation.png']]) {
+  await checkAdditionalMobile([categoryPath,categoryPath+'edit/',lotPath,recipeTemplatePath,baselineCalculation]);
+  for (const [path,filename] of [[baselineCalculation,'calculation.png']]) {
     await go(path);
     await page.screenshot({path:join(artifacts,filename),fullPage:true});
   }
@@ -1268,7 +1252,7 @@ try {
   assert.ok((await historyTarget.getAttribute('href')).startsWith('/sources/'));
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),historyTarget.click()]);
   assert.ok(new URL(page.url()).pathname.startsWith('/sources/'));
-  console.log('Sources, uploads/SHA, provenance, material categories/rename/filter, materials/lots, quarantine, recipe/calculation templates and immutable recalculation all passed.');
+  console.log('Sources, uploads/SHA, provenance, material categories/rename/filter, materials/lots, quarantine, recipe templates and automatic calculations and immutable recalculation all passed.');
 
   await go('/employees/');
   await option(page,'#id_employee','Иван Иванов');
@@ -1281,7 +1265,7 @@ try {
   const csrf=await page.locator('[name="csrfmiddlewaretoken"]').first().inputValue();
   for(const path of ['/recipes/new/','/tests/new/',card+'results/new/',card+'observations/new/',card+'conditioning/new/',
     '/sources/new/','/materials/new/','/material-categories/new/',categoryPath+'edit/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/',
-    '/calculation-templates/new/',calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/',
+    calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/',
     card+'status/',fork+'status/',lotPath+'status/']){
     const response=await page.request.post(base+path,{form:{csrfmiddlewaretoken:csrf},headers:{Referer:base+card}});
     assert.equal(response.status(),403,`Reader direct POST ${path}`);
@@ -1294,7 +1278,7 @@ try {
   assert.match(await page.locator('.profile').innerText(),/Иван Иванов/);
   assert.deepEqual(errors,[]);
   assert.deepEqual(overflows,[],`Mobile overflow: ${overflows.join(', ')}`);
-  console.log(`PASS: isolated real initial dataset; login, author/reader roles, direct POST denial, desktop/mobile routes, documentary sources and lots, fixed recipe/calculation templates, immutable saved calculations, immutable recipes, fork/edit/publish, zero and missing values, card/result/observation/treatment creation, completion locking, reload persistence, audit search. Screenshots: ${artifacts}`);
+  console.log(`PASS: isolated real initial dataset; login, author/reader roles, direct POST denial, desktop/mobile routes, documentary sources and lots, fixed recipe templates and automatic calculations, immutable saved calculations, immutable recipes, fork/edit/publish, zero and missing values, card/result/observation/treatment creation, completion locking, reload persistence, audit search. Screenshots: ${artifacts}`);
 } catch(error) {
   if (!interrupted) {
     console.error(error);

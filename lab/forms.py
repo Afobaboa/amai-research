@@ -8,7 +8,7 @@ from .source_fields import SourceCellField, SourceCellSelect
 from .models import (
     ConditioningEvent, EmployeeProfile, FillingPlanLine, Material, MaterialLot,
     Metric, MixtureType, RecipeVersion, TestSession, TestRun, SourceCell, SourceSheet,
-    RecipeGroup, RecipeProperty, RecipeTemplate, CalculationTemplate,
+    RecipeGroup, RecipeProperty, RecipeTemplate,
 )
 
 
@@ -51,14 +51,13 @@ class RecipeForm(forms.ModelForm):
 
     class Meta:
         model = RecipeVersion
-        fields = ["mixture_type", "version_label", "title", "recorded_on", "status", "recipe_template", "calculation_template", "batch_mass_g", "source_sheet", "notes"]
+        fields = ["mixture_type", "version_label", "title", "recorded_on", "status", "recipe_template", "batch_mass_g", "source_sheet", "notes"]
         labels = {"mixture_type": "Тип смеси", "version_label": "Обозначение версии", "title": "Название", "recorded_on": "Дата рецептуры", "status": "Статус", "notes": "Примечание"}
         widgets = {"recipe_template": forms.HiddenInput, "recorded_on": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}), "notes": forms.Textarea(attrs={"rows": 3})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["status"].choices = [("draft", "Черновик"), ("published", "Опубликована")]
-        self.fields['calculation_template'].label = 'Шаблон расчёта'
         self.fields['source_sheet'].label = 'Лист первичного источника'
         self.fields['source_sheet'].queryset = SourceSheet.objects.select_related('file')
 

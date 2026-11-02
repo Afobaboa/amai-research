@@ -18,7 +18,6 @@ REGISTRY_FILTERS = (
     ('catalog/metric_list.html', {}),
     ('catalog/mixture_list.html', {}),
     ('templates/recipe_list.html', {}),
-    ('templates/calculation_list.html', {}),
 )
 
 

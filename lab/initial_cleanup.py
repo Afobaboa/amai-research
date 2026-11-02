@@ -96,8 +96,6 @@ def remove_templates():
     for model, entity, names in (
         (lab.RecipeTemplate, 'recipe_template',
          ['Зимняя пена', 'Зимняя улучшенная пена']),
-        (lab.CalculationTemplate, 'calculation_template',
-         ['Масса, плотность и стоимость смеси', 'Масса и стоимость смеси']),
     ):
         remove_catalog(model, model.objects.filter(
             created_by__full_name__in=EMPLOYEES, name__in=names,
@@ -123,7 +121,7 @@ def retire_employees(author):
     profiles = lab.EmployeeProfile.objects.filter(full_name__in=EMPLOYEES)
     ids = list(profiles.values_list('pk', flat=True))
     for model in (lab.SourceFile, lab.RecipeVersion, lab.TestSession,
-                  lab.CalculationTemplate, lab.RecipeTemplate,
+                  lab.RecipeTemplate,
                   lab.CalculationRecord):
         models.QuerySet(model).filter(created_by__in=ids).update(
             created_by=author,

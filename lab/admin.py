@@ -131,7 +131,7 @@ for model in [
     models.RecipeComponent, models.FillingPlanLine, models.RecipeProperty,
     models.RecipeMatch, models.TestRun, models.SessionCondition, models.Result,
     models.ResultDependency, models.Observation, models.ConditioningEvent,
-    models.CalculationTemplate, models.RecipeTemplate, models.CalculationRecord,
+    models.RecipeTemplate, models.CalculationRecord,
 ]:
     admin.site.register(model, ReadOnlyRecordAdmin)
 

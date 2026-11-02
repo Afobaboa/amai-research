@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
-    CalculationRecord, CalculationTemplate, ChangeEvent, EmployeeProfile,
+    CalculationRecord, ChangeEvent, EmployeeProfile,
     Material, MaterialLot, Metric, RecipeComponent, RecipeGroup, RecipeProperty,
     RecipeTemplate, RecipeVersion, SourceCell, SourceFile, SourceSheet, Result,
     TestRun, TestSession,
@@ -31,11 +31,8 @@ class ExpandedWorkflowTests(TestCase):
 
     @classmethod
     def template_fixture(cls):
-        cls.calc_template = CalculationTemplate.objects.create(
-            name='Плотность и цена', created_by=cls.author)
         cls.recipe_template = RecipeTemplate.objects.create(
             name='Зимняя пена', created_by=cls.author,
-            calculation_template=cls.calc_template,
             definition={'components': [{'group_label': 'A',
                                        'quantity_basis': 'mass_percent',
                                        'completeness': 'complete',
@@ -72,7 +69,7 @@ class ExpandedWorkflowTests(TestCase):
     def payload(self, **changes):
         result = {
             'version_label': 'WINTER.1', 'title': 'Зимняя пена', 'status': 'published',
-            'calculation_template': str(self.calc_template.pk), 'batch_mass_g': '1000',
+            'batch_mass_g': '1000',
             'components-TOTAL_FORMS': '1', 'components-INITIAL_FORMS': '0',
             'components-MIN_NUM_FORMS': '0', 'components-MAX_NUM_FORMS': '100',
             'components-0-group_label': 'A',
@@ -212,15 +209,13 @@ class ExpandedWorkflowTests(TestCase):
         routes = [
             ('recipe_calculate', [recipe.pk]), ('recipe_template_create', []),
             ('recipe_template_fork', [self.recipe_template.pk]),
-            ('recipe_template_from_recipe', [recipe.pk]), ('calculation_template_create', []),
-            ('calculation_template_fork', [self.calc_template.pk]),
+            ('recipe_template_from_recipe', [recipe.pk]),
         ]
         for name, args in routes:
             with self.subTest(route=name):
                 self.assertEqual(self.client.post(reverse(name, args=args), {}).status_code, 403)
         self.assertFalse(CalculationRecord.objects.exists())
         self.assertEqual(RecipeTemplate.objects.count(), 1)
-        self.assertEqual(CalculationTemplate.objects.count(), 1)
 
     def test_result_and_observation_keep_provenance_and_reject_other_sheet(self):
         card = TestSession.objects.create(identifier='WINTER.TEST.1', status='active', source_sheet=self.sheet)

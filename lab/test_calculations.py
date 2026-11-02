@@ -6,7 +6,7 @@ from django.test import TestCase
 
 from .calculations import calculate_recipe, save_calculation
 from .models import (
-    CalculationRecord, CalculationTemplate, EmployeeProfile, Material, MaterialLot,
+    CalculationRecord, EmployeeProfile, Material, MaterialLot,
     RecipeComponent, RecipeGroup, RecipeTemplate, RecipeVersion, SourceFile,
 )
 
@@ -22,11 +22,8 @@ class CalculationTests(TestCase):
             material=cls.first, lot_code='FIRST', density_g_ml=1, price_per_kg=100)
         cls.second_lot = MaterialLot.objects.create(
             material=cls.second, lot_code='SECOND', density_g_ml=2, price_per_kg=200)
-        cls.template = CalculationTemplate.objects.create(
-            name="Масса, объем и цена", created_by=cls.author)
         cls.recipe = RecipeVersion.objects.create(
-            version_label="WINTER.1", batch_mass_g=1000,
-            calculation_template=cls.template)
+            version_label="WINTER.1", batch_mass_g=1000)
         cls.group = RecipeGroup.objects.create(
             recipe_version=cls.recipe, label="A", quantity_basis="mass_percent",
             completeness="complete")
@@ -142,20 +139,9 @@ class CalculationTests(TestCase):
         with self.assertRaises(ValidationError):
             record.delete()
 
-    def test_templates_are_versioned_and_cannot_execute_formula_strings(self):
-        with self.assertRaises(ValidationError):
-            CalculationTemplate.objects.create(name="Unsafe", operations=["__import__('os')"])
-        self.template.description = "Changed"
-        with self.assertRaises(ValidationError):
-            self.template.save()
-        with self.assertRaises(ValidationError):
-            CalculationTemplate.objects.filter(pk=self.template.pk).delete()
-        second = CalculationTemplate.objects.create(name=self.template.name, version=2, operations=["density"])
-        self.assertEqual(second.operations, ["density"])
-
     def test_recipe_template_references_and_group_consistency_validated(self):
         definition = {"components": [{"group_label": "A", "quantity_basis": "mass_percent", "completeness": "complete", "material": self.first.pk, "quantity_value": "100"}], "filling": [{"group_label": "A", "mass_g": "220"}]}
-        template = RecipeTemplate.objects.create(name="Зимняя пена", definition=definition, calculation_template=self.template)
+        template = RecipeTemplate.objects.create(name="Зимняя пена", definition=definition)
         self.assertEqual(template.definition["components"][0]["material"], self.first.pk)
         bad = {**definition, "filling": [{"group_label": "NOT_IN_COMPONENTS", "mass_g": 220}]}
         with self.assertRaises(ValidationError):

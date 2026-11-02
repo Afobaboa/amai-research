@@ -10,7 +10,7 @@ from .assistant_values import (
 )
 from .assistant_tools import ENTITIES
 from .catalog_forms import SourceCellForm
-from .template_forms import OPERATION_CHOICES
+from .calculations import OPERATIONS
 from .ui_text import SOURCE_CELL_KIND_LABELS
 
 
@@ -115,7 +115,7 @@ class ChoiceValueLabelsTests(SimpleTestCase):
         self.assertEqual(labels['outputs.groups.rows.price_origin'], {'material': 'Из справочника материала'})
         self.assertEqual(labels['outputs.purpose'], {'publication': 'Расчёт при публикации'})
         self.assertEqual(labels['inputs.filling_plan.mass_status'], {'calculation_checked': 'Расчёт проверен'})
-        self.assertEqual(labels['inputs.template.operations']['totalCost'], dict(OPERATION_CHOICES)['totalCost'])
+        self.assertEqual(labels['inputs.template.operations']['totalCost'], OPERATIONS['totalCost']['label'])
         self.assertFalse(any('unknown_payload' in path for path in labels))
 
     def test_template_definition_known_choices_are_metadata_only(self):
@@ -126,18 +126,6 @@ class ChoiceValueLabelsTests(SimpleTestCase):
         self.assertEqual(data['definition'], definition)
         self.assertEqual(data['value_labels']['definition.components.quantity_basis'],
                          {'weight_parts': 'Массовые части'})
-
-    def test_operation_names_and_existing_metadata_are_preserved(self):
-        data = {'operations': ['mass', 'totalCost'],
-                'value_labels': {'custom': {'code': 'Существующая подпись'}}}
-        annotate_choice_values(data, m.CalculationTemplate)
-        self.assertEqual(data['operations'], ['mass', 'totalCost'])
-        self.assertEqual(data['operations_display'], [dict(OPERATION_CHOICES)[code] for code in data['operations']])
-        self.assertEqual(data['value_labels']['custom'], {'code': 'Существующая подпись'})
-        unknown = {'operations': ['mass', 'unknown_operation']}
-        annotate_choice_values(unknown, m.CalculationTemplate)
-        self.assertNotIn('operations_display', unknown)
-        self.assertNotIn('unknown_operation', unknown['value_labels']['operations'])
 
     def test_fallback_only_contains_unambiguous_technical_choice_codes(self):
         labels = technical_choice_labels()

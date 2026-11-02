@@ -11,7 +11,7 @@ from django.urls import reverse
 
 from .assistant_tools import execute_tool
 from .models import (
-    CalculationTemplate, ChangeEvent, EmployeeProfile, Material,
+    ChangeEvent, EmployeeProfile, Material,
     MaterialCategory, MaterialLot, Metric, MixtureType, RecipeMatch,
     RecipeTemplate, RecipeVersion, SourceFile, TestSession,
 )
@@ -43,7 +43,6 @@ class NormalizedSearchTests(TestCase):
         cls.source = SourceFile.objects.create(title=cls.key)
         cls.metric = Metric.objects.create(code=cls.key, label=cls.key)
         cls.recipe_template = RecipeTemplate.objects.create(name=cls.key)
-        cls.calculation_template = CalculationTemplate.objects.create(name=cls.key)
         cls.event = ChangeEvent.objects.create(
             entity_type='material', entity_id=cls.material.pk,
             action='created', summary=cls.key, employee=cls.employee,
@@ -62,7 +61,6 @@ class NormalizedSearchTests(TestCase):
             ('recipe_list', self.recipe), ('test_list', self.card),
             ('source_list', self.source), ('metric_list', self.metric),
             ('recipe_template_list', self.recipe_template),
-            ('calculation_template_list', self.calculation_template),
             ('history', self.event),
         )
 
@@ -83,8 +81,7 @@ class NormalizedSearchTests(TestCase):
 
     def test_assistant_uses_the_same_search_rules(self):
         entities = ('materials', 'lots', 'mixtures', 'recipes', 'tests',
-                    'metrics', 'sources', 'recipe_templates',
-                    'calculation_templates')
+                    'metrics', 'sources', 'recipe_templates')
         for entity in entities:
             for query in self.queries:
                 with self.subTest(entity=entity, query=query):

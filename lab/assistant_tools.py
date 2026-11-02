@@ -42,15 +42,14 @@ ENTITIES = {
         ['lot_code', 'material__name', 'supplier', 'notes'],
     ),
     'mixtures': (m.MixtureType, 'mixture_detail', 'id code title', ['code', 'title']),
-    'recipes': (m.RecipeVersion, 'recipe_detail', 'id mixture_type_id mixture_type__code version_label recorded_on title status notes batch_mass_g recipe_template_id calculation_template_id source_sheet_id', ['version_label', 'title', 'notes', 'mixture_type__code', 'mixture_type__title', 'groups__components__unbatched_material__name', 'groups__components__specified_lot__material__name']),
+    'recipes': (m.RecipeVersion, 'recipe_detail', 'id mixture_type_id mixture_type__code version_label recorded_on title status notes batch_mass_g recipe_template_id source_sheet_id', ['version_label', 'title', 'notes', 'mixture_type__code', 'mixture_type__title', 'groups__components__unbatched_material__name', 'groups__components__specified_lot__material__name']),
     'tests': (m.TestSession, 'test_detail', 'id identifier title status notes recorded_manufactured_on recorded_tested_on source_sheet_id', ['identifier', 'title', 'notes', 'recipe_matches__recipe_version__version_label', 'runs__scope', 'runs__observations__text_value', 'runs__results__text_value']),
     'results': (m.Result, None, 'id test_run_id test_run__session_id test_run__session__identifier test_run__scope test_run__method_code metric_id metric__code metric__label metric__unit_code numeric_value text_value origin value_state source_cell_id calculation_code', ['metric__code', 'metric__label', 'text_value', 'test_run__session__identifier', 'test_run__scope']),
     'metrics': (m.Metric, 'metric_list', 'id code label unit_code value_kind', ['code', 'label', 'unit_code']),
     'sources': (m.SourceFile, 'source_detail', 'id title kind original_path notes sha256 date_system', ['title', 'original_path', 'notes']),
     'source_cells': (m.SourceCell, None, 'id sheet_id sheet__file_id sheet__name address cell_kind raw_value formula_text cached_value', ['address', 'sheet__name', 'raw_value', 'formula_text']),
-    'recipe_templates': (m.RecipeTemplate, 'recipe_template_detail', 'id name version description mixture_type_id calculation_template_id batch_mass_g definition', ['name', 'description', 'mixture_type__code']),
-    'calculation_templates': (m.CalculationTemplate, 'calculation_template_detail', 'id name version description operations', ['name', 'description']),
-    'calculations': (m.CalculationRecord, 'calculation_detail', 'id recipe_version_id recipe_version__version_label template_id group_id inputs outputs created_at', ['recipe_version__version_label', 'template__name']),
+    'recipe_templates': (m.RecipeTemplate, 'recipe_template_detail', 'id name version description mixture_type_id batch_mass_g definition', ['name', 'description', 'mixture_type__code']),
+    'calculations': (m.CalculationRecord, 'calculation_detail', 'id recipe_version_id recipe_version__version_label group_id inputs outputs created_at', ['recipe_version__version_label']),
 }
 
 
@@ -408,7 +407,7 @@ def _recipes_sections(obj, related, offset, limit):
             obj.session_matches, 'id session_id session__identifier status',
         ),
         'calculations': lambda: related(
-            obj.calculations, 'id template_id group_id created_at outputs',
+            obj.calculations, 'id group_id created_at outputs',
         ),
     }
 

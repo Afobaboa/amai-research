@@ -83,7 +83,7 @@ class CompactContextTests(TestCase):
             '/recipes/', '/recipes/new/', '/recipes/1/fork/',
             '/recipes/1/calculate/', '/tests/1/results/new/',
             '/tests/1/observations/new/', '/tests/1/conditioning/new/',
-            '/lots/new/', '/recipe-templates/', '/calculation-templates/',
+            '/lots/new/', '/recipe-templates/',
             '/calculations/1/', '/history/',
         ):
             self.assertIsNotNone(resolve(path).url_name)

@@ -86,8 +86,7 @@ def readable(value, key=''):
                 'unbatched_material': models.Material, 'specified_lot': models.MaterialLot,
                 'metric': models.Metric, 'recipe_version': models.RecipeVersion,
                 'input_group': models.RecipeGroup, 'source': models.SourceFile, 'source_sheet': models.SourceSheet,
-                'source_cell': models.SourceCell, 'material': models.Material, 'recipe_template': models.RecipeTemplate,
-                'calculation_template': models.CalculationTemplate}
+                'source_cell': models.SourceCell, 'material': models.Material, 'recipe_template': models.RecipeTemplate}
         if key in refs:
             record = refs[key].objects.filter(pk=value).first()
             return str(record) if record else f'Запись #{value}'
@@ -132,8 +131,7 @@ ENTITY_ROUTES = {'recipe': ('recipe_detail', 'Рецептура'), 'test': ('te
                  'source': ('source_detail', 'Источник'), 'material': ('material_detail', 'Материал'),
                  'lot': ('lot_detail', 'Партия'), 'metric': ('metric_list', 'Показатель'),
                  'mixture_type': ('mixture_detail', 'Тип смеси'),
-                 'recipe_template': ('recipe_template_detail', 'Шаблон рецептуры'),
-                 'calculation_template': ('calculation_template_detail', 'Шаблон расчёта')}
+                 'recipe_template': ('recipe_template_detail', 'Шаблон рецептуры')}
 
 
 @register.filter
@@ -144,4 +142,6 @@ def event_url(event):
 
 @register.filter
 def event_entity_label(event):
+    if event.entity_type == 'calculation_template':
+        return f'Архивный шаблон расчёта #{event.entity_id}'
     return f'{ENTITY_ROUTES.get(event.entity_type, (None, "Запись"))[1]} #{event.entity_id}'
