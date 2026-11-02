@@ -375,7 +375,7 @@ CONDITION_FIELDS = (
     'id metric_id metric__code metric__label metric__unit_code '
     'numeric_value text_value source_cell_id'
 )
-RECIPE_LINK_FIELDS = 'id recipe_version_id recipe_version__version_label status reason'
+RECIPE_LINK_FIELDS = 'id recipe_version_id recipe_version__version_label status'
 DEPENDENCY_FIELDS = (
     'id input_result_id role input_result__metric__code '
     'input_result__metric__label input_result__metric__unit_code '
@@ -405,7 +405,7 @@ def _recipes_sections(obj, related, offset, limit):
         'filling_plan': lambda: related(obj.filling_plan, FILLING_FIELDS),
         'properties': lambda: related(_recipe_properties(obj), PROPERTY_FIELDS),
         'test_links': lambda: related(
-            obj.session_matches, 'id session_id session__identifier status reason',
+            obj.session_matches, 'id session_id session__identifier status',
         ),
         'calculations': lambda: related(
             obj.calculations, 'id template_id group_id created_at outputs',

@@ -340,8 +340,7 @@ class ArchiveLoader:
             if recipe:
                 lab.RecipeMatch.objects.get_or_create(
                     session=card, recipe_version=recipe,
-                    defaults={'status': row.get('status', 'candidate'),
-                              'reason': row['reason']},
+                    defaults={'status': row.get('status', 'candidate')},
                 )
 
 

@@ -247,18 +247,19 @@ class ExpandedWorkflowTests(TestCase):
         self.assertEqual(observation.text_value, text)
 
     def test_condition_provenance_is_validated_and_saved(self):
-        payload = {'identifier': 'WINTER.CONDITION.1', 'title': 'Холодный режим', 'status': 'active',
+        card = TestSession.objects.create(identifier='WINTER.CONDITION.1', status='active', source_sheet=self.sheet)
+        payload = {'title': 'Холодный режим', 'status': 'active',
                    'source_sheet': str(self.sheet.pk),
                    'conditions-TOTAL_FORMS': '1', 'conditions-INITIAL_FORMS': '0',
                    'conditions-MIN_NUM_FORMS': '0', 'conditions-MAX_NUM_FORMS': '30',
                    'conditions-0-metric': str(self.metric.pk), 'conditions-0-numeric_value': '-18',
                    'conditions-0-source_cell': str(self.other_cell.pk)}
-        url = reverse('test_create')
+        url = reverse('test_edit', args=[card.pk])
         self.assertEqual(self.client.post(url, payload).status_code, 200)
-        self.assertFalse(TestSession.objects.filter(identifier=payload['identifier']).exists())
+        self.assertFalse(card.conditions.exists())
         payload['conditions-0-source_cell'] = str(self.qty_cell.pk)
         self.assertEqual(self.client.post(url, payload).status_code, 302)
-        card = TestSession.objects.get(identifier=payload['identifier'])
+        card.refresh_from_db()
         self.assertEqual(card.conditions.get().source_cell_id, self.qty_cell.pk)
         self.assertEqual(card.conditions.get().numeric_value, Decimal(-18))
 
@@ -314,7 +315,7 @@ class ExpandedWorkflowTests(TestCase):
         manual.refresh_from_db()
         self.assertEqual(manual.outputs['groups'][0]['total_cost'], '0')
 
-    def test_card_source_cannot_be_changed_away_from_existing_result_evidence(self):
+    def test_card_edit_ignores_submitted_source_and_preserves_existing_evidence(self):
         card = TestSession.objects.create(identifier='WINTER.PROVENANCE', title='Исходная карточка',
                                           status='active', source_sheet=self.sheet)
         run = TestRun.objects.create(session=card, scope='Холодный режим')
@@ -326,14 +327,12 @@ class ExpandedWorkflowTests(TestCase):
                    'conditions-MAX_NUM_FORMS': '30'}
         url = reverse('test_edit', args=[card.pk])
         response = self.client.post(url, payload)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('source_sheet', response.context['form'].errors)
+        self.assertEqual(response.status_code, 302)
         card.refresh_from_db()
         result.refresh_from_db()
         self.assertEqual(card.source_sheet_id, self.sheet.pk)
-        self.assertEqual(card.title, 'Исходная карточка')
+        self.assertEqual(card.title, 'Уточненная карточка')
         self.assertEqual(result.source_cell_id, self.qty_cell.pk)
-        self.assertFalse(ChangeEvent.objects.exists())
         payload['source_sheet'] = str(self.sheet.pk)
         self.assertEqual(self.client.post(url, payload).status_code, 302)
         card.refresh_from_db()

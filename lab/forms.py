@@ -169,20 +169,28 @@ RecipePropertyFormSet = formset_factory(RecipePropertyForm, extra=1, max_num=100
 
 
 class TestSessionForm(forms.ModelForm):
-    recipe = forms.ModelChoiceField(label="Связанная рецептура", queryset=RecipeVersion.objects.select_related("mixture_type").filter(status="published"), required=False, empty_label="Связь пока не установлена")
-    match_reason = forms.CharField(label="Основание связи с рецептурой", required=False, initial="Рецептура выбрана автором карточки", widget=forms.Textarea(attrs={"rows": 2}))
+    recipe = forms.ModelChoiceField(label="Связанная рецептура", queryset=RecipeVersion.objects.select_related("mixture_type").filter(status="published"), required=False, empty_label="Связь пока не установлена", help_text="Номер карточки совпадает с номером выбранной рецептуры.")
 
     class Meta:
         model = TestSession
-        fields = ["identifier", "title", "recorded_manufactured_on", "recorded_tested_on", "status", "source_sheet", "notes"]
-        labels = {"identifier": "Номер карточки", "title": "Название испытания", "recorded_manufactured_on": "Записанная дата изготовления", "recorded_tested_on": "Дата испытания", "status": "Статус", "notes": "Примечание", 'source_sheet': 'Лист первичного источника'}
+        fields = ["recipe", "title", "recorded_manufactured_on", "recorded_tested_on", "status", "notes"]
+        labels = {"title": "Название испытания", "recorded_manufactured_on": "Записанная дата изготовления", "recorded_tested_on": "Дата испытания", "status": "Статус", "notes": "Примечание"}
         widgets = {"recorded_manufactured_on": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}), "recorded_tested_on": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}), "notes": forms.Textarea(attrs={"rows": 3})}
 
-    def clean(self):
-        data = super().clean()
-        if data.get("recipe") and not data.get("match_reason", "").strip():
-            self.add_error("match_reason", "Укажите, на каком основании установлена связь.")
-        return data
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            self.fields["recipe"].required = True
+            self.fields["recipe"].empty_label = "Выберите рецептуру"
+
+    def save(self, commit=True):
+        card = super().save(commit=False)
+        recipe = self.cleaned_data.get("recipe")
+        if recipe:
+            card.identifier = recipe.version_label
+        if commit:
+            card.save()
+        return card
 
 
 class ConditionForm(forms.Form):

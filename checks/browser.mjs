@@ -487,9 +487,9 @@ async function checkLiveTemplatesAndHistory(page, go) {
     assert.match(await page.locator('tbody').innerText(), new RegExp(title));
   }
   await go('/history/?entity=test');
-  await typeLiveQuery(page, 'qa 2026 001');
+  await typeLiveQuery(page, 'qa 316 1');
   assert.equal(new URL(page.url()).searchParams.get('entity'), 'test');
-  assert.match(await page.locator('.timeline').innerText(), /QA-2026-001/);
+  assert.match(await page.locator('.timeline').innerText(), /QA-316.1/);
   console.log('Template registries and filtered history update without Enter.');
 }
 
@@ -1057,7 +1057,11 @@ try {
     await submit('Сохранить');
   }
   await go('/tests/new/?recipe='+fork.split('/')[2]);
-  await page.locator('#id_identifier').fill('QA-2026-001');
+  for (const name of ['identifier', 'source_sheet', 'match_reason']) {
+    assert.equal(await page.locator('#id_'+name).count(), 0);
+  }
+  assert.equal(await page.locator('#id_recipe').getAttribute('required'), '');
+  const linkedRecipe = await page.locator('#id_recipe option:checked').textContent();
   await page.locator('#id_title').fill('QA нулевое измерение и история');
   await page.locator('#id_status').selectOption('active');
   await page.locator('#id_recorded_tested_on').fill('2026-11-01');
@@ -1068,6 +1072,7 @@ try {
   await submit('Сохранить карточку');
   const card=new URL(page.url()).pathname;
   assert.match(card,/^\/tests\/\d+\/$/);
+  assert.ok(linkedRecipe.includes((await page.locator('h1').innerText()).trim()));
   assert.match(await page.locator('.results-strip').innerText(),/0 °C/);
   await checkAdditionalMobile(['results/new/','observations/new/','conditioning/new/'].map(path=>card+path));
   await go(card+'results/new/');
@@ -1102,8 +1107,8 @@ try {
   assert.match(await page.locator('main').innerText(),/QA карточка завершена/);
   await page.locator('details.event-details').first().locator('summary').click();
   assert.doesNotMatch(await page.locator('details.event-details').first().innerText(),/numeric_value|recorded_tested_on|recipe_matches/);
-  await go('/history/?q=QA-2026-001');
-  assert.match(await page.locator('main').innerText(),/QA-2026-001/);
+  await go('/history/?q=QA-316.1');
+  assert.match(await page.locator('main').innerText(),/QA-316.1/);
 
   // Add documentary evidence through the same author-facing screens as a user.
   await go('/sources/new/');

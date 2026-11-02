@@ -120,7 +120,7 @@ class CatalogWorkflowTests(TestCase):
     def test_used_lot_identity_is_preserved_and_traceability_does_not_duplicate_cards(self):
         recipe = self.used_recipe()
         card = TestSession.objects.create(identifier='LOT-CARD-001')
-        RecipeMatch.objects.create(session=card, recipe_version=recipe, status='confirmed', reason='Рецептура указана автором')
+        RecipeMatch.objects.create(session=card, recipe_version=recipe, status='confirmed')
         response = self.client.get(reverse('lot_detail', args=[self.lot.pk]))
         self.assertEqual(list(response.context['recipes']), [recipe])
         self.assertEqual(list(response.context['cards']), [card])

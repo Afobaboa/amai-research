@@ -71,9 +71,9 @@ class DocumentaryModelTests(TestCase):
         RecipeProperty.objects.create(group=self.group, property_code="NCO", value=10)
 
     def test_only_one_confirmed_match_but_multiple_candidates_are_preserved(self):
-        RecipeMatch.objects.create(session=self.card, recipe_version=self.recipe, status="confirmed", reason="Указано автором")
-        self.assert_rejected(lambda: RecipeMatch.objects.create(session=self.card, recipe_version=self.other_recipe, status="confirmed", reason="Конфликт"))
-        RecipeMatch.objects.create(session=self.card, recipe_version=self.other_recipe, status="candidate", reason="Кандидат")
+        RecipeMatch.objects.create(session=self.card, recipe_version=self.recipe, status="confirmed")
+        self.assert_rejected(lambda: RecipeMatch.objects.create(session=self.card, recipe_version=self.other_recipe, status="confirmed"))
+        RecipeMatch.objects.create(session=self.card, recipe_version=self.other_recipe, status="candidate")
         self.assertEqual(self.card.recipe_matches.count(), 2)
         self.assertEqual(self.card.confirmed_recipe, self.recipe)
 

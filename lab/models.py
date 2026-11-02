@@ -505,7 +505,6 @@ class RecipeMatch(models.Model):
     session = models.ForeignKey(TestSession, on_delete=models.PROTECT, related_name="recipe_matches")
     recipe_version = models.ForeignKey(RecipeVersion, on_delete=models.PROTECT, related_name="session_matches")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.CANDIDATE)
-    reason = models.TextField("Основание связи")
 
     class Meta:
         constraints = [

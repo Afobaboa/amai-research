@@ -114,7 +114,7 @@ class StatusTests(TestCase):
 
     def test_test_completion_changes_only_status_and_preserves_links(self):
         match = RecipeMatch.objects.create(
-            session=self.card, recipe_version=self.recipe, reason='Сохранить',
+            session=self.card, recipe_version=self.recipe,
         )
         metric = Metric.objects.create(code='STATUS_TEMP', label='Температура')
         condition = SessionCondition.objects.create(

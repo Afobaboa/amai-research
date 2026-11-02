@@ -459,7 +459,7 @@ def test_create(request, pk=None):
     if card and card.status == 'completed':
         return HttpResponseForbidden('Завершённая карточка доступна только для просмотра.')
     match = card.recipe_matches.filter(status="confirmed").first() if card else None
-    initial = {"recipe": match.recipe_version_id, "match_reason": match.reason} if match else {}
+    initial = {"recipe": match.recipe_version_id} if match else {}
     if not card and request.GET.get("recipe"):
         initial["recipe"] = request.GET["recipe"]
     conditions = [model_to_dict(row) for row in card.conditions.all()] if card else []
@@ -468,10 +468,7 @@ def test_create(request, pk=None):
     if request.method == "POST":
         valid = form.is_valid() & condition_formset.is_valid()
         if valid:
-            sheet = form.cleaned_data.get('source_sheet')
-            if card and sheet and _card_has_foreign_sources(card, sheet):
-                form.add_error('source_sheet', 'Существующие результаты, наблюдения или обработка ссылаются на другой лист. Сохраните исходный лист карточки.')
-                valid = False
+            sheet = card.source_sheet if card else None
             for condition in condition_formset:
                 row = condition.cleaned_data
                 cell = row.get('source_cell') if row and not row.get('DELETE') else None
@@ -485,7 +482,7 @@ def test_create(request, pk=None):
                     locked = TestSession.objects.select_for_update().get(pk=card.pk)
                     if locked.status == "completed":
                         return HttpResponseForbidden("Карточка уже завершена.")
-                    chosen_sheet = form.cleaned_data.get('source_sheet')
+                    chosen_sheet = card.source_sheet if card else None
                     if chosen_sheet and _card_has_foreign_sources(locked, chosen_sheet):
                         return HttpResponse('В карточку добавлен результат из другого источника. Обновите форму и проверьте лист источника.', status=409)
                     before = _card_snapshot(locked)
@@ -505,10 +502,9 @@ def test_create(request, pk=None):
                 previous = saved.recipe_matches.filter(status="confirmed").first()
                 if previous and (not chosen or previous.recipe_version_id != chosen.pk):
                     previous.status = "rejected"
-                    previous.reason += "\nСвязь снята при редактировании карточки."
                     previous.save()
                 if chosen:
-                    RecipeMatch.objects.update_or_create(session=saved, recipe_version=chosen, defaults={"status": "confirmed", "reason": form.cleaned_data["match_reason"]})
+                    RecipeMatch.objects.update_or_create(session=saved, recipe_version=chosen, defaults={"status": "confirmed"})
                 _audit(request, saved, "updated" if card else "created", f"{'Обновлена' if card else 'Создана'} карточка {saved.identifier or saved.pk}", before=before, after=_card_snapshot(saved))
             messages.success(request, "Карточка испытания сохранена.")
             return redirect("test_detail", pk=saved.pk)

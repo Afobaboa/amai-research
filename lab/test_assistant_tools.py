@@ -32,7 +32,7 @@ class LaboratoryAssistantToolTests(TestCase):
         cls.group = RecipeGroup.objects.create(recipe_version=cls.recipe, label='A', quantity_basis='mass_percent', completeness='complete')
         RecipeComponent.objects.create(group=cls.group, position=1, specified_lot=cls.lot, quantity_value=100)
         cls.test = TestSession.objects.create(identifier='E-01', status='completed', source_sheet=cls.sheet)
-        RecipeMatch.objects.create(session=cls.test, recipe_version=cls.recipe, status='candidate', reason='Совпал номер; состав не подтверждён')
+        RecipeMatch.objects.create(session=cls.test, recipe_version=cls.recipe, status='candidate')
         cls.test_run = TestRun.objects.create(session=cls.test, scope='При -10 °C', method_code='M-1')
         cls.metric = Metric.objects.create(code='VOLUME', label='Выход', unit_code='л')
         cls.condition_metric = Metric.objects.create(code='TEMP', label='Температура', unit_code='°C')
@@ -237,7 +237,7 @@ class LaboratoryAssistantToolTests(TestCase):
         other_recipe = RecipeVersion.objects.create(version_label='OTHER')
         group = RecipeGroup.objects.create(recipe_version=other_recipe, label='B')
         RecipeComponent.objects.create(group=group, position=1, unbatched_material=other_material, quantity_value=100)
-        RecipeMatch.objects.create(session=self.test, recipe_version=other_recipe, status='confirmed', reason='Проверено')
+        RecipeMatch.objects.create(session=self.test, recipe_version=other_recipe, status='confirmed')
         for entity in ('tests', 'results'):
             with self.subTest(entity=entity):
                 wrong_material = execute_tool('search_lab_data', {'entity': entity,

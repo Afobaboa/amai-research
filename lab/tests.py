@@ -28,7 +28,7 @@ class WorkflowTests(TestCase):
         group = RecipeGroup.objects.create(recipe_version=cls.recipe, label="A", quantity_basis="mass_percent", completeness="complete")
         RecipeComponent.objects.create(group=group, position=1, unbatched_material=cls.material, quantity_value=Decimal("100"))
         cls.card = TestSession.objects.create(identifier="TEST-001", title="Контроль", status="active", created_by=cls.author)
-        RecipeMatch.objects.create(session=cls.card, recipe_version=cls.recipe, status="confirmed", reason="Ручная связь")
+        RecipeMatch.objects.create(session=cls.card, recipe_version=cls.recipe, status="confirmed")
         cls.test_run = TestRun.objects.create(session=cls.card, scope="Основное испытание")
 
     def sign_in(self, employee=None):
@@ -49,7 +49,7 @@ class WorkflowTests(TestCase):
         return payload
 
     def card_payload(self, **extra):
-        payload = {"identifier": "TEST-002", "title": "Новое испытание", "status": "active", "notes": "Наблюдение", "recipe": str(self.recipe.pk), "match_reason": "Рецептура указана автором", "conditions-TOTAL_FORMS": "1", "conditions-INITIAL_FORMS": "0", "conditions-MIN_NUM_FORMS": "0", "conditions-MAX_NUM_FORMS": "30", "conditions-0-metric": str(self.metric.pk), "conditions-0-numeric_value": "-10"}
+        payload = {"title": "Новое испытание", "status": "active", "notes": "Наблюдение", "recipe": str(self.recipe.pk), "conditions-TOTAL_FORMS": "1", "conditions-INITIAL_FORMS": "0", "conditions-MIN_NUM_FORMS": "0", "conditions-MAX_NUM_FORMS": "30", "conditions-0-metric": str(self.metric.pk), "conditions-0-numeric_value": "-10"}
         payload.update(extra)
         return payload
 
@@ -112,7 +112,7 @@ class WorkflowTests(TestCase):
         draft = RecipeVersion.objects.create(mixture_type=self.mixture, version_label="DRAFT.1", status="draft", created_by=self.author)
         response = self.client.post(reverse("test_create"), self.card_payload(recipe=str(draft.pk)))
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(TestSession.objects.filter(identifier="TEST-002").exists())
+        self.assertEqual(TestSession.objects.count(), 1)
         response = self.client.post(reverse("recipe_edit", args=[draft.pk]), self.recipe_payload(version_label="DRAFT.1", status="published"))
         self.assertRedirects(response, reverse("recipe_detail", args=[draft.pk]))
         draft.refresh_from_db()
@@ -159,10 +159,58 @@ class WorkflowTests(TestCase):
         self.assertEqual(fork.groups.get().components.count(), 2)
         self.assertEqual(fork.filling_plan.get().mass_g, Decimal("0"))
 
+    def test_card_form_starts_with_recipe_and_omits_removed_fields(self):
+        self.sign_in()
+        response = self.client.get(reverse("test_create"), {"recipe": self.recipe.pk})
+        form = response.context["form"]
+        self.assertEqual(next(iter(form.fields)), "recipe")
+        self.assertTrue(form.fields["recipe"].required)
+        self.assertEqual(form.initial["recipe"], str(self.recipe.pk))
+        for name in ("identifier", "source_sheet", "match_reason"):
+            self.assertNotIn(name, form.fields)
+            self.assertNotContains(response, f'id="id_{name}"')
+
+    def test_new_card_requires_published_recipe(self):
+        self.sign_in()
+        before = TestSession.objects.count()
+        response = self.client.post(reverse("test_create"), self.card_payload(recipe=""))
+        self.assertIn("recipe", response.context["form"].errors)
+        self.assertEqual(TestSession.objects.count(), before)
+        self.assertFalse(ChangeEvent.objects.exists())
+
+    def test_multiple_cards_can_use_recipe_number_and_ignore_submitted_number(self):
+        self.sign_in()
+        for _ in range(2):
+            response = self.client.post(reverse("test_create"), self.card_payload(identifier="FORGED"))
+            self.assertEqual(response.status_code, 302)
+        self.assertEqual(TestSession.objects.filter(identifier=self.recipe.version_label).count(), 2)
+        self.assertFalse(TestSession.objects.filter(identifier="FORGED").exists())
+
+    def test_relinking_card_changes_number_and_preserves_old_link_status(self):
+        self.sign_in()
+        other = RecipeVersion.objects.create(mixture_type=self.mixture, version_label="OTHER.1", status="published")
+        response = self.client.post(reverse("test_edit", args=[self.card.pk]), self.card_payload(recipe=other.pk))
+        self.assertEqual(response.status_code, 302)
+        self.card.refresh_from_db()
+        self.assertEqual(self.card.identifier, other.version_label)
+        self.assertEqual(self.card.recipe_matches.get(recipe_version=self.recipe).status, "rejected")
+        self.assertEqual(self.card.recipe_matches.get(status="confirmed").recipe_version, other)
+        self.assertNotContains(self.client.get(reverse("test_detail", args=[self.card.pk])), "Основание")
+        self.assertNotContains(self.client.get(reverse("recipe_detail", args=[other.pk])), "ОСНОВАНИЕ")
+
+    def test_existing_unlinked_card_can_be_edited_without_recipe(self):
+        self.sign_in()
+        card = TestSession.objects.create(identifier="ARCHIVE", status="active")
+        response = self.client.post(reverse("test_edit", args=[card.pk]), self.card_payload(recipe=""))
+        self.assertEqual(response.status_code, 302)
+        card.refresh_from_db()
+        self.assertEqual(card.identifier, "ARCHIVE")
+        self.assertFalse(card.recipe_matches.exists())
+
     def test_create_and_edit_card_produces_before_after_history(self):
         self.sign_in()
         response = self.client.post(reverse("test_create"), self.card_payload())
-        card = TestSession.objects.get(identifier="TEST-002")
+        card = TestSession.objects.get(identifier=self.recipe.version_label)
         self.assertRedirects(response, reverse("test_detail", args=[card.pk]))
         self.assertEqual(card.conditions.get().numeric_value, Decimal("-10"))
         self.assertEqual(card.recipe_matches.get(status="confirmed").recipe_version_id, self.recipe.pk)
