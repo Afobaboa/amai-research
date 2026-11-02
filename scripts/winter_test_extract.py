@@ -193,11 +193,14 @@ def row_scope(row, output, labels):
 
 def metric_definition(label, scope):
     key = label.casefold()
+    scope_title = {"paper": "на бумаге", "mold": "в форме"}.get(scope, scope)
     definitions = [
         ("время отлипа", "tack_free", "Время отлипа", "мин"),
         ("время резки", "cut_time", "Время резки", "мин"),
-        ("плотность (в ядре)", f"density_{scope}", "Плотность в ядре", "кг/м³"),
-        ("выход (расчетный)", f"yield_{scope}", "Выход пены (расчётный)", "л"),
+        ("плотность (в ядре)", f"density_{scope}",
+         f"Плотность в ядре ({scope_title})", "кг/м³"),
+        ("выход (расчетный)", f"yield_{scope}",
+         f"Выход пены (расчётный, {scope_title})", "л"),
         ("выход в куб", "yield_tm1003", "Выход в куб, ТМ1003", "л"),
         ("вторичное расширение тм1010", "expansion_tm1010",
          "Вторичное расширение, ТМ1010", "%"),
@@ -254,7 +257,7 @@ def shrinkage_metric(book, row):
         match = re.fullmatch(r"\s*(\d+)\s*сут(?:ки)?\s*", value)
         if match:
             return (f"shrinkage_paper_day_{match[1]}",
-                    f"Усадка пены, срок измерения: {value.strip()}")
+                    f"Усадка пены, срок измерения: {match[1]} сут")
     return "shrinkage_paper", "Усадка пены (срок не указан)"
 
 

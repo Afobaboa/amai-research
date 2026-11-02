@@ -20,6 +20,26 @@ class InitialBundleTests(SimpleTestCase):
                     if Path(file["path"]).name == filename)
         return next(sheet for sheet in file["sheets"] if sheet["name"] == name)
 
+    def test_metric_codes_have_consistent_and_distinct_titles(self):
+        titles = {}
+        for file in self.data['files']:
+            for sheet in file['sheets']:
+                card = sheet.get('test', {})
+                rows = [(row['code'], row['title'])
+                        for row in card.get('conditions', [])]
+                rows.extend((row['metric_code'], row['metric_title'])
+                            for run in card.get('runs', [])
+                            for row in run['results'])
+                for code, title in rows:
+                    self.assertEqual(titles.setdefault(code, title), title, code)
+        self.assertEqual(len(titles), len(set(titles.values())))
+        self.assertEqual(titles['density_paper'], 'Плотность в ядре (на бумаге)')
+        self.assertEqual(titles['density_mold'], 'Плотность в ядре (в форме)')
+        self.assertEqual(titles['yield_paper'],
+                         'Выход пены (расчётный, на бумаге)')
+        self.assertEqual(titles['yield_mold'],
+                         'Выход пены (расчётный, в форме)')
+
     def test_series_use_source_codes_and_clear_russian_names(self):
         self.assertEqual(self.data["mixtures"], [
             {"code": "316", "title": "Зимняя улучшенная пена"},
