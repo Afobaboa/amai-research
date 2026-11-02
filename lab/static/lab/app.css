@@ -515,7 +515,7 @@ tbody tr:hover { background: #fafcff; }
 }
 .field fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .required { margin-left: 4px; color: var(--amai-muted); }
-input:not([type=checkbox]):not([type=radio]):not([type=hidden]), select, textarea {
+input:not([type=checkbox], [type=radio], [type=hidden]), select, textarea {
   display: block; min-width: 0; width: 100%; min-height: var(--amai-control);
   padding: 11px 12px; border: 1px solid var(--amai-input-line);
   border-radius: var(--amai-radius-sm); background: var(--amai-surface);
@@ -523,6 +523,12 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]), select, textare
 }
 input::placeholder, textarea::placeholder { color: var(--amai-muted); opacity: 1; }
 input:focus, select:focus, textarea:focus { border-color: var(--amai-primary); }
+/* Fields indicate focus with their border instead of the shared outer ring. */
+.amai-ui :where(
+  input:not([type=checkbox], [type=radio], [type=button], [type=submit],
+    [type=reset], [type=range], [type=color]),
+  select, textarea
+):focus-visible { outline: none; }
 input[readonly], textarea[readonly], input:disabled, select:disabled,
 textarea:disabled { background: var(--amai-bg); color: var(--amai-muted); }
 textarea { min-height: 112px; resize: vertical; }

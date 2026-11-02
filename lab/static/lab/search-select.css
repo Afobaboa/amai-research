@@ -22,7 +22,7 @@
 .amai-ui .search-select-trigger:focus-visible,
 .amai-ui .search-select-trigger[aria-expanded=true] {
   outline: none; border-color: #8eb5f0;
-  box-shadow: 0 0 0 3px #1b73f812; background: #fff;
+  box-shadow: none; background: #fff;
 }
 .search-select-value {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

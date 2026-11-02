@@ -241,7 +241,6 @@
 
 .assistant-chat-search-field:focus-within {
   border-color: #a9c9fb;
-  box-shadow: 0 0 0 3px #1b73f80a;
 }
 
 .assistant-chat-search-field .assistant-button-icon {
@@ -796,7 +795,6 @@ button.assistant-history-notice {
 
 .assistant-compose:focus-within {
   border-color: #a9c9fb;
-  box-shadow: 0 0 0 3px #1b73f80a;
 }
 
 .assistant-compose textarea {
