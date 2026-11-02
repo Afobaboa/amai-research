@@ -20,8 +20,8 @@
   Все материалы распределены по категориям. Классификацию можно уточнить в карточке материала.
   {% endif %}
 </div>
-<section class="panel">
-  <form class="filter-bar" method="get">
+<section class="panel" data-live-results>
+  <form class="filter-bar" data-live-search method="get">
     <div class="search-field">
       <svg><use href="#i-search"/></svg>
       <input name="q" value="{{ q }}" aria-label="Поиск категорий" placeholder="Название или описание…">

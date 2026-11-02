@@ -3,12 +3,12 @@
     <span>Записей: {{ page_obj.paginator.count }}</span>
     <nav class="pagination" aria-label="Страницы">
       {% if page_obj.has_previous %}
-        <a href="?q={{ q|urlencode }}&status={{ status|urlencode }}&category={{ category|urlencode }}&page={{ page_obj.previous_page_number }}"
+        <a href="{% querystring page=page_obj.previous_page_number %}"
            aria-label="Предыдущая страница">←</a>
       {% endif %}
       <span>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
       {% if page_obj.has_next %}
-        <a href="?q={{ q|urlencode }}&status={{ status|urlencode }}&category={{ category|urlencode }}&page={{ page_obj.next_page_number }}"
+        <a href="{% querystring page=page_obj.next_page_number %}"
            aria-label="Следующая страница">→</a>
       {% endif %}
     </nav>

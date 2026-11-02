@@ -1,0 +1,32 @@
+{% extends 'lab/base.html' %}
+{% block title %}Изменить статус · {{ record }}{% endblock %}
+{% block breadcrumb %}Изменение статуса{% endblock %}
+{% block content %}
+<div class="narrow-form">
+  <a class="back-link" href="{{ cancel_url }}">← {{ record }}</a>
+  <div class="page-heading">
+    <div><h1>Изменить статус</h1><p>{{ record }}</p></div>
+  </div>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.current_status }}
+    <section class="panel">
+      <div class="panel-heading"><h2>Статус записи</h2></div>
+      <div class="panel-body">
+        <p>Текущий статус: <strong>{{ record.get_status_display }}</strong></p>
+        {{ form.non_field_errors }}
+        {{ form.current_status.errors }}
+        <div class="form-grid">
+          {% include 'lab/includes/field.html' with field=form.status %}
+        </div>
+      </div>
+    </section>
+    <div class="info-note">{{ description }}</div>
+    <div class="form-actions">
+      <button type="submit" class="button primary">Сохранить статус</button>
+      <a class="button quiet" href="{{ cancel_url }}">Отмена</a>
+      <small>Автор: {{ employee.full_name }}</small>
+    </div>
+  </form>
+</div>
+{% endblock %}

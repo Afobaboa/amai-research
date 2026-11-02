@@ -10,12 +10,12 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import connection
-from django.db.models import F, Func, Q, TextField
+from django.db.models import Q
 from django.urls import reverse
 
 from . import models as m
 from .assistant_labels import add_value_labels, field_labels
+from .search import filter_search, normalize_search
 
 MAX_ROWS = 40
 MAX_TEXT = 4000
@@ -217,25 +217,7 @@ def _material_recipe_ids(material_id):
 
 
 def _search_text(queryset, fields, text):
-    condition = Q()
-    if connection.vendor == 'sqlite':
-        # SQLite LIKE/LOWER only fold ASCII. This connection-local pure function
-        # gives Russian queries the same case-insensitive behavior as PostgreSQL
-        # without changing database rows, schema, global lookups or connection hooks.
-        connection.ensure_connection()
-        connection.connection.create_function('lims_assistant_casefold', 1,
-            lambda value: value.casefold() if isinstance(value, str) else value,
-            deterministic=True)
-        aliases = {}
-        for index, field in enumerate(fields):
-            alias = f'_assistant_search_{index}'
-            aliases[alias] = Func(F(field), function='lims_assistant_casefold', output_field=TextField())
-            condition |= Q(**{alias + '__contains': text.casefold()})
-        queryset = queryset.alias(**aliases)
-    else:
-        for field in fields:
-            condition |= Q(**{field + '__icontains': text})
-    return queryset.filter(condition)
+    return filter_search(queryset, fields, text)
 
 
 def search_lab_data(entity, q='', status='', recipe_id=None, material_id=None, match_status='', metric_code='',
@@ -587,15 +569,16 @@ def _project_files():
 
 
 def list_project_files(query=''):
-    query = _text(query, 'query').casefold()
+    query = normalize_search(_text(query, 'query'))
     items = []
     for name, path in sorted(_project_files().items()):
         content = path.read_text(encoding='utf-8')
-        if not query or query in name.casefold() or query in content.casefold():
+        if (not query or query in normalize_search(name)
+                or query in normalize_search(content)):
             snippet = ''
             if query:
                 for number, line in enumerate(content.splitlines(), 1):
-                    if query in line.casefold():
+                    if query in normalize_search(line):
                         snippet = f'{number}: {line[:250]}'
                         break
             items.append({'path': name, 'lines': len(content.splitlines()), 'match': snippet})

@@ -30,6 +30,9 @@
   --amai-control: 52px;
   --amai-control-sm: 52px;
 }
+@media (min-width: 641px) and (max-width: 1100px) {
+  .amai-ui { --amai-control: 52px; --amai-control-sm: 52px; }
+}
 @media (pointer: coarse) {
   .amai-ui { --amai-control: 52px; --amai-control-sm: 52px; }
 }
@@ -356,6 +359,19 @@ tbody tr:hover { background: #fafcff; }
   pointer-events: none; color: var(--amai-muted);
 }
 .search-field input { padding-left: 40px !important; }
+[data-live-search] .search-field input { padding-right: 36px; }
+[data-search-loading] .search-field::after {
+  content: ''; position: absolute; right: 12px;
+  top: calc(50% - 7px); width: 14px; height: 14px;
+  border: 2px solid var(--amai-line); border-top-color: var(--amai-primary);
+  border-radius: 50%; animation: live-search-loading .65s linear infinite;
+  pointer-events: none;
+}
+.live-search-status.is-error {
+  margin: 0; padding: 12px 24px; background: var(--amai-danger-bg);
+  color: var(--amai-danger); font-size: 14px; line-height: 1.5;
+}
+@keyframes live-search-loading { to { transform: rotate(360deg); } }
 .filter-bar select { width: auto; max-width: 240px; }
 .detail-grid {
   display: grid; grid-template-columns: minmax(0, 1fr) 296px;
@@ -486,9 +502,11 @@ tbody tr:hover { background: #fafcff; }
 /* Server-rendered forms retain their Django field names and hooks. */
 .form-wrap { max-width: 1120px; }
 .narrow-form { max-width: 760px; }
+.form-wrap, .narrow-form { margin-inline: auto; }
 .form-grid {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px;
 }
+.form-grid > .field:has(textarea) { grid-column: 1 / -1; }
 .field { min-width: 0; }
 .field label, .field legend {
   display: block; margin-bottom: 8px; color: var(--amai-ink);
@@ -528,13 +546,46 @@ input[type=checkbox], input[type=radio] {
   border-radius: var(--amai-radius-sm); background: var(--amai-danger-bg);
   color: var(--amai-danger); font-size: 14px;
 }
-.formset-row {
+.formset-row-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr));
-  gap: 16px; align-items: start; padding: 24px 0;
-  border-bottom: 1px solid var(--amai-line);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 20px; align-items: start;
 }
-.formset-row:first-child { padding-top: 0; }
+.formset-rows { counter-reset: form-row; }
+.formset-row {
+  counter-increment: form-row; padding: 20px; margin-bottom: 16px;
+  border: 1px solid var(--amai-line); border-radius: var(--amai-radius-sm);
+  background: var(--amai-surface);
+}
+.formset-row:last-child { margin-bottom: 0; }
+.formset-row-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+}
+.formset-row-title {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 14px; font-weight: 600;
+}
+.formset-row-title::before {
+  content: counter(form-row); display: grid; place-items: center;
+  min-width: 28px; height: 28px; padding-inline: 4px;
+  border-radius: 8px; background: var(--amai-pale); color: var(--amai-primary);
+  font-variant-numeric: tabular-nums;
+}
+.formset-delete { display: flex; align-items: center; font-size: 13px; }
+.formset-delete label { cursor: pointer; color: var(--amai-muted); }
+.formset-row:has(.formset-delete input:checked) {
+  border-style: dashed; background: var(--amai-danger-bg);
+}
+.formset-source { margin-top: 20px; border-top: 1px solid var(--amai-line); }
+.formset-source summary {
+  padding-block: 16px 0; cursor: pointer; color: var(--amai-muted);
+  font-size: 13px; min-height: var(--amai-control);
+}
+.formset-source[open] summary { margin-bottom: 16px; }
+.formset-source .formset-row-fields > .field:has(textarea) {
+  grid-column: 1 / -1;
+}
 .formset-controls { margin-top: 16px; }
 .form-actions {
   position: sticky; bottom: 0; z-index: 3;
@@ -608,9 +659,6 @@ input[type=checkbox], input[type=radio] {
   .topbar-meta > span:last-child, .meta-divider { display: none; }
   .page-footer > span:last-child { display: none; }
 }
-@media (min-width: 801px) and (max-width: 1100px) {
-  .amai-ui { --amai-control: 52px; }
-}
 @media (max-width: 800px) {
   .sidebar {
     width: min(320px, calc(100% - 60px)); padding-top: 24px;
@@ -670,7 +718,7 @@ input[type=checkbox], input[type=radio] {
   .filter-bar { padding: 16px; }
   .filter-bar .search-field { flex-basis: 100%; max-width: none; }
   .filter-bar select { flex: 1; max-width: 100%; min-width: 120px; }
-  .formset-row { grid-template-columns: minmax(0, 1fr); }
+  .formset-row-fields { grid-template-columns: minmax(0, 1fr); }
   .form-actions small { width: 100%; margin-left: 0; }
   .event-kind { display: none; }
   .result-item { min-width: min(100%, 144px); }

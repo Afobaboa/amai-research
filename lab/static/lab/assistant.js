@@ -889,6 +889,8 @@
                 section.remove();
         });
     };
+    const normalizeChatSearch = (value) => value.trim().toLocaleLowerCase('ru-RU')
+        .replace(/[\s\u001c-\u001f\u0085._-]+/g, '.');
     const renderChatPicker = (force = false) => {
         // Polling must not change a menu under the pointer or keyboard focus.
         if (!chatMenu.hidden && !force)
@@ -901,9 +903,9 @@
         const id = chatId ? String(chatId) : '';
         if (chatTrigger.dataset.chatId !== id)
             chatTrigger.dataset.chatId = id;
-        const query = chatSearch.value.trim().toLocaleLowerCase('ru-RU');
+        const query = normalizeChatSearch(chatSearch.value);
         const chats = [...chatSummaries.values()].sort((a, b) => (chatDate(b)?.getTime() || 0) - (chatDate(a)?.getTime() || 0) || b.id - a.id);
-        renderChatList(chats.filter(chat => chat.title.toLocaleLowerCase('ru-RU').includes(query)));
+        renderChatList(chats.filter(chat => normalizeChatSearch(chat.title).includes(query)));
         $('chat-empty').hidden = Boolean(chatList.children.length);
         setText($('chat-empty-title'), query ? 'Ничего не найдено' : 'Пока нет диалогов');
         setText($('chat-empty-text'), query ? 'Попробуйте другое название.'

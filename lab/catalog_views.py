@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from .search import filter_search
 from .catalog_forms import (
     MaterialCategoryForm, MaterialForm, MaterialLotForm, MetricForm,
     MixtureTypeForm, SourceCellForm, SourceForm, SourceSheetForm,
@@ -61,10 +62,9 @@ def material_list(request):
     )
     q = request.GET.get('q', '').strip()
     if q:
-        materials = materials.filter(
-            Q(name__icontains=q) | Q(category__icontains=q) |
-            Q(supplier__icontains=q),
-        )
+        materials = filter_search(materials, (
+            'name', 'category', 'supplier',
+        ), q)
     category = request.GET.get('category', '')
     if category == 'unclassified':
         materials = materials.filter(category='')
@@ -115,9 +115,7 @@ def category_list(request):
     categories = MaterialCategory.objects.all()
     q = request.GET.get('q', '').strip()
     if q:
-        categories = categories.filter(
-            Q(name__icontains=q) | Q(description__icontains=q),
-        )
+        categories = filter_search(categories, ('name', 'description'), q)
     result = page(request, categories)
     counts = dict(Material.objects.order_by().values_list('category').annotate(
         total=Count('pk'),
@@ -182,15 +180,19 @@ def lot_list(request):
     lots = MaterialLot.objects.select_related('material', 'source')
     q, status = request.GET.get('q', '').strip(), request.GET.get('status', '')
     if q:
-        lots = lots.filter(Q(lot_code__icontains=q) | Q(material__name__icontains=q) | Q(supplier__icontains=q))
+        lots = filter_search(lots, (
+            'lot_code', 'material__name', 'supplier',
+        ), q)
     if status in {'active', 'quarantine', 'exhausted'}:
         lots = lots.filter(status=status)
     material = request.GET.get('material', '')
     if material.isdigit():
         lots = lots.filter(material_id=material)
     result = page(request, lots.order_by('material__name', '-pk'))
-    return render(request, 'lab/catalog/lot_list.html', {'lots': result, 'page_obj': result, 'q': q,
-                  'status': status, 'today': timezone.localdate()})
+    return render(request, 'lab/catalog/lot_list.html', {
+        'lots': result, 'page_obj': result, 'q': q,
+        'status': status, 'today': timezone.localdate(),
+    })
 
 
 @site_required
@@ -231,14 +233,17 @@ def source_list(request):
     sources = SourceFile.objects.select_related('created_by').prefetch_related('sheets')
     q, kind = request.GET.get('q', '').strip(), request.GET.get('kind', '')
     if q:
-        sources = sources.filter(Q(title__icontains=q) | Q(original_path__icontains=q) | Q(notes__icontains=q))
+        sources = filter_search(sources, (
+            'title', 'original_path', 'notes',
+        ), q)
     if kind in {'file', 'link', 'note'}:
         sources = sources.filter(kind=kind)
     result = page(request, sources.order_by('-created_at', '-pk'))
     for source in result:
         source.download_available = download_available(source)
-    return render(request, 'lab/catalog/source_list.html', {'sources': result, 'page_obj': result,
-                  'q': q, 'kind': kind})
+    return render(request, 'lab/catalog/source_list.html', {
+        'sources': result, 'page_obj': result, 'q': q, 'kind': kind,
+    })
 
 
 @site_required
@@ -356,9 +361,11 @@ def metric_list(request):
     metrics = Metric.objects.all()
     q = request.GET.get('q', '').strip()
     if q:
-        metrics = metrics.filter(Q(code__icontains=q) | Q(label__icontains=q))
+        metrics = filter_search(metrics, ('code', 'label'), q)
     result = page(request, metrics)
-    return render(request, 'lab/catalog/metric_list.html', {'metrics': result, 'page_obj': result, 'q': q})
+    return render(request, 'lab/catalog/metric_list.html', {
+        'metrics': result, 'page_obj': result, 'q': q,
+    })
 
 
 @author_required
@@ -381,9 +388,11 @@ def mixture_list(request):
     mixtures = MixtureType.objects.all()
     q = request.GET.get('q', '').strip()
     if q:
-        mixtures = mixtures.filter(Q(code__icontains=q) | Q(title__icontains=q))
+        mixtures = filter_search(mixtures, ('code', 'title'), q)
     result = page(request, mixtures)
-    return render(request, 'lab/catalog/mixture_list.html', {'mixtures': result, 'page_obj': result, 'q': q})
+    return render(request, 'lab/catalog/mixture_list.html', {
+        'mixtures': result, 'page_obj': result, 'q': q,
+    })
 
 
 @site_required

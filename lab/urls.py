@@ -1,6 +1,6 @@
 from django.urls import include, path
 
-from . import assistant_conversations, assistant_views, views
+from . import assistant_conversations, assistant_views, status_views, views
 
 urlpatterns = [
     path('source-cell-choices/', views.source_cell_choices, name='source_cell_choices'),
@@ -20,6 +20,7 @@ urlpatterns = [
     path("recipes/new/", views.recipe_create, name="recipe_create"),
     path("recipes/<int:pk>/", views.recipe_detail, name="recipe_detail"),
     path("recipes/<int:pk>/edit/", views.recipe_create, name="recipe_edit"),
+    path("recipes/<int:pk>/status/", status_views.recipe_status, name="recipe_status"),
     path('recipes/<int:pk>/calculate/', views.recipe_calculate, name='recipe_calculate'),
     path('calculations/<int:pk>/', views.calculation_detail, name='calculation_detail'),
     path("recipes/<int:source_pk>/fork/", views.recipe_create, name="recipe_fork"),
@@ -27,6 +28,7 @@ urlpatterns = [
     path("tests/new/", views.test_create, name="test_create"),
     path("tests/<int:pk>/", views.test_detail, name="test_detail"),
     path("tests/<int:pk>/edit/", views.test_create, name="test_edit"),
+    path("tests/<int:pk>/status/", status_views.test_status, name="test_status"),
     path("tests/<int:pk>/results/new/", views.result_add, name="result_add"),
     path("tests/<int:pk>/observations/new/", views.observation_add, name="observation_add"),
     path("tests/<int:pk>/conditioning/new/", views.conditioning_add, name="conditioning_add"),

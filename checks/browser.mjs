@@ -61,6 +61,8 @@ async function assertCarriedProperty(page, donorId, note) {
   assert.equal(await selected.inputValue(), donorId,
     'Initial async source loading must retain the selected donor from another sheet');
   assert.equal(await selected.locator('option:checked').innerText(), '302.83!C12');
+  assert.match(await row.locator('.search-select:has(select[data-source-cell])')
+    .locator('.search-select-trigger').innerText(), /302\.83!C12/);
   assert.equal(await row.locator('[name$="-property_code"]').inputValue(),
     'source_price_per_kg');
   assert.equal(Number(await row.locator('[name$="-value"]').inputValue()), 64.69);
@@ -88,6 +90,8 @@ async function checkExplicitSourceChange(page) {
     await select.getAttribute('name'));
   assert.equal(await select.inputValue(), '',
     'Explicitly changing source clears unrelated donor selection');
+  assert.doesNotMatch(await select.locator('..')
+    .locator('.search-select-trigger').innerText(), /302\.83!C12/);
 }
 
 async function checkCarriedForwardFork(page, go, submit) {
@@ -213,6 +217,555 @@ const option = async (page, selector, label) => {
   return value;
 };
 
+const searchableSelect = (page, selector) => (
+  page.locator(`.search-select:has(${selector})`)
+);
+
+async function checkSelectSearch(page, go) {
+  await go('/recipes/new/');
+  const mixture = searchableSelect(page, '#id_mixture_type');
+  await mixture.locator('.search-select-trigger').click();
+  const input = mixture.locator('.search-select-input');
+  assert.equal(await input.evaluate(el => el === document.activeElement), true);
+  await input.fill('УЛУЧШЕН');
+  assert.equal(await mixture.getByRole('option').count(), 1);
+  assert.match(await mixture.getByRole('option').innerText(), /улучшенная/);
+  await input.press('ArrowDown');
+  await input.press('Enter');
+  assert.match(await mixture.locator('select option:checked').innerText(),
+    /Зимняя улучшенная пена/);
+  await checkMaterialSearch(page);
+  await checkAddedSelect(page);
+  await page.screenshot({path: join(artifacts, 'searchable-form.png'), fullPage: true});
+  await checkAddedConditionSelect(page, go);
+  await checkRequiredSelect(page, go);
+  console.log('Searchable forms: Cyrillic infix, separator aliases, keyboard, clear and dynamic rows passed.');
+}
+
+async function checkMaterialSearch(page) {
+  const material = searchableSelect(page, '#id_components-0-material');
+  const trigger = material.locator('.search-select-trigger');
+  const input = material.locator('.search-select-input');
+  await trigger.click();
+  for (const query of ['EP Z', 'ep_z', 'ep-z', 'ep.z', 'ep - z', 'ep__.. - z']) {
+    await input.fill(query);
+    assert.equal(await material.getByRole('option').count(), 1, query);
+    assert.equal(await material.getByRole('option').innerText(), 'TEP-Z');
+  }
+  await page.screenshot({path: join(artifacts, 'searchable-dropdown.png')});
+  await input.press('ArrowDown');
+  await input.press('Enter');
+  const selected = await material.locator('select').inputValue();
+  assert.ok(selected);
+  assert.match(await trigger.innerText(), /TEP-Z/);
+  await trigger.click();
+  await input.fill('совсем-нет-такого-компонента');
+  assert.equal(await material.getByRole('option').count(), 0);
+  assert.equal(await material.locator('.search-select-empty').isVisible(), true);
+  await input.press('Escape');
+  assert.equal(await material.locator('select').inputValue(), selected);
+  assert.equal(await trigger.evaluate(el => el === document.activeElement), true);
+  await trigger.click();
+  await clearSelectWithKeyboard(material);
+}
+
+async function clearSelectWithKeyboard(field) {
+  const input = field.locator('.search-select-input');
+  const clear = field.locator('.search-select-clear');
+  await input.press('Tab');
+  assert.equal(await clear.evaluate(el => el === document.activeElement), true);
+  await clear.press('Shift+Tab');
+  assert.equal(await input.evaluate(el => el === document.activeElement), true);
+  await input.press('Tab');
+  await clear.press('Enter');
+  assert.equal(await field.locator('select').inputValue(), '');
+}
+
+async function checkAddedSelect(page) {
+  await page.locator('[data-add-form="components-formset"]').click();
+  const material = searchableSelect(page, '#id_components-2-material');
+  await material.locator('.search-select-trigger').click();
+  await material.locator('.search-select-input').fill('ovol c21');
+  const candidate = material.getByRole('option', {name: 'Inovol C210', exact: true});
+  assert.equal(await candidate.count(), 1);
+  await candidate.click();
+  assert.ok(await material.locator('select').inputValue());
+  await material.locator('.search-select-trigger').click();
+  await material.locator('.search-select-input').press('Tab');
+  const clear = material.locator('.search-select-clear');
+  assert.equal(await clear.evaluate(el => el === document.activeElement), true);
+  await clear.press('Tab');
+  assert.equal(await material.locator('.search-select-popover').isVisible(), false);
+}
+
+async function checkMobileSelect(page, width) {
+  const mixture = searchableSelect(page, '#id_mixture_type');
+  await mixture.locator('.search-select-trigger').click();
+  const popup = mixture.locator('.search-select-popover');
+  const bounds = await popup.boundingBox();
+  assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width,
+    `Search dropdown fits ${width}px viewport`);
+  await mixture.locator('.search-select-input').fill('УЛУЧШЕН');
+  await mixture.getByRole('option').click();
+  assert.equal(await page.evaluate(() => (
+    document.documentElement.scrollWidth > innerWidth
+  )), false, `Open searchable dropdown: ${width}px overflow`);
+}
+
+async function checkAddedConditionSelect(page, go) {
+  await go('/tests/new/');
+  await page.locator('[data-add-form="conditions-formset"]').click();
+  const condition = searchableSelect(page, '#id_conditions-2-metric');
+  const trigger = condition.locator('.search-select-trigger');
+  assert.equal(await trigger.evaluate(el => el === document.activeElement), true,
+    'Adding a condition focuses its visible searchable field');
+  await trigger.press('ArrowDown');
+  const input = condition.locator('.search-select-input');
+  assert.equal(await input.evaluate(el => el === document.activeElement), true);
+  await input.press('Escape');
+}
+
+async function checkRequiredSelect(page, go) {
+  await go('/lots/new/');
+  await page.locator('#id_lot_code').fill('QA validation only');
+  await page.getByRole('button', {name: 'Сохранить', exact: true}).click();
+  const material = searchableSelect(page, '#id_material');
+  const trigger = material.locator('.search-select-trigger');
+  assert.equal(await trigger.getAttribute('aria-invalid'), 'true');
+  assert.equal(await trigger.evaluate(el => el === document.activeElement), true,
+    'A required select focuses its visible field after validation');
+  assert.equal(await material.locator('.field-error').isVisible(), true);
+  assert.equal(new URL(page.url()).pathname, '/lots/new/');
+  await trigger.click();
+  await material.locator('.search-select-input').fill('ovol c21');
+  await material.getByRole('option', {name: 'Inovol C210', exact: true}).click();
+  assert.equal(await trigger.getAttribute('aria-invalid'), 'false');
+  assert.equal(await material.locator('.field-error').count(), 0);
+}
+
+async function changeStatus(page, submit, status) {
+  const detail = new URL(page.url()).pathname;
+  const action = page.getByRole('link', {name: 'Изменить статус', exact: true});
+  assert.equal(await action.getAttribute('href'), detail + 'status/');
+  await Promise.all([
+    page.waitForNavigation({waitUntil: 'networkidle'}), action.click(),
+  ]);
+  assert.equal(await page.locator('#id_current_status').count(), 1);
+  const select = searchableSelect(page, '#id_status');
+  await select.locator('.search-select-trigger').click();
+  const label = await select.locator(`option[value="${status}"]`).innerText();
+  await select.locator('.search-select-input').fill(label);
+  await select.getByRole('option', {name: label, exact: true}).click();
+  await submit('Сохранить статус');
+  assert.equal(new URL(page.url()).pathname, detail);
+  await page.reload({waitUntil: 'networkidle'});
+  assert.match(await page.locator('.detail-meta,.page-heading').first().innerText(),
+    new RegExp(label));
+}
+
+async function checkRegistrySearch(page, go) {
+  for (const query of ['16_26', '16-26']) {
+    await go('/recipes/?q=' + encodeURIComponent(query));
+    assert.equal(await page.getByRole('link', {
+      name: '316.26', exact: true,
+    }).count(), 1, query);
+  }
+  await go('/materials/?q=ovol_c21');
+  assert.equal(await page.locator('tbody tr').count(), 1);
+  assert.match(await page.locator('tbody').innerText(), /Inovol C210/);
+  await go('/material-categories/?q=' + encodeURIComponent('ОЛИОЛ'));
+  assert.equal(await page.getByRole('link', {
+    name: 'Полиолы', exact: true,
+  }).count(), 1);
+  console.log('Registry search finds infixes, separator aliases and Cyrillic case variants.');
+}
+
+const liveSearchInput = page => page.locator('form[data-live-search] input[name="q"]');
+
+function liveSearchResponse(page, query) {
+  const path = new URL(page.url()).pathname;
+  return page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return response.request().resourceType() === 'fetch'
+      && url.pathname === path && (url.searchParams.get('q') || '') === query;
+  });
+}
+
+async function waitLiveResults(page, query) {
+  await page.waitForFunction(query => {
+    const panel = document.querySelector('[data-live-results]');
+    return panel && panel.getAttribute('aria-busy') !== 'true'
+      && (new URL(location.href).searchParams.get('q') || '') === query;
+  }, query);
+}
+
+async function typeLiveQuery(page, query) {
+  const input = liveSearchInput(page), response = liveSearchResponse(page, query);
+  await input.evaluate(node => { window.registrySearchInput = node; });
+  await input.fill(query);
+  await input.evaluate(node => node.setSelectionRange(1, 1));
+  await response;
+  await waitLiveResults(page, query);
+  const state = await input.evaluate(node => ({
+    same: node === window.registrySearchInput,
+    focused: node === document.activeElement,
+    start: node.selectionStart, end: node.selectionEnd,
+  }));
+  assert.deepEqual(state, {same: true, focused: true, start: 1, end: 1},
+    'Live results preserve the original input, focus and caret');
+}
+
+async function clickLiveLink(page, link, query) {
+  const response = liveSearchResponse(page, query);
+  await link.click();
+  await response;
+  await waitLiveResults(page, query);
+}
+
+async function navigateLiveHistory(page, direction, query) {
+  const response = liveSearchResponse(page, query);
+  if (direction === 'back') await page.goBack();
+  else await page.goForward();
+  await response;
+  await waitLiveResults(page, query);
+}
+
+async function checkLiveMaterials(page, go) {
+  await go('/materials/');
+  for (const query of ['EP Z', 'ep_z', 'ep-z', 'ep.z', 'ep - z']) {
+    await typeLiveQuery(page, query);
+    assert.equal(await page.locator('tbody tr').count(), 1);
+    assert.equal(await page.locator('tbody tr td').first().innerText(), 'TEP-Z');
+  }
+  await typeLiveQuery(page, 'ovol_c21');
+  assert.match(await page.locator('tbody').innerText(), /Inovol C210/);
+  const reset = page.locator('form[data-live-search]')
+    .getByRole('link', {name: 'Сбросить', exact: true});
+  assert.equal(await reset.count(), 1);
+  await clickLiveLink(page, reset, '');
+  assert.equal(await liveSearchInput(page).inputValue(), '');
+  assert.equal(await reset.count(), 0);
+  assert.ok(await page.locator('tbody tr').count() > 1);
+  console.log('Materials update while typing with equivalent separators and preserved focus.');
+}
+
+async function checkLiveRecipes(page, go) {
+  await go('/recipes/?status=published');
+  await clickLiveLink(page,
+    page.getByRole('link', {name: 'Следующая страница', exact: true}), '');
+  assert.equal(new URL(page.url()).searchParams.get('page'), '2');
+  await typeLiveQuery(page, '16 26');
+  assert.equal(new URL(page.url()).searchParams.has('page'), false);
+  assert.equal(new URL(page.url()).searchParams.get('status'), 'published');
+  assert.equal(await page.getByRole('link', {name: '316.26', exact: true}).count(), 1);
+  await clickLiveLink(page, page.locator('form[data-live-search]')
+    .getByRole('link', {name: 'Сбросить', exact: true}), '');
+  await navigateLiveHistory(page, 'back', '16 26');
+  assert.equal(await liveSearchInput(page).inputValue(), '16 26');
+  assert.equal(await page.locator('select[name="status"]').inputValue(), 'published');
+  assert.equal(await page.getByRole('link', {name: '316.26', exact: true}).count(), 1);
+  await navigateLiveHistory(page, 'forward', '');
+  assert.equal(await liveSearchInput(page).inputValue(), '');
+  assert.equal(await page.locator('select[name="status"]').inputValue(), '');
+  const response = liveSearchResponse(page, '302_84');
+  await liveSearchInput(page).fill('302_84');
+  await liveSearchInput(page).press('Enter');
+  await response;
+  await waitLiveResults(page, '302_84');
+  assert.equal(await page.getByRole('link', {name: '302.84', exact: true}).count(), 1);
+  console.log('Live recipe filters, pagination reset, reset link, Enter and Back/Forward passed.');
+}
+
+async function checkLiveTemplatesAndHistory(page, go) {
+  for (const [path, query, title] of [
+    ['/recipe-templates/', 'qa_шаблон.зимней-пены', 'QA шаблон зимней пены'],
+    ['/calculation-templates/', 'qa_плотность-и.стоимость', 'QA плотность и стоимость'],
+  ]) {
+    await go(path);
+    await typeLiveQuery(page, query);
+    assert.equal(await page.locator('tbody tr').count(), 2);
+    assert.match(await page.locator('tbody').innerText(), new RegExp(title));
+  }
+  await go('/history/?entity=test');
+  await typeLiveQuery(page, 'qa 2026 001');
+  assert.equal(new URL(page.url()).searchParams.get('entity'), 'test');
+  assert.match(await page.locator('.timeline').innerText(), /QA-2026-001/);
+  console.log('Template registries and filtered history update without Enter.');
+}
+
+async function checkDirtyLivePagination(page, go) {
+  await go('/recipes/?status=published');
+  const response = liveSearchResponse(page, '16 26');
+  await liveSearchInput(page).evaluate(input => {
+    input.value = '16 26';
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    document.querySelector('.pagination a[aria-label="Следующая страница"]').click();
+  });
+  await response;
+  await waitLiveResults(page, '16 26');
+  assert.equal(await liveSearchInput(page).inputValue(), '16 26');
+  assert.equal(new URL(page.url()).searchParams.has('page'), false);
+  assert.equal(new URL(page.url()).searchParams.get('status'), 'published');
+  assert.equal(await page.getByRole('link', {name: '316.26', exact: true}).count(), 1);
+  console.log('Clicking an old pagination link preserves a newly typed query.');
+}
+
+async function ignoreStaleFetchAbort(page) {
+  await page.addInitScript(() => {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (resource, options) => {
+      const url = new URL(typeof resource === 'string' ? resource
+        : resource.url || String(resource), location.href);
+      if (url.pathname === '/materials/' && url.searchParams.get('q') === 'TEP-Z') {
+        return nativeFetch(resource, {...options, signal: undefined});
+      }
+      return nativeFetch(resource, options);
+    };
+  });
+}
+
+async function holdMaterialResponse(page) {
+  let requested, release, done;
+  const waiting = new Promise(resolve => { requested = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  const delivered = new Promise(resolve => { done = resolve; });
+  await page.route(/\/materials\/(?:\?|$)/, async route => {
+    const query = new URL(route.request().url()).searchParams.get('q');
+    if (route.request().resourceType() !== 'fetch' || query !== 'TEP-Z') {
+      return route.continue();
+    }
+    const response = await route.fetch();
+    requested();
+    await gate;
+    try { await route.fulfill({response}); }
+    finally { done(); }
+  });
+  return {waiting, release, delivered};
+}
+
+async function waitTwoFrames(page) {
+  await page.evaluate(() => new Promise(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+}
+
+async function checkStaleLiveResponse(page) {
+  const target = await page.context().newPage();
+  const errors = [];
+  target.on('pageerror', error => errors.push(error.message));
+  const held = await holdMaterialResponse(target);
+  try {
+    await ignoreStaleFetchAbort(target);
+    await target.goto(base + '/materials/', {waitUntil: 'networkidle'});
+    await liveSearchInput(target).fill('TEP-Z');
+    await held.waiting;
+    await typeLiveQuery(target, 'Inovol_C210');
+    const staleResponse = liveSearchResponse(target, 'TEP-Z');
+    held.release();
+    await staleResponse;
+    await held.delivered;
+    await waitTwoFrames(target);
+    assert.equal(new URL(target.url()).searchParams.get('q'), 'Inovol_C210');
+    assert.match(await target.locator('tbody').innerText(), /Inovol C210/);
+    assert.doesNotMatch(await target.locator('tbody').innerText(), /TEP-Z/);
+    assert.deepEqual(errors, []);
+  } finally { held.release(); await target.close(); }
+  console.log('A delayed response cannot overwrite the latest search even if abort is ignored.');
+}
+
+async function checkPendingPageRestore(page) {
+  const target = await page.context().newPage();
+  const held = await holdMaterialResponse(target);
+  try {
+    await ignoreStaleFetchAbort(target);
+    await target.goto(base + '/materials/?category=Полиолы', {waitUntil: 'networkidle'});
+    await liveSearchInput(target).fill('TEP-Z');
+    await held.waiting;
+    const panel = target.locator('[data-live-results]');
+    assert.equal(await panel.getAttribute('aria-busy'), 'true');
+    await target.evaluate(() => dispatchEvent(new PageTransitionEvent('pagehide', {persisted: true})));
+    assert.equal(await panel.getAttribute('aria-busy'), 'false');
+    const restored = liveSearchResponse(target, '');
+    await target.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true})));
+    await restored;
+    await waitLiveResults(target, '');
+    assert.equal(await liveSearchInput(target).inputValue(), '');
+    assert.equal(await target.locator('select[name="category"]').inputValue(), 'Полиолы');
+    assert.ok(await target.locator('tbody tr').count() > 1);
+    const stale = liveSearchResponse(target, 'TEP-Z');
+    held.release();
+    await stale;
+    await held.delivered;
+    await waitTwoFrames(target);
+    assert.equal(await panel.getAttribute('aria-busy'), 'false');
+  } finally { held.release(); await target.close(); }
+  console.log('A restored cached page clears pending loading and reloads URL filters/results.');
+}
+
+async function assertLiveSearchMarkers(page) {
+  const forms = page.locator('form.filter-bar:has(input[name="q"])');
+  for (const form of await forms.all()) {
+    assert.equal(await form.getAttribute('data-live-search'), '');
+    assert.equal(await form.evaluate(node => (
+      node.closest('.panel')?.hasAttribute('data-live-results')
+    )), true);
+  }
+}
+
+async function sampleSidebarFrames(page) {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('lims.sidebar.scrollTop', '280');
+    window.sidebarFrames = [];
+    function sample() {
+      const navigation = document.querySelector('#sidebar nav');
+      if (navigation && navigation.clientHeight > 0) {
+        window.sidebarFrames.push({
+          top: navigation.scrollTop,
+          max: navigation.scrollHeight - navigation.clientHeight,
+          linkHeight: navigation.querySelector('a').getBoundingClientRect().height,
+        });
+      }
+      if (window.sidebarFrames.length < 120) requestAnimationFrame(sample);
+    }
+    requestAnimationFrame(sample);
+  });
+  await page.route(/\/static\/lab\/(app|search-select)\.js(?:\?|$)/,
+    async route => {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await route.continue();
+    });
+}
+
+async function checkSidebarFirstPaint(browser, storageState) {
+  const context = await browser.newContext({storageState});
+  const page = await context.newPage();
+  try {
+    await sampleSidebarFrames(page);
+    for (const viewport of [
+      {width: 1440, height: 620}, {width: 768, height: 820},
+      {width: 390, height: 680},
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto(base + '/recipes/', {waitUntil: 'networkidle'});
+      const frames = await page.evaluate(() => window.sidebarFrames);
+      assert.ok(frames.length > 5, 'Sampled frames while main scripts were delayed');
+      assert.ok(frames.every(frame => frame.max > 0
+        && frame.top === Math.min(280, frame.max)),
+        `${viewport.width}px sidebar must retain scroll from its first frame`);
+      assert.equal(new Set(frames.map(frame => frame.linkHeight)).size, 1,
+        `${viewport.width}px sidebar link height must remain stable`);
+    }
+  } finally { await context.close(); }
+  console.log('Sidebar first paint retains scroll and geometry with delayed scripts.');
+}
+
+async function assertPickerFieldStyles(field) {
+  assert.equal(await field.count(), 1, 'Loaded picker styles enable one custom control');
+  const native = await field.locator('select').evaluate(select => {
+    const style = getComputedStyle(select), box = select.getBoundingClientRect();
+    return {position: style.position, opacity: style.opacity,
+      width: box.width, height: box.height};
+  });
+  assert.equal(native.position, 'absolute');
+  assert.equal(native.opacity, '0');
+  assert.ok(native.width <= 1 && native.height <= 1,
+    'The native select stays available to forms without occupying layout');
+  const trigger = await field.locator('.search-select-trigger').evaluate(button => {
+    const style = getComputedStyle(button);
+    return {display: style.display, radius: parseFloat(style.borderRadius)};
+  });
+  assert.equal(trigger.display, 'flex');
+  assert.ok(trigger.radius >= 8, 'Picker trigger has the application styling');
+}
+
+async function checkPickerAssetURLs(page) {
+  const stylesheet = page.locator('link[href*="/lab/search-select.css"]');
+  assert.equal(await stylesheet.count(), 1, 'Picker has its own stylesheet');
+  const urls = await page.locator('link[href*="/static/lab/"],script[src*="/static/lab/"]')
+    .evaluateAll(nodes => nodes.map(node => node.href || node.src)
+      .filter(url => /\.(css|js)(?:\?|$)/.test(url)));
+  assert.ok(urls.length >= 5);
+  for (const url of urls) {
+    assert.match(new URL(url).searchParams.get('v') || '', /^[a-f0-9]{16}$/,
+      `Updated assets use content versions: ${url}`);
+  }
+}
+
+async function assertStyledPopup(page, field, height) {
+  const popup = field.locator('.search-select-popover');
+  await popup.evaluate(node => Promise.all(node.getAnimations()
+    .map(animation => animation.finished.catch(() => {}))));
+  const style = await popup.evaluate(node => {
+    const style = getComputedStyle(node);
+    return {position: style.position, display: style.display,
+      radius: parseFloat(style.borderRadius), background: style.backgroundColor,
+      opacity: style.opacity};
+  });
+  assert.equal(style.position, 'fixed');
+  assert.equal(style.display, 'flex');
+  assert.ok(style.radius >= 8);
+  assert.notEqual(style.background, 'rgba(0, 0, 0, 0)');
+  assert.equal(style.opacity, '1');
+  assert.equal(await page.locator('.search-select-popover:not([hidden])').count(), 1);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollHeight),
+    height, 'Opening a dropdown does not move the form fields');
+}
+
+async function captureRecipeTemplate(page, state) {
+  await page.screenshot({
+    path: join(artifacts, `recipe-template-form-${state}.png`),
+    animations: 'disabled',
+  });
+}
+
+async function checkRecipeTemplatePicker(page, go) {
+  await go('/recipe-templates/new/');
+  await checkPickerAssetURLs(page);
+  const mixture = searchableSelect(page, '#id_mixture_type');
+  await assertPickerFieldStyles(mixture);
+  await captureRecipeTemplate(page, 'closed');
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await mixture.locator('.search-select-trigger').click();
+  await assertStyledPopup(page, mixture, height);
+  await captureRecipeTemplate(page, 'open');
+  const material = searchableSelect(page, '#id_components-0-material');
+  await material.locator('.search-select-trigger').click();
+  await assertStyledPopup(page, material, height);
+  assert.equal(await mixture.locator('.search-select-trigger')
+    .getAttribute('aria-expanded'), 'false');
+  await mixture.locator('.search-select-trigger').click();
+  await mixture.locator('.search-select-input').fill('УЛУЧШЕН');
+  assert.equal(await mixture.getByRole('option').count(), 1);
+  await captureRecipeTemplate(page, 'filtered');
+  await mixture.locator('.search-select-input').press('Enter');
+  assert.match(await mixture.locator('select option:checked').innerText(), /улучшенная/);
+  await assertPickerFieldStyles(material);
+  await material.locator('.search-select-trigger').click();
+  await assertStyledPopup(page, material, height);
+  await material.locator('.search-select-input').press('Escape');
+  console.log('Recipe-template pickers have versioned styles, one floating popup and stable layout.');
+}
+
+async function checkPickerCSSFallback(browser, storageState) {
+  const context = await browser.newContext({storageState});
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await page.route(/\/static\/lab\/search-select\.css(?:\?|$)/,
+      route => route.fulfill({contentType: 'text/css', body: ''}));
+    await page.goto(base + '/recipe-templates/new/', {waitUntil: 'networkidle'});
+    assert.equal(await page.locator('.search-select').count(), 0,
+      'A missing picker stylesheet leaves a single native control');
+    assert.equal(await page.locator('#id_mixture_type').evaluate(select => (
+      getComputedStyle(select).opacity
+    )), '1');
+    await option(page, '#id_mixture_type', 'Зимняя улучшенная пена');
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+  console.log('Missing picker CSS keeps native forms usable without duplicate controls.');
+}
+
 try {
   const unknown = process.argv.slice(2).filter(arg => arg !== '--headed');
   assert.equal(unknown.length, 0, `Unknown argument: ${unknown.join(' ')}`);
@@ -261,6 +814,7 @@ try {
   await option(page,'#id_employee','Гущин Даниил');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:/Открыть лабораторию/}).click()]);
   await go('/');
+  await checkSidebarFirstPaint(browser, await context.storageState());
   assert.equal(await page.locator('.demo-banner,.demo-label').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/DEMO-/);
   await page.screenshot({path:join(artifacts, 'overview.png'),fullPage:true});
@@ -268,7 +822,10 @@ try {
     '/recipe-templates/','/calculation-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
     '/mixtures/new/','/recipe-templates/new/','/calculation-templates/new/','/recipes/new/','/tests/new/',
     '/recipes/1/','/tests/1/','/sources/1/','/sources/4/'];
-  for (const path of desktopPaths) await go(path);
+  for (const path of desktopPaths) {
+    await go(path);
+    await assertLiveSearchMarkers(page);
+  }
   for (const [path, filename] of [['/lots/','lots.png'],['/material-categories/','categories.png'],['/recipe-templates/','recipe-templates.png'],
     ['/sources/1/','source.png']]) {
     await go(path); await page.screenshot({path:join(artifacts,filename),fullPage:true});
@@ -312,6 +869,15 @@ try {
   assert.match(await page.locator('tbody tr td').nth(1).innerText(), /Полиол/i);
   console.log('Imported 316.26 uses canonical material, extracted lot, EUR prices and a verified Excel download.');
   await checkCarriedForwardFork(page, go, submit);
+  await checkSelectSearch(page, go);
+  await checkRegistrySearch(page, go);
+  await checkLiveMaterials(page, go);
+  await checkLiveRecipes(page, go);
+  await checkDirtyLivePagination(page, go);
+  await checkStaleLiveResponse(page);
+  await checkPendingPageRestore(page);
+  await checkRecipeTemplatePicker(page, go);
+  await checkPickerCSSFallback(browser, await context.storageState());
 
   const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,storageState:await context.storageState()});
   const mobilePage=await mobile.newPage();
@@ -352,6 +918,9 @@ try {
     for (const path of ['/', '/recipes/new/', '/recipes/1/', '/sources/1/']) {
       await mobilePage.goto(base+path,{waitUntil:'networkidle'});
       assert.equal(await mobilePage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${path}: ${viewport.width}px overflow`);
+      if (path === '/recipes/new/') {
+        await checkMobileSelect(mobilePage, viewport.width);
+      }
     }
     if (viewport.width === 768) {
       assert.equal(await mobilePage.locator('body').getAttribute('data-density'),'touch');
@@ -377,7 +946,10 @@ try {
   await go('/recipes/new/');
   await page.locator('[data-add-form="components-formset"]').click();
   assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(),'3');
-  assert.equal(await page.locator('label[for="id_components-2-material"]').count(),1);
+  const addedTrigger = searchableSelect(page, '#id_components-2-material')
+    .locator('.search-select-trigger');
+  const triggerId = await addedTrigger.getAttribute('id');
+  assert.equal(await page.locator(`label[for="${triggerId}"]`).count(), 1);
   assert.equal(await page.locator('#components-formset .formset-rows').evaluate(el=>el.innerHTML.includes('__prefix__')),false);
   await option(page,'#id_mixture_type','Зимняя пена');
   await page.locator('#id_version_label').fill('QA-316.0');
@@ -410,8 +982,8 @@ try {
   const fork = new URL(page.url()).pathname;
   await go(fork+'edit/');
   await page.locator('#id_title').fill('QA опубликованная новая версия');
-  await page.locator('#id_status').selectOption('published');
   await submit('Сохранить изменения');
+  await changeStatus(page, submit, 'published');
   assert.equal((await page.request.get(base+fork+'edit/')).status(),403);
   await go(original);
   assert.match(await page.locator('.page-heading').innerText(),/QA нулевой компонент/);
@@ -464,9 +1036,9 @@ try {
   await page.locator('#id_temperature_c').fill('0');
   await submit('Сохранить');
   await go(card+'edit/');
-  await page.locator('#id_status').selectOption('completed');
   await page.locator('#id_notes').fill('QA карточка завершена после нулевого измерения');
   await submit('Сохранить карточку');
+  await changeStatus(page, submit, 'completed');
   assert.equal(await page.getByRole('link',{name:'Записать результат',exact:true}).count(),0);
   assert.equal((await page.request.get(base+card+'results/new/')).status(),403);
   assert.equal((await page.request.get(base+card+'edit/')).status(),403);
@@ -596,9 +1168,8 @@ try {
   await page.locator('#id_status').selectOption('draft');
   await submit('Сохранить рецептуру');
   const calculatedRecipePath=new URL(page.url()).pathname;
-  await go(lotPath+'edit/');
-  await page.locator('#id_status').selectOption('active');
-  await submit('Сохранить');
+  await go(lotPath);
+  await changeStatus(page, submit, 'active');
   await go(calculatedRecipePath+'edit/');
   await page.locator('#id_status').selectOption('published');
   await submit('Сохранить изменения');
@@ -631,6 +1202,7 @@ try {
     await go(path);
     await page.screenshot({path:join(artifacts,filename),fullPage:true});
   }
+  await checkLiveTemplatesAndHistory(page, go);
   await go('/history/?entity=source&q=QA');
   const historyTarget=page.locator('.event-meta a').first();
   assert.ok((await historyTarget.getAttribute('href')).startsWith('/sources/'));
@@ -644,11 +1216,12 @@ try {
   await go('/recipes/');
   assert.equal(await page.locator('a[href="/recipes/new/"]').count(),0);
   await go(card);
-  for(const word of ['Редактировать','Записать результат','Добавить наблюдение','Записать обработку']) assert.equal(await page.getByRole('link',{name:new RegExp(word)}).count(),0,`Reader controls: ${word}`);
+  for(const word of ['Редактировать','Изменить статус','Записать результат','Добавить наблюдение','Записать обработку']) assert.equal(await page.getByRole('link',{name:new RegExp(word)}).count(),0,`Reader controls: ${word}`);
   const csrf=await page.locator('[name="csrfmiddlewaretoken"]').first().inputValue();
   for(const path of ['/recipes/new/','/tests/new/',card+'results/new/',card+'observations/new/',card+'conditioning/new/',
     '/sources/new/','/materials/new/','/material-categories/new/',categoryPath+'edit/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/',
-    '/calculation-templates/new/',calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/']){
+    '/calculation-templates/new/',calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/',
+    card+'status/',fork+'status/',lotPath+'status/']){
     const response=await page.request.post(base+path,{form:{csrfmiddlewaretoken:csrf},headers:{Referer:base+card}});
     assert.equal(response.status(),403,`Reader direct POST ${path}`);
     assert.match(await response.text(),/читатель/);

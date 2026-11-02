@@ -3,7 +3,11 @@ from django import template
 from django.urls import reverse
 from ..ui_text import FIELD_LABELS as LABELS
 from ..ui_text import PROPERTY_LABELS, UNIT_LABELS
+from .static_assets import versioned_static
+
+
 register = template.Library()
+register.simple_tag(versioned_static)
 
 
 @register.filter

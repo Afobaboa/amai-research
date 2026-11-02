@@ -18,6 +18,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.utils import timezone
 
+from .search import filter_search
 from .forms import (
     ComponentFormSet, ConditionFormSet, ConditioningForm, EmployeeForm,
     FillingFormSet, ObservationForm, PasswordForm, RecipeForm, ResultForm,
@@ -138,11 +139,15 @@ def recipe_list(request):
     recipes = RecipeVersion.objects.select_related("mixture_type", "created_by")
     q, status = request.GET.get("q", "").strip(), request.GET.get("status", "")
     if q:
-        recipes = recipes.filter(Q(version_label__icontains=q) | Q(title__icontains=q) | Q(mixture_type__code__icontains=q) | Q(notes__icontains=q))
+        recipes = filter_search(recipes, (
+            "version_label", "title", "mixture_type__code", "notes",
+        ), q)
     if status in {"draft", "published", "archived"}:
         recipes = recipes.filter(status=status)
     page = _page(request, recipes.order_by("-created_at", "-pk"))
-    return render(request, "lab/recipe_list.html", {"recipes": page, "page_obj": page, "q": q, "status": status})
+    return render(request, "lab/recipe_list.html", {
+        "recipes": page, "page_obj": page, "q": q, "status": status,
+    })
 
 
 @site_required
@@ -419,14 +424,21 @@ def calculation_detail(request, pk):
 
 @site_required
 def test_list(request):
-    cards = TestSession.objects.select_related("created_by").prefetch_related("recipe_matches__recipe_version")
+    cards = TestSession.objects.select_related("created_by").prefetch_related(
+        "recipe_matches__recipe_version",
+    )
     q, status = request.GET.get("q", "").strip(), request.GET.get("status", "")
     if q:
-        cards = cards.filter(Q(identifier__icontains=q) | Q(title__icontains=q) | Q(notes__icontains=q) | Q(recipe_matches__recipe_version__version_label__icontains=q)).distinct()
+        cards = filter_search(cards, (
+            "identifier", "title", "notes",
+            "recipe_matches__recipe_version__version_label",
+        ), q)
     if status in {"draft", "active", "completed"}:
         cards = cards.filter(status=status)
     page = _page(request, cards.order_by("-created_at", "-pk"))
-    return render(request, "lab/test_list.html", {"cards": page, "page_obj": page, "q": q, "status": status})
+    return render(request, "lab/test_list.html", {
+        "cards": page, "page_obj": page, "q": q, "status": status,
+    })
 
 
 @site_required
@@ -595,14 +607,21 @@ def conditioning_add(request, pk):
 
 @site_required
 def history(request):
-    events = ChangeEvent.objects.select_related("employee").order_by("-created_at", "-pk")
+    events = ChangeEvent.objects.select_related("employee").order_by(
+        "-created_at", "-pk",
+    )
     q, entity = request.GET.get("q", "").strip(), request.GET.get("entity", "")
     if q:
-        events = events.filter(Q(summary__icontains=q) | Q(employee__full_name__icontains=q))
-    if entity in {'recipe', 'test', 'source', 'material', 'material_category', 'lot', 'metric', 'mixture_type', 'recipe_template', 'calculation_template'}:
+        events = filter_search(events, ("summary", "employee__full_name"), q)
+    if entity in {
+        'recipe', 'test', 'source', 'material', 'material_category', 'lot',
+        'metric', 'mixture_type', 'recipe_template', 'calculation_template',
+    }:
         events = events.filter(entity_type=entity)
     page = _page(request, events)
-    return render(request, "lab/history.html", {"events": page, "page_obj": page, "q": q, "entity": entity})
+    return render(request, "lab/history.html", {
+        "events": page, "page_obj": page, "q": q, "entity": entity,
+    })
 
 
 @site_required

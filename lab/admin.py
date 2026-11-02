@@ -1,25 +1,39 @@
 """Technical directories are editable; laboratory records use audited application forms."""
 
 from django.contrib import admin
+from django.utils.text import unescape_string_literal
 
 from . import models
+from .search import filter_search
+
+
+class SearchAdmin(admin.ModelAdmin):
+    def get_search_results(self, request, queryset, search_term):
+        fields = self.get_search_fields(request)
+        if not fields:
+            return queryset, False
+        search_term = search_term.strip()
+        if (len(search_term) >= 2 and search_term[0] in ('"', "'")
+                and search_term[0] == search_term[-1]):
+            search_term = unescape_string_literal(search_term)
+        return filter_search(queryset, fields, search_term), False
 
 
 @admin.register(models.EmployeeProfile)
-class EmployeeProfileAdmin(admin.ModelAdmin):
+class EmployeeProfileAdmin(SearchAdmin):
     list_display = ["full_name", "role", "is_active"]
     list_filter = ["role", "is_active"]
     search_fields = ["full_name"]
 
 
 @admin.register(models.MixtureType)
-class MixtureTypeAdmin(admin.ModelAdmin):
+class MixtureTypeAdmin(SearchAdmin):
     list_display = ["code", "title"]
     search_fields = ["code", "title"]
 
 
 @admin.register(models.Material)
-class MaterialAdmin(admin.ModelAdmin):
+class MaterialAdmin(SearchAdmin):
     list_display = ["name", "category", "supplier"]
     search_fields = ["name"]
 
@@ -29,7 +43,7 @@ class MaterialAdmin(admin.ModelAdmin):
 
 
 @admin.register(models.MaterialLot)
-class MaterialLotAdmin(admin.ModelAdmin):
+class MaterialLotAdmin(SearchAdmin):
     list_display = ["material", "lot_code", "status", "supplier", "received_on", "expires_on"]
     list_filter = ["status"]
     search_fields = ["material__name", "lot_code"]
@@ -39,13 +53,13 @@ class MaterialLotAdmin(admin.ModelAdmin):
 
 
 @admin.register(models.Metric)
-class MetricAdmin(admin.ModelAdmin):
+class MetricAdmin(SearchAdmin):
     list_display = ["code", "label", "unit_code", "value_kind"]
     list_filter = ["value_kind"]
     search_fields = ["code", "label"]
 
 
-class ReadOnlyRecordAdmin(admin.ModelAdmin):
+class ReadOnlyRecordAdmin(SearchAdmin):
     """Avoid a second unaudited editing path for immutable or sourced records."""
 
     def has_add_permission(self, request):

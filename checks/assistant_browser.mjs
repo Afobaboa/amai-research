@@ -232,7 +232,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   // Include older, long, and undated titles in the history without involving a model.
   for (const [title, updated_at] of [
     ['Сравнение зимних рецептур', new Date(Date.now() - 86400000).toISOString()],
-    ['Проверка гипотезы о влиянии нового сырья на стабильность пены при низкой температуре', new Date(Date.now() - 8 * 86400000).toISOString()],
+    ['Проверка гипотезы о влиянии нового сырья на стабильность пены при низкой температуре · QA-302_А.Б', new Date(Date.now() - 8 * 86400000).toISOString()],
     ['Результаты испытаний', undefined],
   ]) {
     const chat = {id:++counter, title, updated_at, jobs:[], active:false};
@@ -310,6 +310,19 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await search.fill('ЗИМНИХ');
   assert.equal(await historyRows.count(), 1, 'History search ignores title case');
   assert.equal(await historyRows.first().locator('.assistant-chat-title').textContent(), 'Сравнение зимних рецептур');
+  await search.fill('СРАВНЕНИЕ_зимних.рецептур');
+  assert.equal(await historyRows.count(), 1,
+    'History search treats spaces and punctuation as equivalent');
+  for (const query of [
+    'A_302-А_Б', 'a.302.а.б', '  a-302_а.б  ', 'A 302 А Б',
+    'A - 302__А..Б', 'a\u00a0302\u00a0а\u00a0б',
+  ]) {
+    await search.fill(query);
+    assert.equal(await historyRows.count(), 1,
+      'History search matches substrings with equivalent separators and case');
+    assert.match(await historyRows.first().locator('.assistant-chat-title')
+      .textContent(), /QA-302_А\.Б$/);
+  }
   await search.fill('нет-такого-диалога-123');
   assert.equal(await historyRows.count(), 0);
   assert.equal(await page.locator('#assistant-chat-empty').isVisible(), true);

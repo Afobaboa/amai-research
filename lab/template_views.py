@@ -4,9 +4,10 @@ from decimal import Decimal
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Q
+from django.db.models import Max
 from django.shortcuts import get_object_or_404, redirect, render
 
+from .search import filter_search
 from .models import CalculationTemplate, ChangeEvent, Material, MaterialLot, RecipeTemplate, RecipeVersion
 from .template_forms import (CalculationTemplateForm, OPERATION_DESCRIPTIONS, RecipeTemplateForm,
                              TemplateComponentFormSet, TemplateFillingFormSet)
@@ -90,12 +91,18 @@ def definition_display(definition):
 
 @site_required
 def recipe_template_list(request):
-    templates = RecipeTemplate.objects.select_related('mixture_type', 'calculation_template', 'created_by').all()
+    templates = RecipeTemplate.objects.select_related(
+        'mixture_type', 'calculation_template', 'created_by',
+    ).all()
     q = request.GET.get('q', '').strip()
     if q:
-        templates = templates.filter(Q(name__icontains=q) | Q(description__icontains=q) | Q(mixture_type__title__icontains=q))
+        templates = filter_search(templates, (
+            'name', 'description', 'mixture_type__title',
+        ), q)
     page = _page(request, templates.order_by('name', '-version', '-pk'))
-    return render(request, 'lab/templates/recipe_list.html', {'templates': page, 'page_obj': page, 'q': q})
+    return render(request, 'lab/templates/recipe_list.html', {
+        'templates': page, 'page_obj': page, 'q': q,
+    })
 
 
 @site_required
@@ -151,9 +158,11 @@ def calculation_template_list(request):
     templates = CalculationTemplate.objects.select_related('created_by').all()
     q = request.GET.get('q', '').strip()
     if q:
-        templates = templates.filter(Q(name__icontains=q) | Q(description__icontains=q))
+        templates = filter_search(templates, ('name', 'description'), q)
     page = _page(request, templates.order_by('name', '-version', '-pk'))
-    return render(request, 'lab/templates/calculation_list.html', {'templates': page, 'page_obj': page, 'q': q})
+    return render(request, 'lab/templates/calculation_list.html', {
+        'templates': page, 'page_obj': page, 'q': q,
+    })
 
 
 @site_required

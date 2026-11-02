@@ -1,0 +1,148 @@
+/* Searchable pickers are shipped independently of the application layout. */
+.amai-ui { --lims-search-select-ready: 1; }
+.search-select { position: relative; min-width: 0; width: 100%; }
+.amai-ui select.search-select-native {
+  position: absolute; width: 1px; height: 1px; min-height: 0;
+  padding: 0; margin: 0; border: 0; opacity: 0; pointer-events: none;
+  overflow: hidden; clip-path: inset(50%);
+}
+.amai-ui .search-select-trigger {
+  appearance: none; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px;
+  width: 100%; min-height: max(44px, var(--amai-control));
+  padding: 10px 13px; border: 1px solid #d5deea; border-radius: 9px;
+  background: var(--amai-surface, #fff); color: var(--amai-ink, #16243a);
+  text-align: left; font: inherit; font-size: 14px; line-height: 20px;
+  box-shadow: 0 1px 2px #16243a04;
+  transition: border-color .14s, box-shadow .14s, background .14s;
+}
+.search-select-trigger:hover {
+  border-color: #b0bfd2; background: #fcfdff;
+}
+.amai-ui .search-select-trigger:focus-visible,
+.amai-ui .search-select-trigger[aria-expanded=true] {
+  outline: none; border-color: #8eb5f0;
+  box-shadow: 0 0 0 3px #1b73f812; background: #fff;
+}
+.search-select-value {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.search-select-trigger.is-placeholder { color: #67758a; }
+.search-select-trigger:disabled {
+  cursor: not-allowed; background: var(--amai-bg); color: var(--amai-muted);
+  box-shadow: none;
+}
+.search-select-trigger[aria-invalid=true], .invalid .search-select-trigger {
+  border-color: var(--amai-danger);
+}
+.search-select .search-select-icon {
+  width: 18px; height: 18px; flex: 0 0 18px;
+  fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
+}
+.search-select .search-select-icon-chevron {
+  width: 16px; height: 16px; flex-basis: 16px; color: #8491a3;
+  transition: transform .14s;
+}
+.search-select-trigger[aria-expanded=true] .search-select-icon-chevron {
+  transform: rotate(180deg);
+}
+.search-select-popover {
+  position: fixed; top: 0; left: 0; z-index: 80;
+  display: flex; flex-direction: column; min-height: 0; padding: 0;
+  border: 1px solid #dfe5ee; border-radius: 12px;
+  background: var(--amai-surface, #fff);
+  box-shadow: 0 2px 6px #16243a08, 0 16px 40px #16243a1a;
+  overflow: hidden; isolation: isolate;
+  animation: search-select-appear .12s ease-out;
+}
+.search-select-popover[hidden] { display: none; }
+.search-select-search {
+  display: flex; align-items: center; flex-shrink: 0; gap: 9px;
+  margin: 8px 8px 4px; padding: 5px 10px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: #f4f6f9; color: #8996a8;
+}
+.search-select-search:focus-within {
+  border-color: #dce6f5; background: #f8faff; color: #677b99;
+}
+.amai-ui .search-select-popover input.search-select-input {
+  appearance: none; display: block; flex: 1; min-width: 0;
+  width: 100%; min-height: 30px; height: 30px; padding: 0;
+  border: 0; border-radius: 0; outline: none; box-shadow: none;
+  background: transparent; color: var(--amai-ink);
+  font: inherit; font-size: 14px; line-height: 20px;
+}
+.search-select-input::placeholder { color: #62728a; }
+.search-select-input::-webkit-search-cancel-button { cursor: pointer; }
+.search-select-options {
+  flex: 1 1 auto; min-height: 0; max-height: 280px; padding: 4px 6px 6px;
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  scrollbar-color: #d4dce8 transparent;
+}
+.search-select-options:empty { display: none; }
+.amai-ui .search-select-option {
+  appearance: none; display: flex; align-items: center;
+  justify-content: space-between; gap: 16px;
+  width: 100%; min-height: max(44px, var(--amai-control)); margin: 0;
+  padding: 9px 11px; border: 0; border-radius: 7px;
+  background: transparent; color: #35435a; box-shadow: none;
+  text-align: left; font: inherit; font-size: 14px; line-height: 20px;
+  transition: background .1s, color .1s;
+}
+.search-select-option-label {
+  min-width: 0; flex: 1; overflow-wrap: anywhere;
+}
+.search-select-option:hover { background: #f3f6fa; }
+.search-select-option.is-active { background: #edf3fc; color: #193f78; }
+.search-select-option[aria-selected=true] {
+  background: #f1f6ff; color: #2464c3; font-weight: 500;
+}
+.search-select-option[aria-selected=true].is-active { background: #eaf2ff; }
+.search-select .search-select-icon-check { color: #2877e8; opacity: 0; }
+.search-select-option[aria-selected=true] .search-select-icon-check { opacity: 1; }
+.search-select-empty {
+  padding: 24px 16px; color: #67758a; text-align: center;
+  font-size: 14px; line-height: 22px;
+}
+.search-select-footer {
+  display: flex; align-items: center; justify-content: flex-end;
+  flex-shrink: 0; gap: 12px; min-height: 34px; padding: 6px 12px;
+  border-top: 1px solid #edf0f5; background: #fcfdff;
+}
+.search-select-footer.has-clear { justify-content: space-between; }
+.search-select-hint {
+  color: #67758a; font-size: 11px; line-height: 18px; white-space: nowrap;
+}
+.amai-ui .search-select-clear {
+  appearance: none; min-height: 26px; padding: 3px 5px; margin-left: -5px;
+  border: 0; border-radius: 4px; background: transparent; box-shadow: none;
+  color: #67758a; text-align: left; font: inherit; font-size: 12px;
+}
+.search-select-clear:hover { background: #edf3fc; color: #2464c3; }
+.search-select .search-select-clear:focus-visible {
+  outline: 2px solid #8eb5f0; outline-offset: 1px;
+}
+.filter-bar > .search-select { flex: 1 1 160px; max-width: 240px; }
+.source-picker .field > .search-select, .template-picker > .search-select {
+  max-width: none;
+}
+.template-picker > .search-select { flex: 1; }
+.auth-form .search-select-trigger, .auth-form .search-select-option { margin: 0; }
+@keyframes search-select-appear {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 800px) {
+  .amai-ui .search-select-trigger, .amai-ui .search-select-option,
+  .amai-ui .search-select-popover input.search-select-input { font-size: 16px; }
+}
+@media (max-width: 480px) {
+  .search-select-hint { display: none; }
+  .search-select-footer:not(.has-clear) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-select-popover { animation: none; }
+  .search-select-trigger, .search-select-option,
+  .search-select-icon-chevron { transition: none; }
+}

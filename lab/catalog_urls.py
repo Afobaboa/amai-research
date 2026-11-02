@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import catalog_views as views
+from .status_views import lot_status
 
 urlpatterns = [
     path('material-categories/', views.category_list, name='category_list'),
@@ -15,6 +16,7 @@ urlpatterns = [
     path('lots/new/', views.lot_save, name='lot_create'),
     path('lots/<int:pk>/', views.lot_detail, name='lot_detail'),
     path('lots/<int:pk>/edit/', views.lot_save, name='lot_edit'),
+    path('lots/<int:pk>/status/', lot_status, name='lot_status'),
     path('sources/', views.source_list, name='source_list'),
     path('sources/', views.source_list, name='sources'),
     path('sources/new/', views.source_save, name='source_create'),

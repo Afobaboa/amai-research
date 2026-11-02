@@ -12,6 +12,34 @@
     const menuButton = document.querySelector('.mobile-menu');
     const sidebar = document.getElementById('sidebar');
     const mobileViewport = window.matchMedia('(max-width: 800px)');
+    function retainSidebarScroll() {
+        const navigation = sidebar?.querySelector('nav');
+        if (!navigation)
+            return;
+        const storageKey = 'lims.sidebar.scrollTop';
+        function save() {
+            try {
+                sessionStorage.setItem(storageKey, String(navigation.scrollTop));
+            }
+            catch { }
+        }
+        function restore() {
+            try {
+                const saved = Number(sessionStorage.getItem(storageKey));
+                if (Number.isFinite(saved) && saved >= 0)
+                    navigation.scrollTop = saved;
+            }
+            catch { }
+        }
+        navigation.addEventListener('scroll', save, { passive: true });
+        navigation.addEventListener('click', save);
+        window.addEventListener('pagehide', save);
+        window.addEventListener('pageshow', event => {
+            if (event.persisted)
+                restore();
+        });
+    }
+    retainSidebarScroll();
     function setMenuOpen(open, restoreFocus = false) {
         document.body.classList.toggle('menu-open', open);
         menuButton?.setAttribute('aria-expanded', String(open));
@@ -19,7 +47,7 @@
         if (open) {
             const activeLink = sidebar?.querySelector('.nav-link.active');
             const firstLink = sidebar?.querySelector('.nav-link');
-            (activeLink ?? firstLink)?.focus();
+            (activeLink ?? firstLink)?.focus({ preventScroll: true });
         }
         else if (restoreFocus) {
             menuButton?.focus();
@@ -76,7 +104,7 @@
         const count = Number(total.value);
         const fragment = template.content.cloneNode(true);
         replaceFormPrefix(fragment, count);
-        const firstInput = fragment.querySelector('input:not([type="hidden"]), select, textarea');
+        const firstInput = fragment.querySelector('input:not([type="hidden"]):not([name$="-DELETE"]), select, textarea');
         rows.appendChild(fragment);
         total.value = String(count + 1);
         firstInput?.focus();
@@ -89,11 +117,8 @@
         if (button)
             addForm(button);
     });
-    document.querySelectorAll('[data-filter-form] select')
-        .forEach(select => select.addEventListener('change', () => {
-        select.form?.requestSubmit();
-    }));
     const sourceChoiceCache = new Map();
+    const sourceChoiceRequests = new WeakMap();
     function isSourceCellChoices(data) {
         if (typeof data !== 'object' || data === null || !('cells' in data))
             return false;
@@ -120,34 +145,47 @@
         }
         return pending;
     }
-    async function loadSourceChoices(select, sheet, preserveSelected) {
+    function sourceOptions(data, select, preserveSelected) {
         const selected = select.value;
         const selectedLabel = select.selectedOptions[0]?.textContent;
-        if (!sheet) {
-            select.replaceChildren(new Option('---------', ''));
-            return;
+        const options = [new Option('---------', ''), ...data.cells.map(cell => (new Option(cell.label, String(cell.id), false, preserveSelected && String(cell.id) === selected)))];
+        if (preserveSelected && selected && selectedLabel
+            && !data.cells.some(cell => String(cell.id) === selected)) {
+            options.push(new Option(selectedLabel, selected, true, true));
         }
+        return options;
+    }
+    async function loadSourceChoices(select, sheet, preserveSelected) {
+        const request = Symbol();
+        sourceChoiceRequests.set(select, request);
+        select.dataset.loading = String(Boolean(sheet));
+        delete select.dataset.error;
+        if (!preserveSelected)
+            select.replaceChildren(new Option('---------', ''));
         try {
-            const data = await cachedSourceChoices(sheet);
-            const options = [new Option('---------', ''), ...data.cells.map(cell => (new Option(cell.label, String(cell.id), false, String(cell.id) === selected)))];
-            if (preserveSelected && selected && selectedLabel
-                && !data.cells.some(cell => String(cell.id) === selected)) {
-                options.push(new Option(selectedLabel, selected, true, true));
-            }
-            select.replaceChildren(...options);
+            const data = sheet ? await cachedSourceChoices(sheet) : { cells: [] };
+            if (sourceChoiceRequests.get(select) !== request)
+                return;
+            select.replaceChildren(...sourceOptions(data, select, preserveSelected));
         }
         catch {
             sourceChoiceCache.delete(sheet);
+            if (sourceChoiceRequests.get(select) === request) {
+                select.dataset.error = 'Не удалось загрузить ячейки. Выберите лист ещё раз.';
+            }
+        }
+        finally {
+            if (sourceChoiceRequests.get(select) === request) {
+                select.dataset.loading = 'false';
+            }
         }
     }
     function refreshSourceChoices(preserveSelected = true) {
-        const sheet = document.querySelector('[name="source_sheet"]')
-            ?.value;
+        const sheet = document.querySelector('[name="source_sheet"]');
         document.querySelectorAll('select[data-source-cell]')
             .forEach(select => {
-            const sourceSheet = sheet || select.dataset.sourceSheet;
-            if (sourceSheet)
-                void loadSourceChoices(select, sourceSheet, preserveSelected);
+            const sourceSheet = sheet ? sheet.value : select.dataset.sourceSheet ?? '';
+            void loadSourceChoices(select, sourceSheet, preserveSelected);
         });
     }
     document.querySelector('[name="source_sheet"]')

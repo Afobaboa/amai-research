@@ -1,7 +1,15 @@
-{% load static %}<!DOCTYPE html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#112139"><title>АМАИ ИССЛЕДОВАНИЯ · {% block title %}Лаборатория{% endblock %}</title><link rel="icon" href="{% static 'lab/favicon.svg' %}?v=amai-3" type="image/svg+xml"><link rel="stylesheet" href="{% static 'lab/amai-theme.css' %}">
-<link rel="stylesheet" href="{% static 'lab/amai-components.css' %}">
-<link rel="stylesheet" href="{% static 'lab/app.css' %}"><script defer src="{% static 'lab/app.js' %}"></script>{% if employee %}<link rel="stylesheet" href="{% static 'lab/assistant.css' %}"><script defer src="{% static 'lab/assistant.js' %}"></script>{% endif %}</head>
+{% load static lab_tags %}<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#112139"><title>АМАИ ИССЛЕДОВАНИЯ · {% block title %}Лаборатория{% endblock %}</title><link rel="icon" href="{% static 'lab/favicon.svg' %}?v=amai-3" type="image/svg+xml"><link rel="stylesheet" href="{% versioned_static 'lab/amai-theme.css' %}">
+<link rel="stylesheet" href="{% versioned_static 'lab/amai-components.css' %}">
+<link rel="stylesheet" href="{% versioned_static 'lab/app.css' %}">
+<link rel="stylesheet" href="{% versioned_static 'lab/search-select.css' %}">
+<script defer src="{% versioned_static 'lab/search-select.js' %}"></script>
+<script defer src="{% versioned_static 'lab/app.js' %}"></script>
+<script defer src="{% versioned_static 'lab/live-search.js' %}"></script>
+{% if employee %}
+<link rel="stylesheet" href="{% versioned_static 'lab/assistant.css' %}">
+<script defer src="{% versioned_static 'lab/assistant.js' %}"></script>
+{% endif %}</head>
 <body class="amai-ui">
 <a class="amai-skip" href="#main-content">Перейти к содержимому</a>
 <svg class="svg-library" xmlns="http://www.w3.org/2000/svg"><symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol><symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v7L4.5 19a1.3 1.3 0 0 0 1.2 2h12.6a1.3 1.3 0 0 0 1.2-2L14 10V3M7.5 14h9"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h5"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol><symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5v9l-9 5-9-5V8zm0 10v9M3 8l9 5 9-5M8 5l9 5"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol></svg>
@@ -27,6 +35,7 @@
 <div class="sidebar-note"><span class="note-icon">↳</span><strong>От состава до результата</strong><p>Рецептуры, условия и история исследований в одном месте.</p></div>
 <div class="sidebar-bottom">{% if employee %}<div class="profile"><span class="avatar">{{ employee.full_name|first }}</span><div><strong>{{ employee.full_name }}</strong><small>{{ employee.get_role_display }}</small></div><a href="{% url 'choose_employee' %}" class="profile-change" title="Выбрать сотрудника" aria-label="Выбрать сотрудника">↔</a></div><form action="{% url 'logout' %}" method="post" class="logout-form">{% csrf_token %}<button>Выйти из системы ↗</button></form>{% endif %}</div>
 </aside>
+{% include 'lab/includes/sidebar_scroll_restore.html' %}
 <div class="main-shell"><header class="topbar"><button class="mobile-menu" type="button" aria-label="Открыть меню" aria-controls="sidebar" aria-expanded="false">☰</button><div class="breadcrumb"><span class="breadcrumb-prefix">Рабочее пространство</span> <span>/</span> <strong>{% block breadcrumb %}Обзор лаборатории{% endblock %}</strong></div></header>
 <main id="main-content" tabindex="-1">{% if messages %}<div class="messages" role="status">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main>
 <footer class="page-footer"><span>АМАИ ИССЛЕДОВАНИЯ <span class="footer-dot">·</span> Система лабораторного учета</span><span>Все изменения сохраняются в истории <svg><use href="#i-check"/></svg></span></footer></div>

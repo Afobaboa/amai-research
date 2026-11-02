@@ -1,0 +1,12 @@
+{# Restore before deferred scripts so the first paint uses the saved position. #}
+<script>
+{
+  const navigation = document.querySelector('#sidebar nav');
+  try {
+    const saved = Number(sessionStorage.getItem('lims.sidebar.scrollTop'));
+    if (navigation && Number.isFinite(saved) && saved >= 0) {
+      navigation.scrollTop = saved;
+    }
+  } catch {}
+}
+</script>

@@ -3,22 +3,11 @@
   {{ formset.non_form_errors }}
   <div class="formset-rows">
     {% for row in formset %}
-      <div class="formset-row">
-        {{ row.non_field_errors }}
-        {% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}
-        {% for field in row.visible_fields %}
-          {% include 'lab/includes/field.html' %}
-        {% endfor %}
-      </div>
+      {% include 'lab/includes/formset_row.html' %}
     {% endfor %}
   </div>
   <template>
-    <div class="formset-row">
-      {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
-      {% for field in formset.empty_form.visible_fields %}
-        {% include 'lab/includes/field.html' %}
-      {% endfor %}
-    </div>
+    {% include 'lab/includes/formset_row.html' with row=formset.empty_form %}
   </template>
   <div class="formset-controls">
     <button type="button" class="button small"

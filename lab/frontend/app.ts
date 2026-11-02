@@ -13,6 +13,30 @@
   const sidebar = document.getElementById('sidebar');
   const mobileViewport = window.matchMedia('(max-width: 800px)');
 
+  function retainSidebarScroll(): void {
+    const navigation = sidebar?.querySelector<HTMLElement>('nav');
+    if (!navigation) return;
+    const storageKey = 'lims.sidebar.scrollTop';
+    function save(): void {
+      try {
+        sessionStorage.setItem(storageKey, String(navigation!.scrollTop));
+      } catch {}
+    }
+    function restore(): void {
+      try {
+        const saved = Number(sessionStorage.getItem(storageKey));
+        if (Number.isFinite(saved) && saved >= 0) navigation!.scrollTop = saved;
+      } catch {}
+    }
+    navigation.addEventListener('scroll', save, {passive: true});
+    navigation.addEventListener('click', save);
+    window.addEventListener('pagehide', save);
+    window.addEventListener('pageshow', event => {
+      if (event.persisted) restore();
+    });
+  }
+  retainSidebarScroll();
+
   function setMenuOpen(open: boolean, restoreFocus = false): void {
     document.body.classList.toggle('menu-open', open);
     menuButton?.setAttribute('aria-expanded', String(open));
@@ -20,7 +44,7 @@
     if (open) {
       const activeLink = sidebar?.querySelector<HTMLAnchorElement>('.nav-link.active');
       const firstLink = sidebar?.querySelector<HTMLAnchorElement>('.nav-link');
-      (activeLink ?? firstLink)?.focus();
+      (activeLink ?? firstLink)?.focus({preventScroll: true});
     } else if (restoreFocus) {
       menuButton?.focus();
     }
@@ -79,7 +103,7 @@
     const fragment = template.content.cloneNode(true) as DocumentFragment;
     replaceFormPrefix(fragment, count);
     const firstInput = fragment.querySelector<HTMLElement>(
-      'input:not([type="hidden"]), select, textarea',
+      'input:not([type="hidden"]):not([name$="-DELETE"]), select, textarea',
     );
     rows.appendChild(fragment);
     total.value = String(count + 1);
@@ -93,11 +117,6 @@
     if (button) addForm(button);
   });
 
-  document.querySelectorAll<HTMLSelectElement>('[data-filter-form] select')
-    .forEach(select => select.addEventListener('change', () => {
-      select.form?.requestSubmit();
-    }));
-
   interface SourceCellChoice {
     id: number | string;
     label: string;
@@ -108,6 +127,7 @@
   }
 
   const sourceChoiceCache = new Map<string, Promise<SourceCellChoices>>();
+  const sourceChoiceRequests = new WeakMap<HTMLSelectElement, symbol>();
 
   function isSourceCellChoices(data: unknown): data is SourceCellChoices {
     if (typeof data !== 'object' || data === null || !('cells' in data)) return false;
@@ -138,37 +158,52 @@
     return pending;
   }
 
+  function sourceOptions(
+    data: SourceCellChoices, select: HTMLSelectElement, preserveSelected: boolean,
+  ): HTMLOptionElement[] {
+    const selected = select.value;
+    const selectedLabel = select.selectedOptions[0]?.textContent;
+    const options = [new Option('---------', ''), ...data.cells.map(cell => (
+      new Option(cell.label, String(cell.id), false,
+        preserveSelected && String(cell.id) === selected)
+    ))];
+    if (preserveSelected && selected && selectedLabel
+        && !data.cells.some(cell => String(cell.id) === selected)) {
+      options.push(new Option(selectedLabel, selected, true, true));
+    }
+    return options;
+  }
+
   async function loadSourceChoices(
     select: HTMLSelectElement, sheet: string, preserveSelected: boolean,
   ): Promise<void> {
-    const selected = select.value;
-    const selectedLabel = select.selectedOptions[0]?.textContent;
-    if (!sheet) {
-      select.replaceChildren(new Option('---------', ''));
-      return;
-    }
+    const request = Symbol();
+    sourceChoiceRequests.set(select, request);
+    select.dataset.loading = String(Boolean(sheet));
+    delete select.dataset.error;
+    if (!preserveSelected) select.replaceChildren(new Option('---------', ''));
     try {
-      const data = await cachedSourceChoices(sheet);
-      const options = [new Option('---------', ''), ...data.cells.map(cell => (
-        new Option(cell.label, String(cell.id), false, String(cell.id) === selected)
-      ))];
-      if (preserveSelected && selected && selectedLabel
-          && !data.cells.some(cell => String(cell.id) === selected)) {
-        options.push(new Option(selectedLabel, selected, true, true));
-      }
-      select.replaceChildren(...options);
+      const data = sheet ? await cachedSourceChoices(sheet) : {cells: []};
+      if (sourceChoiceRequests.get(select) !== request) return;
+      select.replaceChildren(...sourceOptions(data, select, preserveSelected));
     } catch {
       sourceChoiceCache.delete(sheet);
+      if (sourceChoiceRequests.get(select) === request) {
+        select.dataset.error = 'Не удалось загрузить ячейки. Выберите лист ещё раз.';
+      }
+    } finally {
+      if (sourceChoiceRequests.get(select) === request) {
+        select.dataset.loading = 'false';
+      }
     }
   }
 
   function refreshSourceChoices(preserveSelected = true): void {
-    const sheet = document.querySelector<HTMLSelectElement>('[name="source_sheet"]')
-      ?.value;
+    const sheet = document.querySelector<HTMLSelectElement>('[name="source_sheet"]');
     document.querySelectorAll<HTMLSelectElement>('select[data-source-cell]')
       .forEach(select => {
-        const sourceSheet = sheet || select.dataset.sourceSheet;
-        if (sourceSheet) void loadSourceChoices(select, sourceSheet, preserveSelected);
+        const sourceSheet = sheet ? sheet.value : select.dataset.sourceSheet ?? '';
+        void loadSourceChoices(select, sourceSheet, preserveSelected);
       });
   }
 
