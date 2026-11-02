@@ -22,6 +22,7 @@ delete env.DATABASE_URL;
 delete env.SITE_PASSWORD_HASH;
 const python = process.env.LIMS_PYTHON || join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
 const headed = process.argv.includes('--headed') || process.env.LIMS_HEADED === '1';
+const firefox = process.argv.includes('--firefox');
 const require = createRequire(import.meta.url);
 const token = randomUUID();
 let server, browser, serverClosed, artifacts, base;
@@ -48,7 +49,7 @@ async function checkArchiveDownload(page) {
 }
 
 function carriedProperty(page) {
-  const origin = 'select[name$="-origin"] option:checked[value="carried_forward"]';
+  const origin = 'input[name$="-origin"][value="carried_forward"]';
   return page.locator('#properties-formset .formset-row').filter({
     has: page.locator(origin),
   });
@@ -57,41 +58,16 @@ function carriedProperty(page) {
 async function assertCarriedProperty(page, donorId, note) {
   const row = carriedProperty(page);
   assert.equal(await row.count(), 1, 'One explicitly carried-forward property');
-  const selected = row.locator('select[data-source-cell]');
+  const selected = row.locator('input[name$="-source_cell"]');
   assert.equal(await selected.inputValue(), donorId,
-    'Initial async source loading must retain the selected donor from another sheet');
-  assert.equal(await selected.locator('option:checked').innerText(), '302.83!C12');
-  assert.match(await row.locator('.search-select:has(select[data-source-cell])')
-    .locator('.search-select-trigger').innerText(), /302\.83!C12/);
+    'Hidden evidence must retain the donor from another sheet');
+  assert.equal(await selected.getAttribute('type'), 'hidden');
+  assert.equal(await row.locator('[name$="-origin"]').getAttribute('type'), 'hidden');
+  assert.equal(await row.locator('[name$="-provenance_note"]').getAttribute('type'), 'hidden');
   assert.equal(await row.locator('[name$="-property_code"]').inputValue(),
     'source_price_per_kg');
   assert.equal(Number(await row.locator('[name$="-value"]').inputValue()), 64.69);
   assert.equal(await row.locator('[name$="-provenance_note"]').inputValue(), note);
-}
-
-async function checkExplicitSourceChange(page) {
-  const sheet = page.locator('#id_source_sheet');
-  const current = await sheet.inputValue();
-  const other = await sheet.locator('option').evaluateAll((options, current) => (
-    options.find(option => option.value && option.value !== current
-      && !option.textContent.includes('302.83'))?.value
-  ), current);
-  assert.ok(other, 'Another source sheet is available');
-  await Promise.all([
-    page.waitForResponse(response => {
-      const url = new URL(response.url());
-      return url.pathname === '/source-cell-choices/'
-        && url.searchParams.get('sheet') === other;
-    }),
-    sheet.selectOption(other),
-  ]);
-  const select = carriedProperty(page).locator('select[data-source-cell]');
-  await page.waitForFunction(name => document.getElementsByName(name)[0]?.value === '',
-    await select.getAttribute('name'));
-  assert.equal(await select.inputValue(), '',
-    'Explicitly changing source clears unrelated donor selection');
-  assert.doesNotMatch(await select.locator('..')
-    .locator('.search-select-trigger').innerText(), /302\.83!C12/);
 }
 
 async function checkCarriedForwardFork(page, go, submit) {
@@ -115,7 +91,8 @@ async function checkCarriedForwardFork(page, go, submit) {
   const fork = new URL(page.url()).pathname;
   await go(fork + 'edit/');
   await assertCarriedProperty(page, donorId, note);
-  await checkExplicitSourceChange(page);
+  assert.equal(await page.locator('#id_source_sheet').getAttribute('type'), 'hidden');
+  assert.equal(await page.locator('.formset-source, select[data-source-cell]').count(), 0);
   console.log('302.84 fork preserves donor selection and carried-forward provenance.');
 }
 
@@ -283,7 +260,7 @@ async function clearSelectWithKeyboard(field) {
 
 async function checkAddedSelect(page) {
   await page.locator('[data-add-form="components-formset"]').click();
-  const material = searchableSelect(page, '#id_components-2-material');
+  const material = searchableSelect(page, '#id_components-1-material');
   await material.locator('.search-select-trigger').click();
   await material.locator('.search-select-input').fill('ovol c21');
   const candidate = material.getByRole('option', {name: 'Inovol C210', exact: true});
@@ -315,7 +292,7 @@ async function checkMobileSelect(page, width) {
 async function checkAddedConditionSelect(page, go) {
   await go('/tests/new/');
   await page.locator('[data-add-form="conditions-formset"]').click();
-  const condition = searchableSelect(page, '#id_conditions-2-metric');
+  const condition = searchableSelect(page, '#id_conditions-1-metric');
   const trigger = condition.locator('.search-select-trigger');
   assert.equal(await trigger.evaluate(el => el === document.activeElement), true,
     'Adding a condition focuses its visible searchable field');
@@ -323,6 +300,290 @@ async function checkAddedConditionSelect(page, go) {
   const input = condition.locator('.search-select-input');
   assert.equal(await input.evaluate(el => el === document.activeElement), true);
   await input.press('Escape');
+}
+
+async function checkFormsetRemoval(page, go, submit) {
+  const rows = prefix => page.locator(`#${prefix}-formset .formset-row`);
+  const add = prefix => page.locator(`[data-add-form="${prefix}-formset"]`).click();
+  const remove = (prefix, index) => rows(prefix).nth(index).locator('[data-remove-form]').click();
+  const checkCounts = async (prefix, count, initial) => {
+    assert.equal(await rows(prefix).count(), count, prefix);
+    assert.equal(await page.locator(`#id_${prefix}-TOTAL_FORMS`).inputValue(), String(count));
+    assert.equal(await page.locator(`#id_${prefix}-INITIAL_FORMS`).inputValue(), String(initial));
+  };
+  const clear = async prefix => {
+    while (await rows(prefix).count()) await remove(prefix, 0);
+    await checkCounts(prefix, 0, 0);
+    assert.equal(await page.locator(`[data-add-form="${prefix}-formset"]`)
+      .evaluate(button => button === document.activeElement), true);
+  };
+
+  await go('/recipes/new/');
+  const prefixes = ['components', 'filling', 'properties'];
+  for (const prefix of prefixes) {
+    await checkCounts(prefix, 1, 0);
+    await add(prefix);
+    await add(prefix);
+  }
+  assert.equal(await page.locator('[name$="-DELETE"], .formset-source').count(), 0);
+  assert.doesNotMatch(await page.locator('main').innerText(), /Первичный источник|Первичная ячейка|Лист первичного источника/);
+  const material = await page.locator('#id_components-0-material option')
+    .evaluateAll(options => options.find(option => option.value)?.value);
+  assert.ok(material);
+  await page.locator('#id_version_label').fill('QA-FORMSET-REMOVE');
+  for (let index = 0; index < 3; index++) {
+    await page.locator(`#id_components-${index}-material`).selectOption(material);
+    await page.locator(`#id_components-${index}-quantity_value`).fill(index === 1 ? '-1' : String((index + 1) * 10));
+    await page.locator(`#id_filling-${index}-group_label`).fill('A');
+    await page.locator(`#id_filling-${index}-mass_g`).fill(String((index + 1) * 10));
+    await page.locator(`#id_properties-${index}-property_code`).fill(`qa_property_${index}`);
+    await page.locator(`#id_properties-${index}-value`).fill(String(index + 1));
+  }
+  for (const prefix of prefixes) {
+    await remove(prefix, 1);
+    await checkCounts(prefix, 2, 0);
+  }
+  assert.equal(await page.locator('#id_components-1-quantity_value').inputValue(), '30');
+  const selected = searchableSelect(page, '#id_components-1-material');
+  await selected.locator('.search-select-trigger').click();
+  await selected.locator('.search-select-input').press('Escape');
+  assert.equal(await selected.locator('select').inputValue(), material);
+
+  // Deleted rows stay absent when another field fails server validation.
+  await page.locator('#id_components-0-group_label').fill('');
+  await Promise.all([
+    page.waitForNavigation({waitUntil: 'networkidle'}),
+    page.getByRole('button', {name: 'Сохранить рецептуру', exact: true}).click(),
+  ]);
+  assert.match((await page.locator('.field-error').allTextContents()).join(' '), /Укажите группу/);
+  for (const prefix of prefixes) await checkCounts(prefix, 2, 0);
+  await page.locator('#id_components-0-group_label').fill('A');
+  await submit('Сохранить рецептуру');
+  const recipe = new URL(page.url()).pathname;
+  await go(recipe + 'edit/');
+  for (const prefix of prefixes) {
+    await checkCounts(prefix, 3, 2);
+    await remove(prefix, 0);
+    await remove(prefix, 1); // Remove the default empty row as well.
+    await checkCounts(prefix, 1, 1);
+  }
+  await submit('Сохранить изменения');
+  await go(recipe + 'edit/');
+  for (const prefix of prefixes) await checkCounts(prefix, 2, 1);
+  assert.equal(await page.locator('#id_components-0-quantity_value').inputValue(), '30');
+  assert.equal(await page.locator('#id_filling-0-mass_g').inputValue(), '30');
+  assert.equal(await page.locator('#id_properties-0-property_code').inputValue(), 'qa_property_2');
+  for (const prefix of prefixes) await clear(prefix);
+  await submit('Сохранить изменения');
+  await go(recipe + 'edit/');
+  for (const prefix of prefixes) await checkCounts(prefix, 1, 0);
+
+  await go('/recipe-templates/new/');
+  await page.locator('#id_name').fill('QA удаление строк шаблона');
+  for (const prefix of ['components', 'filling']) {
+    await checkCounts(prefix, 1, 0);
+    await clear(prefix);
+    await add(prefix); // Adding again after deleting the last row works.
+    await add(prefix);
+    await add(prefix);
+  }
+  for (let index = 0; index < 3; index++) {
+    await page.locator(`#id_components-${index}-material`).selectOption(material);
+    await page.locator(`#id_components-${index}-quantity_value`).fill(String(index + 1));
+    await page.locator(`#id_filling-${index}-group_label`).fill('A');
+    await page.locator(`#id_filling-${index}-mass_g`).fill(String(index + 1));
+  }
+  for (const prefix of ['components', 'filling']) await remove(prefix, 1);
+  await submit('Сохранить шаблон рецептуры');
+  const template = new URL(page.url()).pathname;
+  await go(template + 'fork/');
+  for (const prefix of ['components', 'filling']) {
+    await checkCounts(prefix, 3, 2);
+    await remove(prefix, 0);
+    await remove(prefix, 1);
+    await checkCounts(prefix, 1, 1);
+  }
+  await submit('Сохранить шаблон рецептуры');
+  await go(new URL(page.url()).pathname + 'fork/');
+  for (const prefix of ['components', 'filling']) await checkCounts(prefix, 2, 1);
+  assert.equal(await page.locator('#id_components-0-quantity_value').inputValue(), '3');
+  assert.equal(await page.locator('#id_filling-0-mass_g').inputValue(), '3');
+  console.log('Formsets: one default row, physical removal, reindexing, last-row removal, validation retry and saved recipe/template deletion passed.');
+}
+
+async function checkFormDrafts(context) {
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const visit = path => page.goto(base + path, {waitUntil: 'networkidle'});
+  const add = prefix => page.locator(`[data-add-form="${prefix}-formset"]`).click();
+  const remove = (prefix, index) => page.locator(`#${prefix}-formset [data-remove-form]`).nth(index).click();
+  const snapshot = () => page.evaluate(() => {
+    const form = document.querySelector('[data-formset-prefix]').closest('form');
+    return {
+      fields: [...new FormData(form)].filter(([name]) => name !== 'csrfmiddlewaretoken'),
+      dates: [...form.querySelectorAll('.date-picker input[type="text"]')].map(input => input.value),
+      rows: [...form.querySelectorAll('[data-formset-prefix]')].map(group => [
+        group.dataset.formsetPrefix, group.querySelectorAll('.formset-row').length,
+      ]),
+    };
+  });
+  const reload = async () => {
+    const before = await snapshot();
+    await page.reload({waitUntil: 'networkidle'});
+    assert.deepEqual(await snapshot(), before, 'Reload preserves fields, dates and every row');
+  };
+  const submit = async label => {
+    await Promise.all([
+      page.waitForNavigation({waitUntil: 'networkidle'}),
+      page.getByRole('button', {name: label, exact: true}).click(),
+    ]);
+  };
+
+  await visit('/recipes/new/');
+  await page.locator('#id_version_label').fill('QA-REFRESH-DRAFT');
+  await page.locator('#id_title').fill('Черновик перед обновлением');
+  await page.locator('#id_notes').fill('Первая строка\nВторая строка');
+  await page.locator('#id_recorded_on').fill('03.11.2026');
+  const material = await page.locator('#id_components-0-material option')
+    .evaluateAll(options => options.find(option => option.value)?.value);
+  for (const prefix of ['components', 'filling', 'properties']) {
+    await add(prefix);
+    await add(prefix);
+  }
+  for (let index = 0; index < 3; index++) {
+    await page.locator(`#id_components-${index}-material`).selectOption(material);
+    await page.locator(`#id_components-${index}-quantity_value`).fill(String(index * 10));
+    await page.locator(`#id_filling-${index}-group_label`).fill('A');
+    await page.locator(`#id_filling-${index}-mass_g`).fill(String(index * 20));
+    await page.locator(`#id_properties-${index}-property_code`).fill(`refresh_${index}`);
+    await page.locator(`#id_properties-${index}-value`).fill(String(index));
+  }
+  await reload();
+  for (const prefix of ['components', 'filling', 'properties']) await remove(prefix, 1);
+  await reload();
+  assert.equal(await page.locator('#id_components-1-quantity_value').inputValue(), '20');
+  assert.match(await searchableSelect(page, '#id_components-1-material')
+    .locator('.search-select-trigger').innerText(), /\S/);
+  await page.locator('#id_recorded_on').fill('03.11.20__');
+  await reload();
+  await page.locator('#id_recorded_on').fill('03.11.2026');
+
+  // Leaving the editor and opening it again in this tab also retains the draft.
+  await visit('/recipes/');
+  await visit('/recipes/new/');
+  assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(), '2');
+  assert.equal(await page.locator('#id_title').inputValue(), 'Черновик перед обновлением');
+  const independent = await context.newPage();
+  await independent.goto(base + '/recipes/new/', {waitUntil: 'networkidle'});
+  assert.equal(await independent.locator('#id_components-TOTAL_FORMS').inputValue(), '1');
+  assert.equal(await independent.locator('#id_title').inputValue(), '');
+  await independent.close();
+
+  await page.locator('#id_components-0-group_label').fill('');
+  await submit('Сохранить рецептуру');
+  assert.match((await page.locator('.field-error').allTextContents()).join(' '), /Укажите группу/);
+  await page.locator('#id_title').fill('Исправление после ошибки');
+  await reload();
+  await page.locator('#id_components-0-group_label').fill('A');
+  await submit('Сохранить рецептуру');
+  assert.equal(await page.locator('.errorlist,.field-error').count(), 0);
+  const recipe = new URL(page.url()).pathname;
+  assert.match(recipe, /^\/recipes\/\d+\/$/);
+  await visit('/recipes/new/');
+  assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(), '1');
+  assert.equal(await page.locator('#id_version_label').inputValue(), '');
+
+  await visit(recipe + 'edit/');
+  await remove('components', 0);
+  await remove('filling', 0);
+  await remove('properties', 0);
+  await reload();
+  await submit('Сохранить изменения');
+  await visit(recipe + 'edit/');
+  assert.equal(await page.locator('#id_components-INITIAL_FORMS').inputValue(), '1');
+  assert.equal(await page.locator('#id_components-0-quantity_value').inputValue(), '20');
+
+  // A newer server record wins over an older browser draft.
+  await page.locator('#id_title').fill('Старое локальное изменение');
+  const payload = await page.evaluate(() => Object.fromEntries(new FormData(
+    document.querySelector('[data-formset-prefix]').closest('form'),
+  )));
+  payload.title = 'Сохранено другим запросом';
+  const response = await page.request.post(base + recipe + 'edit/', {
+    form: payload, headers: {Referer: page.url()},
+  });
+  assert.equal(response.status(), 200);
+  await page.reload({waitUntil: 'networkidle'});
+  assert.equal(await page.locator('#id_title').inputValue(), payload.title);
+
+  for (const [path, prefixes, field, value] of [
+    ['/recipe-templates/new/', ['components', 'filling'], '#id_name', 'Черновик шаблона'],
+    ['/tests/new/', ['conditions'], '#id_title', 'Черновик испытания'],
+  ]) {
+    await visit(path);
+    await page.locator(field).fill(value);
+    for (const prefix of prefixes) {
+      await add(prefix);
+      await add(prefix);
+      await remove(prefix, 0);
+    }
+    if (prefixes.includes('conditions')) {
+      await page.locator('#id_conditions-1-text_value').fill('Условие после обновления');
+      await page.locator('#id_recorded_tested_on').fill('04.11.2026');
+    } else {
+      await page.locator('#id_components-1-material').selectOption(material);
+      await page.locator('#id_components-1-quantity_value').fill('0');
+    }
+    await reload();
+    for (const prefix of prefixes) {
+      while (await page.locator(`#${prefix}-formset .formset-row`).count()) await remove(prefix, 0);
+    }
+    await reload();
+    for (const prefix of prefixes) await add(prefix);
+    await reload();
+    await page.locator('.form-actions a').click();
+    await page.waitForLoadState('networkidle');
+    await visit(path);
+    assert.equal(await page.locator(field).inputValue(), '');
+    for (const prefix of prefixes) {
+      assert.equal(await page.locator(`#id_${prefix}-TOTAL_FORMS`).inputValue(), '1');
+    }
+  }
+
+  // Match the reported Ctrl+R case on an existing card in both engines.
+  await visit('/tests/new/');
+  const publishedRecipe = await page.locator('#id_recipe option')
+    .evaluateAll(options => options.find(option => option.value)?.value);
+  await page.locator('#id_recipe').selectOption(publishedRecipe);
+  await page.locator('#id_title').fill('QA Ctrl+R существующей карточки');
+  await submit('Сохранить карточку');
+  assert.equal(await page.locator('.errorlist,.field-error').count(), 0);
+  const card = new URL(page.url()).pathname;
+  await visit(card + 'edit/');
+  await add('conditions');
+  await add('conditions');
+  await reload();
+  await page.locator('#id_notes').fill('Введено до Ctrl+R\nНе сохранено в карточку');
+  await page.locator('#id_conditions-1-numeric_value').fill('0');
+  await page.locator('#id_conditions-2-text_value').fill('Условие перед Ctrl+R');
+  const beforeShortcut = await snapshot();
+  await page.reload({waitUntil: 'networkidle'});
+  assert.deepEqual(await snapshot(), beforeShortcut,
+    'Ctrl+R on an existing card retains filled rows and notes');
+  await remove('conditions', 0);
+  await reload();
+
+  // Hidden source links can also be restored by Firefox after row deletion.
+  await visit('/recipes/?q=302.84');
+  const archive = await page.getByRole('link', {name: '302.84', exact: true}).getAttribute('href');
+  await visit(archive + 'fork/');
+  await remove('components', 0);
+  await remove('properties', 0);
+  await reload();
+  assert.deepEqual(errors, []);
+  await page.close();
+  console.log('Drafts: refresh, fields/dates, added/deleted/empty rows, validation retries, tab isolation, server changes, success and cancel passed.');
 }
 
 async function checkRequiredSelect(page, go) {
@@ -816,10 +1077,14 @@ async function checkMobileFeedback(page, employeeName, width) {
 }
 
 try {
-  const unknown = process.argv.slice(2).filter(arg => arg !== '--headed');
+  const formsOnly = process.argv.includes('--forms-only');
+  const unknown = process.argv.slice(2).filter(arg => !['--headed', '--forms-only', '--firefox'].includes(arg));
   assert.equal(unknown.length, 0, `Unknown argument: ${unknown.join(' ')}`);
   let chromium;
-  try { ({chromium} = require(process.env.KUDO_PLAYWRIGHT_MODULE || 'playwright')); }
+  try {
+    const playwright = require(process.env.KUDO_PLAYWRIGHT_MODULE || 'playwright');
+    chromium = firefox ? playwright.firefox : playwright.chromium;
+  }
   catch(error) { throw new Error(`Playwright is unavailable. Run npm ci and npm run install:browsers. ${error.message}`); }
   const requestedPort = process.env.LIMS_BROWSER_PORT;
   assert.ok(requestedPort === undefined || /^\d+$/.test(requestedPort), 'LIMS_BROWSER_PORT must be an integer from 1 to 65535.');
@@ -831,13 +1096,19 @@ try {
   init(['migrate', '--noinput']);
   init(['seed_initial']);
   await startServer(port);
-  browser = await chromium.launch({headless:!headed,args:['--no-sandbox','--disable-dev-shm-usage']});
+  browser = await chromium.launch({headless:!headed,args:firefox ? [] : ['--no-sandbox','--disable-dev-shm-usage']});
   if (interrupted || cleanupPromise) {
     await browser.close();
     throw new Error('Local browser checks were stopped.');
   }
   const context = await browser.newContext({viewport:{width:1440,height:1000}});
   const page = await context.newPage();
+  // Independent UI scenarios start clean; draft persistence uses its own tab.
+  await page.addInitScript(() => {
+    for (const key of Object.keys(sessionStorage)) {
+      if (key.startsWith('lims.form-draft.')) sessionStorage.removeItem(key);
+    }
+  });
   const errors=[];
   page.on('pageerror', error => errors.push(error.message));
   const go = async path => {
@@ -862,6 +1133,9 @@ try {
   await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:/Продолжить/}).click()]);
   await option(page,'#id_employee','Гущин Даниил');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:/Открыть лабораторию/}).click()]);
+  checks: {
+  await checkFormDrafts(context);
+  if (formsOnly) { console.log('PASS: form draft persistence checks.'); break checks; }
   await go('/');
   await checkFeedback(page, 'Гущин Даниил');
   await checkSidebarFirstPaint(browser, await context.storageState());
@@ -920,6 +1194,7 @@ try {
   console.log('Imported 316.26 uses canonical material, extracted lot, EUR prices and a verified Excel download.');
   await checkCarriedForwardFork(page, go, submit);
   await checkSelectSearch(page, go);
+  await checkFormsetRemoval(page, go, submit);
   await checkRegistrySearch(page, go);
   await checkLiveMaterials(page, go);
   await checkLiveRecipes(page, go);
@@ -999,6 +1274,7 @@ try {
 
   await go('/recipes/new/');
   await page.locator('[data-add-form="components-formset"]').click();
+  await page.locator('[data-add-form="components-formset"]').click();
   assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(),'3');
   const addedTrigger = searchableSelect(page, '#id_components-2-material')
     .locator('.search-select-trigger');
@@ -1066,8 +1342,15 @@ try {
   await page.locator('#id_recorded_tested_on').fill('01.11.2026');
   await option(page,'#id_conditions-0-metric','QA температура испытания');
   await page.locator('#id_conditions-0-numeric_value').fill('0');
-  await option(page,'#id_conditions-1-metric','QA относительная влажность');
-  await page.locator('#id_conditions-1-numeric_value').fill('55');
+  assert.equal(await page.locator('#id_conditions-TOTAL_FORMS').inputValue(), '1');
+  await page.locator('[data-add-form="conditions-formset"]').click();
+  await page.locator('#id_conditions-1-text_value').fill('Удаляемое условие без показателя');
+  await page.locator('[data-add-form="conditions-formset"]').click();
+  await option(page,'#id_conditions-2-metric','QA относительная влажность');
+  await page.locator('#id_conditions-2-numeric_value').fill('55');
+  await page.locator('#conditions-formset .formset-row').nth(1).locator('[data-remove-form]').click();
+  assert.equal(await page.locator('#id_conditions-TOTAL_FORMS').inputValue(), '2');
+  assert.equal(await page.locator('#id_conditions-1-numeric_value').inputValue(), '55');
   await submit('Сохранить карточку');
   const card=new URL(page.url()).pathname;
   assert.match(card,/^\/tests\/\d+\/$/);
@@ -1075,6 +1358,8 @@ try {
   assert.match(await page.locator('.results-strip').innerText(),/0 °C/);
   await checkAdditionalMobile(['results/new/','observations/new/','conditioning/new/'].map(path=>card+path));
   await go(card+'results/new/');
+  assert.equal(await page.locator('#id_source_cell').getAttribute('type'), 'hidden');
+  assert.doesNotMatch(await page.locator('main').innerText(), /Первичная ячейка/);
   await option(page,'#id_metric','QA выход пены');
   await page.locator('#id_numeric_value').fill('0');
   await submit('Сохранить');
@@ -1082,12 +1367,14 @@ try {
   const resultRow=resultPanel.locator('tbody tr').filter({hasText:'QA выход пены'});
   assert.match(await resultRow.locator('td').nth(1).innerText(),/^0(?:[,.]0+)?$/);
   await go(card+'observations/new/');
+  assert.equal(await page.locator('#id_source_cell').getAttribute('type'), 'hidden');
   await option(page,'#id_run','Основное испытание');
   const verbatim='  Первая строка наблюдения\nВторая строка: без изменений  ';
   await page.locator('#id_text_value').fill(verbatim);
   await submit('Сохранить');
   assert.equal(await page.locator('.observation p').textContent(),verbatim);
   await go(card+'conditioning/new/');
+  assert.equal(await page.locator('#id_source_cell').getAttribute('type'), 'hidden');
   await page.locator('#id_target_kind').selectOption('can');
   await page.locator('#id_kind').selectOption('conditioning');
   await page.locator('#id_duration_value').fill('0');
@@ -1095,7 +1382,17 @@ try {
   await page.locator('#id_temperature_c').fill('0');
   await submit('Сохранить');
   await go(card+'edit/');
+  assert.equal(await page.locator('#conditions-formset .formset-row').count(), 3);
+  await page.locator('#conditions-formset [data-remove-form]').first().click();
+  await page.locator('#conditions-formset [data-remove-form]').last().click();
+  assert.equal(await page.locator('#id_conditions-INITIAL_FORMS').inputValue(), '1');
+  assert.equal(await page.locator('#id_conditions-0-numeric_value').inputValue(), '55');
   await page.locator('#id_notes').fill('QA карточка завершена после нулевого измерения');
+  await submit('Сохранить карточку');
+  await go(card+'edit/');
+  assert.equal(await page.locator('#conditions-formset .formset-row').count(), 2);
+  assert.equal(await page.locator('#id_conditions-INITIAL_FORMS').inputValue(), '1');
+  assert.equal(await page.locator('#id_conditions-0-numeric_value').inputValue(), '55');
   await submit('Сохранить карточку');
   await changeStatus(page, submit, 'completed');
   assert.equal(await page.getByRole('link',{name:'Записать результат',exact:true}).count(),0);
@@ -1279,6 +1576,7 @@ try {
   assert.deepEqual(errors,[]);
   assert.deepEqual(overflows,[],`Mobile overflow: ${overflows.join(', ')}`);
   console.log(`PASS: isolated real initial dataset; login, author/reader roles, direct POST denial, desktop/mobile routes, documentary sources and lots, fixed recipe templates and automatic calculations, immutable saved calculations, immutable recipes, fork/edit/publish, zero and missing values, card/result/observation/treatment creation, completion locking, reload persistence, audit search. Screenshots: ${artifacts}`);
+  }
 } catch(error) {
   if (!interrupted) {
     console.error(error);

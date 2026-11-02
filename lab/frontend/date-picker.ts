@@ -32,6 +32,8 @@
     input.id = source.id;
     source.id = `${source.id || 'date'}-iso-${++sequence}`;
     const initialValue = source.value;
+    source.dataset.dateInitialValue = source.dataset.serverValue ?? initialValue;
+    const formDraft = !!source.form?.querySelector('[data-formset-prefix]');
     input.value = display(initialValue);
     // Scope drafts to this tab, page, form and field, and ignore them if the
     // server's initial date changed since the draft was written.
@@ -40,6 +42,7 @@
         Array.from(document.forms).indexOf(source.form!), source.name || input.id,
     ])}`;
     const saveDraft = (): void => {
+      if (formDraft) return;
       try { sessionStorage.setItem(draftKey, JSON.stringify({initialValue, value: input.value})); }
       catch { /* Storage may be disabled; editing must still work. */ }
     };
@@ -48,7 +51,7 @@
     };
     try {
       const draft = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
-      if (draft?.initialValue === initialValue && typeof draft.value === 'string' &&
+      if (!formDraft && draft?.initialValue === initialValue && typeof draft.value === 'string' &&
           /^[\d_]{2}\.[\d_]{2}\.[\d_]{4}$/.test(draft.value)) input.value = draft.value;
       else clearDraft();
     } catch { /* Optional storage. */ }
@@ -250,6 +253,11 @@
     const notify = (): void => {
       validate(); saveDraft(); source.dispatchEvent(new Event('input', {bubbles: true}));
     };
+    source.addEventListener('formdraftrestore', event => {
+      const raw = (event as CustomEvent<unknown>).detail;
+      input.value = typeof raw === 'string' ? raw : display(source.value);
+      validate();
+    });
     const edit = (text: string, deletion?: 'backward' | 'forward'): void => {
       let start = input.selectionStart ?? 0;
       const end = input.selectionEnd ?? start;

@@ -276,12 +276,13 @@ class SourceChoiceTests(TestCase):
             sheet=other, address='B1', cell_kind='text', raw_value='Другая запись',
         )
 
-    def test_form_embeds_only_selected_cells_and_keeps_validation(self):
+    def test_form_keeps_source_hidden_and_validates_saved_reference(self):
         form = ComponentForm(initial={'name_cell': self.other_cell.pk})
         html = str(form['name_cell'])
-        self.assertEqual(html.count('<option'), 2)
-        self.assertIn('Другой лист!B1', html)
-        self.assertEqual(str(ComponentForm()['name_cell']).count('<option'), 1)
+        self.assertIn('type="hidden"', html)
+        self.assertIn(f'value="{self.other_cell.pk}"', html)
+        self.assertNotIn('<option', html)
+        self.assertNotIn('Другой лист!B1', html)
         field = form.fields['name_cell']
         self.assertEqual(field.clean(str(self.other_cell.pk)), self.other_cell)
 

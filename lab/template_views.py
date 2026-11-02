@@ -143,7 +143,7 @@ def recipe_template_create(request, source_pk=None, recipe_pk=None):
                     form.add_error(None, ValidationError(error.messages))
                 else:
                     if _save_template(request, form, template, f'Создан шаблон рецептуры «{template.name}», версия {template.version}'):
-                        messages.success(request, 'Версия шаблона рецептуры сохранена.')
+                        messages.success(request, 'Версия шаблона рецептуры сохранена.', extra_tags='form-draft-saved')
                         return redirect('recipe_template_detail', pk=template.pk)
     return render(request, 'lab/templates/recipe_form.html', {'form': form, 'component_formset': components, 'filling_formset': filling,
         'source': source, 'recipe': recipe, 'title': 'Новая версия шаблона рецептуры' if source else 'Новый шаблон рецептуры'})

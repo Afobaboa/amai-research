@@ -1,32 +1,22 @@
-<div class="formset-row">
+<div class="formset-row" data-form-prefix="{{ row.prefix }}">
   <div class="formset-row-heading">
     <span class="formset-row-title">{% if formset.prefix == 'components' %}Компонент{% elif formset.prefix == 'filling' %}Строка заправки{% elif formset.prefix == 'properties' %}Свойство{% else %}Условие испытания{% endif %}</span>
     {% if row.DELETE %}
-      <div class="formset-delete">
-        {{ row.DELETE }}
-        <label for="{{ row.DELETE.id_for_label }}">Удалить строку</label>
-      </div>
+      <button type="button" class="button small formset-remove" data-remove-form
+              aria-label="Удалить строку" title="Удалить строку">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7m4-7v7"/>
+        </svg>
+      </button>
     {% endif %}
   </div>
   {{ row.non_field_errors }}
-  {% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}
+  {% for field in row.hidden_fields %}{% include 'lab/includes/field.html' %}{% endfor %}
   <div class="formset-row-fields">
     {% for field in row.visible_fields %}
-      {% if field.name != 'DELETE' and 'cell' not in field.name and field.name != 'origin' and field.name != 'provenance_note' %}
+      {% if field.name != 'DELETE' %}
         {% include 'lab/includes/field.html' %}
       {% endif %}
     {% endfor %}
   </div>
-  {% if row.name_cell or row.quantity_cell or row.label_cell or row.mass_cell or row.source_cell %}
-  <details class="formset-source"{% if row.name_cell.value or row.quantity_cell.value or row.label_cell.value or row.mass_cell.value or row.source_cell.value or row.errors %} open{% endif %}>
-    <summary>Первичный источник{% if formset.prefix == 'properties' %} и происхождение{% endif %}</summary>
-    <div class="formset-row-fields">
-      {% for field in row.visible_fields %}
-        {% if 'cell' in field.name or field.name == 'origin' or field.name == 'provenance_note' %}
-          {% include 'lab/includes/field.html' %}
-        {% endif %}
-      {% endfor %}
-    </div>
-  </details>
-  {% endif %}
 </div>

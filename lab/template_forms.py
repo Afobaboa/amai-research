@@ -17,7 +17,7 @@ class TemplateFillingForm(FillingForm):
     mass_cell = None
 
 
-TemplateComponentFormSet = formset_factory(TemplateComponentForm, extra=2, max_num=100, validate_max=True, can_delete=True)
+TemplateComponentFormSet = formset_factory(TemplateComponentForm, extra=1, max_num=100, validate_max=True, can_delete=True)
 TemplateFillingFormSet = formset_factory(TemplateFillingForm, extra=1, max_num=50, validate_max=True, can_delete=True)
 
 

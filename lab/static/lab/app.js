@@ -109,6 +109,47 @@
         total.value = String(count + 1);
         firstInput?.focus();
         refreshSourceChoices();
+        group?.closest('form')?.dispatchEvent(new Event('formsetchange'));
+    }
+    function removeForm(button) {
+        const group = button.closest('[data-formset-prefix]');
+        const row = button.closest('.formset-row');
+        const rows = group?.querySelector('.formset-rows');
+        const total = group?.querySelector('input[name$="-TOTAL_FORMS"]');
+        const initial = group?.querySelector('input[name$="-INITIAL_FORMS"]');
+        if (!group || !row || !rows || !total || !initial)
+            return;
+        const index = Array.from(rows.children).indexOf(row);
+        if (index < 0)
+            return;
+        row.remove();
+        if (index < Number(initial.value))
+            initial.value = String(Number(initial.value) - 1);
+        // These plain formsets save the submitted list. Keep its indexes contiguous
+        // so removed rows and their validation errors cannot return on submit.
+        const remaining = rows.querySelectorAll('.formset-row');
+        const attributes = ['name', 'id', 'for', 'aria-describedby', 'aria-labelledby', 'aria-controls'];
+        remaining.forEach((item, position) => {
+            const oldPrefix = item.dataset.formPrefix;
+            const newPrefix = `${group.dataset.formsetPrefix}-${position}`;
+            if (oldPrefix && oldPrefix !== newPrefix) {
+                item.querySelectorAll('*').forEach(element => {
+                    for (const name of attributes) {
+                        const value = element.getAttribute(name);
+                        if (value?.includes(`${oldPrefix}-`)) {
+                            element.setAttribute(name, value.replaceAll(`${oldPrefix}-`, `${newPrefix}-`));
+                        }
+                    }
+                });
+            }
+            item.dataset.formPrefix = newPrefix;
+        });
+        total.value = String(remaining.length);
+        const focusRow = remaining[index] ?? remaining[index - 1];
+        const focus = focusRow?.querySelector('[data-remove-form]')
+            ?? group.querySelector('[data-add-form]');
+        focus?.focus();
+        group.closest('form')?.dispatchEvent(new Event('formsetchange'));
     }
     document.addEventListener('click', event => {
         if (!(event.target instanceof Element))
@@ -116,6 +157,9 @@
         const button = event.target.closest('[data-add-form]');
         if (button)
             addForm(button);
+        const removeButton = event.target.closest('[data-remove-form]');
+        if (removeButton)
+            removeForm(removeButton);
     });
     const sourceChoiceCache = new Map();
     const sourceChoiceRequests = new WeakMap();
@@ -191,4 +235,190 @@
     document.querySelector('[name="source_sheet"]')
         ?.addEventListener('change', () => refreshSourceChoices(false));
     refreshSourceChoices(true);
+    const draftPrefix = 'lims.form-draft.v1:';
+    const pendingDraftKey = 'lims.form-draft.pending';
+    function draftControls(form) {
+        return Array.from(form.elements).filter((field) => ((field instanceof HTMLInputElement || field instanceof HTMLSelectElement
+            || field instanceof HTMLTextAreaElement)
+            && !!field.name && !field.disabled && field.name !== 'csrfmiddlewaretoken'
+            && !['password', 'file', 'submit', 'reset', 'button'].includes(field.type)));
+    }
+    function draftFields(form, defaults = false) {
+        return draftControls(form).map(control => {
+            let value;
+            if (control instanceof HTMLSelectElement) {
+                let options = Array.from(control.options).filter(option => (defaults ? option.defaultSelected : option.selected));
+                if (defaults && !control.multiple && !options.length && control.options[0]) {
+                    options = [control.options[0]];
+                }
+                value = control.multiple ? options.map(option => option.value) : options[0]?.value ?? '';
+            }
+            else {
+                value = defaults ? control.dataset.serverValue ?? control.defaultValue : control.value;
+            }
+            if (defaults && control instanceof HTMLInputElement) {
+                // Firefox restores hidden management values on reload, including their
+                // defaultValue, without restoring dynamic rows. Compare the draft to
+                // the counts actually rendered by Django, not that browser state.
+                const group = control.closest('[data-formset-prefix]');
+                if (control.name.endsWith('-TOTAL_FORMS'))
+                    value = group?.dataset.serverTotal ?? value;
+                if (control.name.endsWith('-INITIAL_FORMS'))
+                    value = group?.dataset.serverInitial ?? value;
+            }
+            const field = { name: control.name, value };
+            if (control instanceof HTMLInputElement) {
+                if (['checkbox', 'radio'].includes(control.type)) {
+                    field.checked = defaults ? control.defaultChecked : control.checked;
+                }
+                if (control.dataset.datePicker) {
+                    const original = control.dataset.serverValue ?? control.dataset.dateInitialValue ?? '';
+                    if (defaults)
+                        field.value = original;
+                    field.display = defaults ? (original ? original.split('-').reverse().join('.') : '__.__.____')
+                        : control.parentElement?.querySelector('input[type="text"]')?.value;
+                }
+            }
+            return field;
+        });
+    }
+    function readFormDraft(key) {
+        try {
+            const draft = JSON.parse(sessionStorage.getItem(key) || 'null');
+            if (draft && typeof draft.initial === 'string' && typeof draft.rendered === 'string'
+                && Array.isArray(draft.fields) && Array.isArray(draft.counts)
+                && draft.fields.every(field => field && typeof field.name === 'string'
+                    && (typeof field.value === 'string' || (Array.isArray(field.value)
+                        && field.value.every(value => typeof value === 'string')))
+                    && (field.checked === undefined || typeof field.checked === 'boolean')
+                    && (field.display === undefined || typeof field.display === 'string'))
+                && draft.counts.every(pair => Array.isArray(pair) && typeof pair[0] === 'string'
+                    && Number.isInteger(pair[1]) && pair[1] >= 0 && pair[1] <= 2000))
+                return draft;
+        }
+        catch { /* A missing or damaged draft must not prevent editing. */ }
+        return null;
+    }
+    function restoreFormDraft(form, groups, draft) {
+        for (const group of groups) {
+            const count = draft.counts.find(([prefix]) => prefix === group.dataset.formsetPrefix)?.[1];
+            const rows = group.querySelector('.formset-rows');
+            const template = group.querySelector('template');
+            if (count === undefined || !rows || !template)
+                continue;
+            while (rows.children.length > count)
+                rows.lastElementChild?.remove();
+            while (rows.children.length < count) {
+                const fragment = template.content.cloneNode(true);
+                replaceFormPrefix(fragment, rows.children.length);
+                rows.append(fragment);
+            }
+        }
+        for (const control of draftControls(form)) {
+            const field = draft.fields.find(field => field.name === control.name
+                && (field.checked === undefined || field.value === control.value));
+            if (!field)
+                continue;
+            if (control instanceof HTMLSelectElement && Array.isArray(field.value)) {
+                const values = field.value;
+                Array.from(control.options).forEach(option => { option.selected = values.includes(option.value); });
+            }
+            else if (typeof field.value === 'string') {
+                control.value = field.value;
+            }
+            if (control instanceof HTMLInputElement && field.checked !== undefined) {
+                control.checked = field.checked;
+            }
+            if (control instanceof HTMLInputElement && control.dataset.datePicker) {
+                control.dispatchEvent(new CustomEvent('formdraftrestore', { detail: field.display }));
+            }
+            control.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    function retainFormDrafts() {
+        let pending = null;
+        try {
+            pending = sessionStorage.getItem(pendingDraftKey);
+            if (pending && document.querySelector('.message.form-draft-saved')) {
+                sessionStorage.removeItem(pending);
+                sessionStorage.removeItem(pendingDraftKey);
+                pending = null;
+            }
+        }
+        catch { /* Editing also works when browser storage is unavailable. */ }
+        document.querySelectorAll('main form').forEach((form, index) => {
+            const groups = Array.from(form.querySelectorAll('[data-formset-prefix]'));
+            if (!groups.length)
+                return;
+            const key = draftPrefix + JSON.stringify([
+                groups[0].dataset.draftOwner, location.pathname, location.search, index,
+            ]);
+            const baseline = JSON.stringify(draftFields(form, true));
+            const draft = readFormDraft(key);
+            const submitted = pending === key && groups.some(group => group.dataset.draftBound === 'true');
+            const compatible = draft && (draft.initial === baseline || draft.rendered === baseline);
+            if (compatible && !submitted)
+                restoreFormDraft(form, groups, draft);
+            const initial = draft && (compatible || submitted) ? draft.initial : baseline;
+            let discarded = false;
+            const clear = () => {
+                try {
+                    sessionStorage.removeItem(key);
+                }
+                catch { /* Optional storage. */ }
+            };
+            if (draft && !compatible && !submitted) {
+                clear();
+                // Firefox may already have restored old field values. When the server
+                // record changed, clearing storage alone would leave those values shown.
+                restoreFormDraft(form, groups, {
+                    initial: baseline, rendered: baseline,
+                    fields: JSON.parse(baseline),
+                    counts: groups.map(group => [
+                        group.dataset.formsetPrefix,
+                        Number(group.dataset.serverTotal ?? group.querySelector('.formset-rows')?.children.length ?? 0),
+                    ]),
+                });
+            }
+            const save = () => {
+                if (discarded)
+                    return;
+                const fields = draftFields(form);
+                if (JSON.stringify(fields) === initial) {
+                    clear();
+                    return;
+                }
+                const counts = groups.map(group => [
+                    group.dataset.formsetPrefix,
+                    group.querySelector('.formset-rows')?.children.length ?? 0,
+                ]);
+                try {
+                    sessionStorage.setItem(key, JSON.stringify({ initial, rendered: baseline, fields, counts }));
+                }
+                catch { /* Storage failure must not break normal form submission. */ }
+            };
+            form.addEventListener('input', save);
+            form.addEventListener('change', save);
+            form.addEventListener('formsetchange', save);
+            window.addEventListener('pagehide', save);
+            form.addEventListener('submit', () => {
+                save();
+                try {
+                    sessionStorage.setItem(pendingDraftKey, key);
+                }
+                catch { /* Optional storage. */ }
+            });
+            form.querySelectorAll('.form-actions a').forEach(link => {
+                link.addEventListener('click', () => { discarded = true; clear(); });
+            });
+            if (submitted) {
+                save();
+                try {
+                    sessionStorage.removeItem(pendingDraftKey);
+                }
+                catch { /* Optional storage. */ }
+            }
+        });
+    }
+    retainFormDrafts();
 }

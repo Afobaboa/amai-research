@@ -1,4 +1,6 @@
-<div id="{{ formset.prefix }}-formset">
+<div id="{{ formset.prefix }}-formset" data-formset-prefix="{{ formset.prefix }}"
+     data-draft-owner="{{ employee.pk }}" data-draft-bound="{{ formset.is_bound|yesno:'true,false' }}"
+     data-server-total="{{ formset.total_form_count }}" data-server-initial="{{ formset.initial_form_count }}">
   {{ formset.management_form }}
   {{ formset.non_form_errors }}
   <div class="formset-rows">

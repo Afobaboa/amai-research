@@ -2,6 +2,7 @@
 from django import forms
 
 from .models import SourceCell
+from .widgets import ServerHiddenInput
 
 
 class SourceCellSelect(forms.Select):
@@ -18,7 +19,8 @@ class SourceCellSelect(forms.Select):
 
 
 class SourceCellField(forms.ModelChoiceField):
-    widget = SourceCellSelect
+    # Preserve imported evidence without exposing Excel mapping in manual forms.
+    widget = ServerHiddenInput
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('queryset', SourceCell.objects.select_related('sheet__file'))

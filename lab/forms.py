@@ -3,7 +3,8 @@ from decimal import Decimal
 from django import forms
 from django.forms import formset_factory
 
-from .source_fields import SourceCellField, SourceCellSelect
+from .source_fields import SourceCellField
+from .widgets import ServerDateInput, ServerHiddenInput
 
 from .models import (
     ConditioningEvent, EmployeeProfile, FillingPlanLine, Material, MaterialLot,
@@ -53,7 +54,7 @@ class RecipeForm(forms.ModelForm):
         model = RecipeVersion
         fields = ["mixture_type", "version_label", "title", "recorded_on", "status", "recipe_template", "batch_mass_g", "source_sheet", "notes"]
         labels = {"mixture_type": "Тип смеси", "version_label": "Обозначение версии", "title": "Название", "recorded_on": "Дата рецептуры", "status": "Статус", "notes": "Примечание"}
-        widgets = {"recipe_template": forms.HiddenInput, "recorded_on": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}), "notes": forms.Textarea(attrs={"rows": 3})}
+        widgets = {"recipe_template": ServerHiddenInput, "source_sheet": ServerHiddenInput, "recorded_on": ServerDateInput(format="%Y-%m-%d", attrs={"type": "date"}), "notes": forms.Textarea(attrs={"rows": 3})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -120,7 +121,7 @@ class FillingForm(forms.Form):
         return data
 
 
-ComponentFormSet = formset_factory(ComponentForm, extra=2, max_num=100, validate_max=True, can_delete=True)
+ComponentFormSet = formset_factory(ComponentForm, extra=1, max_num=100, validate_max=True, can_delete=True)
 FillingFormSet = formset_factory(FillingForm, extra=1, max_num=50, validate_max=True, can_delete=True)
 
 
@@ -134,11 +135,11 @@ class RecipePropertyForm(forms.Form):
     source_cell = SourceCellField(label='Первичная ячейка')
     origin = forms.ChoiceField(
         label='Происхождение свойства', choices=RecipeProperty.Origin.choices,
-        required=False, initial='recorded',
+        required=False, initial='recorded', widget=ServerHiddenInput,
     )
     provenance_note = forms.CharField(
         label='Основание переноса', required=False,
-        widget=forms.Textarea(attrs={'rows': 2}),
+        widget=ServerHiddenInput,
     )
 
     def clean(self):
@@ -174,7 +175,7 @@ class TestSessionForm(forms.ModelForm):
         model = TestSession
         fields = ["recipe", "title", "recorded_manufactured_on", "recorded_tested_on", "status", "notes"]
         labels = {"title": "Название испытания", "recorded_manufactured_on": "Записанная дата изготовления", "recorded_tested_on": "Дата испытания", "status": "Статус", "notes": "Примечание"}
-        widgets = {"recorded_manufactured_on": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}), "recorded_tested_on": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}), "notes": forms.Textarea(attrs={"rows": 3})}
+        widgets = {"recorded_manufactured_on": ServerDateInput(format="%Y-%m-%d", attrs={"type": "date"}), "recorded_tested_on": ServerDateInput(format="%Y-%m-%d", attrs={"type": "date"}), "notes": forms.Textarea(attrs={"rows": 3})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -215,7 +216,7 @@ class ConditionForm(forms.Form):
         return data
 
 
-ConditionFormSet = formset_factory(ConditionForm, extra=2, max_num=30, validate_max=True, can_delete=True)
+ConditionFormSet = formset_factory(ConditionForm, extra=1, max_num=30, validate_max=True, can_delete=True)
 
 
 class RunFields(forms.Form):
@@ -267,7 +268,7 @@ class ConditioningForm(forms.ModelForm):
     class Meta:
         model = ConditioningEvent
         fields = ["target_kind", "kind", "duration_value", "duration_unit", "temperature_c", "source_cell"]
-        widgets = {"duration_value": CompactNumberInput, "temperature_c": CompactNumberInput, "source_cell": SourceCellSelect}
+        widgets = {"duration_value": CompactNumberInput, "temperature_c": CompactNumberInput, "source_cell": ServerHiddenInput}
         labels = {"target_kind": "Цель обработки", "kind": "Тип обработки", "duration_value": "Длительность", "duration_unit": "Единица длительности", "temperature_c": "Температура, °C"}
 
     def clean(self):

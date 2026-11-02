@@ -399,7 +399,7 @@ def recipe_create(request, source_pk=None, pk=None):
                     if source:
                         summary += f' на основе {source.version_label} (запись #{source.pk})'
                     _audit(request, recipe, 'updated' if editing else 'created', summary, before=before, after=_recipe_snapshot(recipe))
-                messages.success(request, 'Рецептура сохранена.')
+                messages.success(request, 'Рецептура сохранена.', extra_tags='form-draft-saved')
                 return redirect('recipe_detail', pk=recipe.pk)
     return render(request, 'lab/recipe_form.html', {'form': form, 'component_formset': component_formset, 'filling_formset': filling_formset, 'property_formset': property_formset, 'source': source, 'recipe': editing, 'selected_template': selected_template or (editing.recipe_template if editing else source.recipe_template if source else None), 'recipe_templates': RecipeTemplate.objects.all(), 'title': 'Редактирование черновика' if editing else 'Новая версия рецептуры' if source else 'Новая рецептура'})
 
@@ -506,7 +506,7 @@ def test_create(request, pk=None):
                 if chosen:
                     RecipeMatch.objects.update_or_create(session=saved, recipe_version=chosen, defaults={"status": "confirmed"})
                 _audit(request, saved, "updated" if card else "created", f"{'Обновлена' if card else 'Создана'} карточка {saved.identifier or saved.pk}", before=before, after=_card_snapshot(saved))
-            messages.success(request, "Карточка испытания сохранена.")
+            messages.success(request, "Карточка испытания сохранена.", extra_tags='form-draft-saved')
             return redirect("test_detail", pk=saved.pk)
     return render(request, "lab/test_form.html", {"form": form, "condition_formset": condition_formset, "card": card, "title": "Редактирование карточки" if card else "Новая карточка испытания"})
 

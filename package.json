@@ -13,6 +13,8 @@
     "install:browsers": "playwright install chromium",
     "test:frontend": "npm run build && node checks/date_picker.mjs && node checks/browser.mjs && node checks/assistant_browser.mjs",
     "test:frontend:headed": "npm run build && node checks/browser.mjs --headed && node checks/assistant_browser.mjs --headed",
+    "test:forms": "npm run build && node checks/browser.mjs --forms-only",
+    "test:forms:firefox": "npm run build && node checks/browser.mjs --forms-only --firefox",
     "test:assistant": "npm run build && node checks/assistant_browser.mjs"
   },
   "devDependencies": {

@@ -580,19 +580,16 @@ input[type=checkbox], input[type=radio] {
   border-radius: 8px; background: var(--amai-pale); color: var(--amai-primary);
   font-variant-numeric: tabular-nums;
 }
-.formset-delete { display: flex; align-items: center; font-size: 13px; }
-.formset-delete label { cursor: pointer; color: var(--amai-muted); }
-.formset-row:has(.formset-delete input:checked) {
-  border-style: dashed; background: var(--amai-danger-bg);
+.amai-ui .button.formset-remove {
+  flex-shrink: 0; width: var(--amai-control-sm); padding: 0;
+  border-color: transparent; background: transparent; color: var(--amai-muted);
 }
-.formset-source { margin-top: 20px; border-top: 1px solid var(--amai-line); }
-.formset-source summary {
-  padding-block: 16px 0; cursor: pointer; color: var(--amai-muted);
-  font-size: 13px; min-height: var(--amai-control);
+.amai-ui .button.formset-remove:hover {
+  background: var(--amai-danger-bg); color: var(--amai-danger);
 }
-.formset-source[open] summary { margin-bottom: 16px; }
-.formset-source .formset-row-fields > .field:has(textarea) {
-  grid-column: 1 / -1;
+.formset-remove svg {
+  width: 18px; height: 18px; fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
 .formset-controls { margin-top: 16px; }
 .form-actions {

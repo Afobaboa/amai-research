@@ -1,3 +1,7 @@
+{% if field.is_hidden %}
+  {{ field }}
+  {{ field.errors }}
+{% else %}
 <div class="field {% if field.errors %}invalid{% endif %}">
   {% if field.use_fieldset %}
     <fieldset{% if field.aria_describedby %} aria-describedby="{{ field.aria_describedby }}"{% endif %}>
@@ -17,3 +21,4 @@
     </div>
   {% endif %}
 </div>
+{% endif %}
