@@ -1,13 +1,26 @@
 {{ assistant_navigation|json_script:"assistant-navigation" }}
-<button class="assistant-launcher" id="assistant-launcher" type="button" aria-controls="lab-assistant" aria-expanded="false"><span aria-hidden="true">✦</span> Помощник</button>
+<button class="assistant-launcher" id="assistant-launcher" type="button" aria-controls="lab-assistant" aria-expanded="false"><span aria-hidden="true">✦</span> ИИ-ассистент</button>
 <div class="assistant-backdrop" id="assistant-backdrop" hidden></div>
 <aside class="assistant" id="lab-assistant" aria-labelledby="assistant-title" data-employee="{{ employee.pk }}" data-status-url="/assistant/status/" data-chat-url="/assistant/chat/" hidden>
-  <div class="assistant-resize" id="assistant-resize" role="separator" tabindex="0" aria-label="Ширина окна помощника" aria-controls="lab-assistant" aria-orientation="vertical" aria-valuemin="340" aria-valuemax="960" aria-valuenow="374" title="Потяните, чтобы изменить ширину. Клавиши ← и → — изменить, Home — минимум, End — максимум."></div>
+  <div class="assistant-resize" id="assistant-resize" role="separator" tabindex="0" aria-label="Ширина окна ИИ-ассистента" aria-controls="lab-assistant" aria-orientation="vertical" aria-valuemin="340" aria-valuemax="960" aria-valuenow="374" title="Потяните, чтобы изменить ширину. Клавиши ← и → — изменить, Home — минимум, End — максимум."></div>
   <header class="assistant-header">
     <span class="assistant-mark" aria-hidden="true">✦</span>
-    <div class="assistant-heading"><h2 id="assistant-title">Помощник лаборатории</h2><span id="assistant-model">Cloud.ru · подключение…</span></div>
-    <button class="assistant-icon" id="assistant-new" type="button" title="Новый диалог" aria-label="Новый диалог">↺</button>
-    <button class="assistant-icon" id="assistant-close" type="button" title="Свернуть помощника" aria-label="Свернуть помощника">×</button>
+    <div class="assistant-heading"><h2 id="assistant-title">ИИ-ассистент</h2></div>
+    <button class="assistant-icon" id="assistant-new" type="button"
+            title="Новый диалог" aria-label="Новый диалог">
+      <svg class="assistant-button-icon" viewBox="0 0 24 24"
+           aria-hidden="true" focusable="false">
+        <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M16 3a2.12 2.12 0 0 1 3 3l-9.5 9.5L6 16l.5-3.5Z"/>
+      </svg>
+    </button>
+    <button class="assistant-icon" id="assistant-close" type="button"
+            title="Свернуть ИИ-ассистента" aria-label="Свернуть ИИ-ассистента">
+      <svg class="assistant-button-icon" viewBox="0 0 24 24"
+           aria-hidden="true" focusable="false">
+        <path d="m6 6 12 12M18 6 6 18"/>
+      </svg>
+    </button>
   </header>
   <div class="assistant-chat-picker">
     <label for="assistant-conversations">Диалоги</label>
@@ -15,7 +28,6 @@
     <button id="assistant-more-chats" type="button" hidden>Ещё</button>
   </div>
   <button class="assistant-history-notice" id="assistant-older-messages" type="button" hidden>Показать более ранние сообщения</button>
-  <div class="assistant-context"><span class="assistant-context-dot"></span><span>Материалы, рецептуры и испытания</span><span class="assistant-readonly">Чтение</span></div>
   <div class="assistant-status" id="assistant-status" role="status" hidden></div>
   <div class="assistant-scroll" id="assistant-scroll">
     <div class="assistant-welcome" id="assistant-welcome">
@@ -29,19 +41,33 @@
         <button type="button" data-assistant-prompt="Как создать рецептуру, связать её с испытанием и записать результаты? Проверь интерфейс и документацию.">Как работать с системой? <span aria-hidden="true">↗</span></button>
       </div>
     </div>
-    <div class="assistant-messages" id="assistant-messages" role="log" aria-label="Переписка с помощником" aria-live="polite" aria-relevant="additions"></div>
+    <div class="assistant-messages" id="assistant-messages" role="log" aria-label="Переписка с ИИ-ассистентом" aria-live="polite" aria-relevant="additions"></div>
     <div class="assistant-pending" id="assistant-pending" hidden>
       <div class="assistant-activity" role="status"><span class="assistant-pulse" aria-hidden="true">✦</span><span class="assistant-activity-text" id="assistant-activity-text">Думаю…</span><span class="assistant-elapsed" id="assistant-elapsed" aria-hidden="true"></span></div>
       <details class="assistant-steps" id="assistant-steps" hidden><summary id="assistant-steps-summary">Действия</summary><ol id="assistant-steps-list"></ol></details>
     </div>
     <div class="assistant-error" id="assistant-error" role="alert" hidden><p id="assistant-error-text"></p><button type="button" id="assistant-retry">Повторить запрос</button></div>
   </div>
-  <p class="assistant-history-notice" id="assistant-history-notice" role="status" hidden><span aria-hidden="true">⚠</span><span><strong>Диалог стал длинным.</strong> В длинной переписке модель может путать детали и упускать важное. Начните новый диалог кнопкой ↺ и кратко повторите нужный контекст.</span></p>
+  <p class="assistant-history-notice" id="assistant-history-notice" role="status" hidden><span aria-hidden="true">⚠</span><span><strong>Диалог стал длинным.</strong> В длинной переписке модель может путать детали и упускать важное. Начните новый диалог кнопкой «Новый диалог» и кратко повторите нужный контекст.</span></p>
   <form class="assistant-compose" id="assistant-form">
     {% csrf_token %}
-    <label class="assistant-sr-only" for="assistant-input">Вопрос помощнику</label>
+    <label class="assistant-sr-only" for="assistant-input">Вопрос ИИ-ассистенту</label>
     <textarea id="assistant-input" rows="3" maxlength="6000" placeholder="Спросите об опыте или гипотезе…" aria-describedby="assistant-history-notice assistant-input-hint" required></textarea>
-    <div class="assistant-compose-bottom"><span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка<br>↑/↓ — последние 25 запросов при пустом вводе</span><button id="assistant-cancel" type="button" aria-label="Остановить ответ" title="Остановить ответ (Esc)" hidden><span aria-hidden="true">■</span></button><button id="assistant-send" type="submit" aria-label="Отправить вопрос">↑</button></div>
+    <div class="assistant-compose-bottom">
+      <span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка<br>↑/↓ — последние 25 запросов при пустом вводе</span>
+      <button id="assistant-cancel" type="button" aria-label="Остановить ответ"
+              title="Остановить ответ (Esc)" hidden>
+        <svg class="assistant-button-icon" viewBox="0 0 24 24"
+             aria-hidden="true" focusable="false">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+      </button>
+      <button id="assistant-send" type="submit" aria-label="Отправить вопрос">
+        <svg class="assistant-button-icon" viewBox="0 0 24 24"
+             aria-hidden="true" focusable="false">
+          <path d="M12 19V5m-7 7 7-7 7 7"/>
+        </svg>
+      </button>
+    </div>
   </form>
-  <p class="assistant-disclosure">Вопросы, данные текущих форм и найденные записи передаются в Cloud.ru. Ответы ИИ проверяйте по источникам.</p>
 </aside>

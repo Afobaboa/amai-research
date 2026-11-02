@@ -1,0 +1,14 @@
+/* Presentation only; do not require this file in consuming apps. */
+.demo-sidebar-foot { margin-top: auto; padding: 16px 12px; border-top: 1px solid #ffffff22; }
+.demo-eyebrow { font-size: 11px; font-weight: 700; color: var(--amai-primary); letter-spacing: .14em; }
+.demo-lead { max-width: 650px; }
+.demo-type { font-size: 25px; font-weight: 600; letter-spacing: -.02em; }
+.demo-swatches { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
+.demo-swatches i { display: block; height: 64px; border-radius: 10px; border: 1px solid #16243a18; margin-bottom: 12px; }
+.demo-swatches strong, .demo-swatches code { display: block; font-size: 12px; }
+.demo-swatches code { margin-top: 4px; color: var(--amai-muted); }
+.demo-description-col { width: 50%; }
+.demo-short { width: 65%; }
+.demo-empty-icon { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 16px; background: var(--amai-pale); color: var(--amai-primary); font-size: 32px; }
+.demo-footer { border-top: 1px solid var(--amai-line); padding-top: 24px; }
+@media(max-width:480px) { .demo-swatches { grid-template-columns: repeat(2,minmax(0,1fr)); } .amai-table { min-width: 620px; } }

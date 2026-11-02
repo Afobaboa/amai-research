@@ -1,1 +1,28 @@
-<div id="{{ formset.prefix }}-formset">{{ formset.management_form }}{{ formset.non_form_errors }}<div class="formset-rows">{% for row in formset %}<div class="formset-row">{{ row.non_field_errors }}{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% for field in row.visible_fields %}{% include 'lab/includes/field.html' %}{% endfor %}</div>{% endfor %}</div><template><div class="formset-row">{% for field in formset.empty_form.visible_fields %}{% include 'lab/includes/field.html' %}{% endfor %}</div></template><div class="formset-controls"><button type="button" class="button small" data-add-form="{{ formset.prefix }}-formset">+ Добавить строку</button></div></div>
+<div id="{{ formset.prefix }}-formset">
+  {{ formset.management_form }}
+  {{ formset.non_form_errors }}
+  <div class="formset-rows">
+    {% for row in formset %}
+      <div class="formset-row">
+        {{ row.non_field_errors }}
+        {% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}
+        {% for field in row.visible_fields %}
+          {% include 'lab/includes/field.html' %}
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+  <template>
+    <div class="formset-row">
+      {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+      {% for field in formset.empty_form.visible_fields %}
+        {% include 'lab/includes/field.html' %}
+      {% endfor %}
+    </div>
+  </template>
+  <div class="formset-controls">
+    <button type="button" class="button small"
+            data-add-form="{{ formset.prefix }}-formset"
+            aria-controls="{{ formset.prefix }}-formset">+ Добавить строку</button>
+  </div>
+</div>

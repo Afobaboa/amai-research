@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmitOnError": true,
+    "rootDir": "lab/frontend",
+    "outDir": "lab/static/lab",
+    "removeComments": false,
+    "newLine": "lf"
+  },
+  "include": ["lab/frontend/**/*.ts"]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "AMAI UI"
+  short_description: "Интерфейсы AMAI Tech для веба и планшетов"
+  default_prompt: "Используй $amai-ui для создания интерфейса в стиле AMAI Tech."

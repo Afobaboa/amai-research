@@ -104,6 +104,6 @@ for model in [
 ]:
     admin.site.register(model, ReadOnlyRecordAdmin)
 
-admin.site.site_header = "KUDO LAB · Администрирование"
-admin.site.site_title = "KUDO LAB"
+admin.site.site_header = "AMAI LAB · Администрирование"
+admin.site.site_title = "AMAI LAB"
 admin.site.index_title = "Справочники и технический просмотр"

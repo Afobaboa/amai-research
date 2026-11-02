@@ -136,6 +136,14 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.getByRole('button',{name:/Открыть лабораторию/}).click();
   await page.waitForLoadState('networkidle');
   await page.locator('#lab-assistant').waitFor({state:'visible'});
+  assert.equal(await page.title(),'Обзор лаборатории · AMAI LAB');
+  assert.equal(await page.locator('#assistant-title').textContent(),'ИИ-ассистент');
+  assert.equal(await page.locator('#assistant-model,.assistant-context,.assistant-disclosure,.workspace-label').count(),0);
+  assert.doesNotMatch(await page.locator('body').innerText(),/deepseek-test|KUDO|Помощник лаборатории/);
+  for (const selector of ['#assistant-new','#assistant-send']) {
+    assert.equal(await page.locator(`${selector} svg[aria-hidden="true"]`).count(),1);
+  }
+  assert.match(await page.locator('link[rel="icon"]').getAttribute('href'),/favicon\.svg\?v=amai-2$/);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   for (const selector of ['.assistant-header','#assistant-form']) {
     const box = await page.locator(selector).boundingBox();

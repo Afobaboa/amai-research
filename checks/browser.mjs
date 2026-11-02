@@ -170,6 +170,10 @@ try {
   await page.locator('#id_password').fill('incorrect-demo-password');
   await page.getByRole('button',{name:/Продолжить/}).click();
   assert.match(await page.locator('.field-error').innerText(),/Неверный пароль/);
+  assert.equal(await page.locator('#id_password').getAttribute('aria-invalid'),'true');
+  const passwordDescription = await page.locator('#id_password').getAttribute('aria-describedby');
+  assert.ok(passwordDescription?.includes('id_password_error'));
+  assert.match(await page.locator('#id_password_error').innerText(),/Неверный пароль/);
   await page.locator('#id_password').fill('lims-demo');
   await Promise.all([page.waitForNavigation(),page.getByRole('button',{name:/Продолжить/}).click()]);
   await option(page,'#id_employee','Гущин Даниил');
@@ -209,8 +213,37 @@ try {
   await mobilePage.goto(base+'/',{waitUntil:'networkidle'});
   await mobilePage.screenshot({path:join(artifacts, 'mobile.png'),fullPage:true});
   console.log('Mobile route overflow findings:',JSON.stringify(overflows));
-  await mobilePage.getByRole('button',{name:'Открыть меню',exact:true}).click();
-  assert.equal(await mobilePage.getByRole('button',{name:'Открыть меню',exact:true}).getAttribute('aria-expanded'),'true');
+  const mobileMenu = mobilePage.locator('.mobile-menu');
+  await mobileMenu.click();
+  assert.equal(await mobileMenu.getAttribute('aria-expanded'),'true');
+  assert.equal(await mobilePage.locator('.nav-link.active').evaluate(el => el === document.activeElement),true);
+  await mobilePage.keyboard.press('Escape');
+  assert.equal(await mobileMenu.getAttribute('aria-expanded'),'false');
+  assert.equal(await mobileMenu.evaluate(el => el === document.activeElement),true);
+  await mobileMenu.click();
+  await mobilePage.mouse.click(380,100);
+  assert.equal(await mobileMenu.getAttribute('aria-expanded'),'false');
+  await mobileMenu.click();
+  await mobilePage.locator('.logout-form button').focus();
+  await mobilePage.keyboard.press('Tab');
+  await mobilePage.keyboard.press('Tab');
+  assert.equal(await mobileMenu.getAttribute('aria-expanded'),'false');
+  await mobilePage.emulateMedia({reducedMotion:'reduce'});
+  assert.equal(await mobilePage.locator('.sidebar').evaluate(el=>getComputedStyle(el).transitionDuration),'0s');
+  await mobilePage.emulateMedia({reducedMotion:'no-preference'});
+  for (const viewport of [{width:768,height:1024},{width:320,height:740}]) {
+    await mobilePage.setViewportSize(viewport);
+    for (const path of ['/', '/recipes/new/', '/recipes/1/', '/sources/1/']) {
+      await mobilePage.goto(base+path,{waitUntil:'networkidle'});
+      assert.equal(await mobilePage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${path}: ${viewport.width}px overflow`);
+    }
+    if (viewport.width === 768) {
+      assert.equal(await mobilePage.locator('body').getAttribute('data-density'),'touch');
+      assert.ok(await mobileMenu.evaluate(el=>el.getBoundingClientRect().height>=52));
+      await mobilePage.goto(base+'/',{waitUntil:'networkidle'});
+      await mobilePage.screenshot({path:join(artifacts,'tablet.png'),fullPage:true});
+    }
+  }
   await mobilePage.close();
   await mobile.close();
   const checkAdditionalMobile = async paths => {
@@ -228,6 +261,8 @@ try {
   await go('/recipes/new/');
   await page.locator('[data-add-form="components-formset"]').click();
   assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(),'3');
+  assert.equal(await page.locator('label[for="id_components-2-material"]').count(),1);
+  assert.equal(await page.locator('#components-formset .formset-rows').evaluate(el=>el.innerHTML.includes('__prefix__')),false);
   await option(page,'#id_mixture_type','Зимняя пена');
   await page.locator('#id_version_label').fill('QA-316.0');
   await page.locator('#id_title').fill('QA нулевой компонент и полный состав');

@@ -2,17 +2,21 @@
   "name": "kudo-lims-local-checks",
   "version": "0.1.0",
   "private": true,
-  "description": "Local browser checks for the Django LIMS interface",
+  "description": "TypeScript assets and browser checks for the Django LIMS interface",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev:frontend": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "install:browsers": "playwright install chromium",
-    "test:frontend": "node checks/browser.mjs && node checks/assistant_browser.mjs",
-    "test:frontend:headed": "node checks/browser.mjs --headed && node checks/assistant_browser.mjs --headed",
-    "test:assistant": "node checks/assistant_browser.mjs"
+    "test:frontend": "npm run build && node checks/browser.mjs && node checks/assistant_browser.mjs",
+    "test:frontend:headed": "npm run build && node checks/browser.mjs --headed && node checks/assistant_browser.mjs --headed",
+    "test:assistant": "npm run build && node checks/assistant_browser.mjs"
   },
   "devDependencies": {
-    "playwright": "1.64.1"
+    "playwright": "1.64.1",
+    "typescript": "7.0.2"
   }
 }

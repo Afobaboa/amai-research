@@ -1,0 +1,48 @@
+/* AMAI UI 1.0.0 — reusable light theme, no network dependencies. */
+:root {
+  color-scheme: light;
+  --amai-font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --amai-bg: #f3f6fb;
+  --amai-surface: #ffffff;
+  --amai-ink: #16243a;
+  --amai-navy: #112139;
+  --amai-muted: #5e6e84;
+  --amai-line: #dfe6f0;
+  --amai-input-line: #8291a6;
+  --amai-brand: #1b73f8;
+  --amai-primary: #1463db;
+  --amai-primary-hover: #104fb0;
+  --amai-pale: #edf4ff;
+  --amai-success: #0c7558;
+  --amai-success-bg: #eaf7f2;
+  --amai-danger: #b63330;
+  --amai-danger-bg: #fff0ed;
+  --amai-warning: #875300;
+  --amai-warning-bg: #fff5e2;
+  --amai-purple: #695ad8;
+  --amai-focus: #1463db;
+  --amai-chart-1: #1b73f8;
+  --amai-chart-2: #7862cd;
+  --amai-chart-3: #dda335;
+  --amai-chart-4: #e57668;
+  --amai-space-1: 4px;
+  --amai-space-2: 8px;
+  --amai-space-3: 12px;
+  --amai-space-4: 16px;
+  --amai-space-5: 24px;
+  --amai-space-6: 32px;
+  --amai-space-7: 48px;
+  --amai-text-sm: .875rem;
+  --amai-text-base: 1rem;
+  --amai-text-lg: 1.25rem;
+  --amai-title: clamp(1.75rem, 3vw, 2.25rem);
+  --amai-radius-sm: 8px;
+  --amai-radius: 12px;
+  --amai-radius-lg: 20px;
+  --amai-shadow: 0 3px 12px #182f5010;
+  --amai-shadow-dialog: 0 24px 80px #11213930;
+  --amai-control: 44px;
+  --amai-content-max: 1440px;
+}
+.amai-ui[data-density="touch"] { --amai-control: 52px; }
+@media (pointer: coarse) { .amai-ui { --amai-control: 52px; } }
