@@ -5,7 +5,6 @@
 <a class="back-link" href="{% url 'source_list' %}">← Все источники</a>
 <div class="page-heading">
   <div>
-    <div class="eyebrow">{{ ui_text.source|upper }}</div>
     <h1>{{ source.title|default:source.original_path }}</h1>
     <p>{{ source.get_kind_display }} · {{ source.created_by.full_name|default:'Автор не указан' }} · {{ source.created_at|date:'d.m.Y, H:i' }}</p>
   </div>
