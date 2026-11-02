@@ -36,7 +36,21 @@
 <div class="sidebar-bottom">{% if employee %}<div class="profile"><span class="avatar">{{ employee.full_name|first }}</span><div><strong>{{ employee.full_name }}</strong><small>{{ employee.get_role_display }}</small></div><a href="{% url 'choose_employee' %}" class="profile-change" title="Выбрать сотрудника" aria-label="Выбрать сотрудника">↔</a></div><form action="{% url 'logout' %}" method="post" class="logout-form">{% csrf_token %}<button>Выйти из системы ↗</button></form>{% endif %}</div>
 </aside>
 {% include 'lab/includes/sidebar_scroll_restore.html' %}
-<div class="main-shell"><header class="topbar"><button class="mobile-menu" type="button" aria-label="Открыть меню" aria-controls="sidebar" aria-expanded="false">☰</button><div class="breadcrumb"><span class="breadcrumb-prefix">Рабочее пространство</span> <span>/</span> <strong>{% block breadcrumb %}Обзор лаборатории{% endblock %}</strong></div></header>
+<div class="main-shell">
+<header class="topbar">
+  <button class="mobile-menu" type="button" aria-label="Открыть меню"
+          aria-controls="sidebar" aria-expanded="false">☰</button>
+  <div class="breadcrumb">
+    <span class="breadcrumb-prefix">Рабочее пространство</span>
+    <span>/</span>
+    <strong>{% block breadcrumb %}Обзор лаборатории{% endblock %}</strong>
+  </div>
+  {% if employee %}
+  <a class="button small feedback-link" href="{% url 'feedback' %}">
+    Обратная связь
+  </a>
+  {% endif %}
+</header>
 <main id="main-content" tabindex="-1">{% if messages %}<div class="messages" role="status">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main>
 <footer class="page-footer"><span>АМАИ ИССЛЕДОВАНИЯ <span class="footer-dot">·</span> Система лабораторного учета</span><span>Все изменения сохраняются в истории <svg><use href="#i-check"/></svg></span></footer></div>
 {% if employee %}{% include 'lab/includes/assistant.html' %}{% endif %}

@@ -139,6 +139,7 @@ svg {
   min-width: 0; font-weight: 500; color: var(--amai-ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.feedback-link { flex-shrink: 0; white-space: nowrap; }
 .topbar-meta {
   display: flex; align-items: center; gap: 8px; flex-shrink: 0;
   font-size: 14px; color: var(--amai-muted);

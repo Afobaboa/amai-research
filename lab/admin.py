@@ -32,6 +32,23 @@ class MixtureTypeAdmin(SearchAdmin):
     search_fields = ["code", "title"]
 
 
+@admin.register(models.Feedback)
+class FeedbackAdmin(SearchAdmin):
+    list_display = ["created_at", "employee_name", "text_preview"]
+    list_filter = ["created_at"]
+    search_fields = ["text", "employee_name"]
+    readonly_fields = ["text", "employee", "employee_name", "created_at"]
+    date_hierarchy = "created_at"
+    list_select_related = ["employee"]
+
+    @admin.display(description="Сообщение")
+    def text_preview(self, obj):
+        return obj.text[:100]
+
+    def has_add_permission(self, request):
+        return False
+
+
 @admin.register(models.Material)
 class MaterialAdmin(SearchAdmin):
     list_display = ["name", "category", "supplier"]

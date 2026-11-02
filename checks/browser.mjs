@@ -766,6 +766,56 @@ async function checkPickerCSSFallback(browser, storageState) {
   console.log('Missing picker CSS keeps native forms usable without duplicate controls.');
 }
 
+function assertFeedbackSaved(text, employeeName) {
+  const query = `Feedback.objects.filter(text=${JSON.stringify(text)})`;
+  init(['shell', '-c', [
+    'from lab.models import Feedback',
+    `assert ${query}.count() == 1`,
+    `assert ${query}.get().employee_name == ${JSON.stringify(employeeName)}`,
+    `assert ${query}.get().employee.full_name == ${JSON.stringify(employeeName)}`,
+  ].join('\n')]);
+}
+
+async function checkFeedback(page, employeeName, size = 'desktop') {
+  await page.goto(base + '/', {waitUntil: 'networkidle'});
+  const link = page.locator('.topbar').getByRole('link', {
+    name: 'Обратная связь', exact: true,
+  });
+  assert.equal(await link.getAttribute('href'), '/feedback/');
+  await Promise.all([page.waitForNavigation(), link.click()]);
+  const field = page.getByLabel('Сообщение');
+  assert.equal(await field.getAttribute('maxlength'), '5000');
+  await field.fill('   ');
+  await Promise.all([page.waitForNavigation(),
+    page.getByRole('button', {name: 'Отправить', exact: true}).click()]);
+  assert.equal(new URL(page.url()).pathname, '/feedback/');
+  assert.equal(await field.getAttribute('aria-invalid'), 'true');
+  const text = `QA обратная связь: ${employeeName}, ${size}`;
+  await field.fill(text);
+  await page.screenshot({path: join(artifacts, `feedback-${size}.png`),
+    fullPage: true});
+  await Promise.all([page.waitForNavigation(),
+    page.getByRole('button', {name: 'Отправить', exact: true}).click()]);
+  assert.equal(new URL(page.url()).pathname, '/');
+  assert.match(await page.locator('.messages').innerText(),
+    /Спасибо! Обратная связь отправлена\./);
+  await page.reload({waitUntil: 'networkidle'});
+  assertFeedbackSaved(text, employeeName);
+}
+
+async function checkMobileFeedback(page, employeeName, width) {
+  await page.setViewportSize({width, height: 844});
+  await page.goto(base + '/', {waitUntil: 'networkidle'});
+  const link = page.locator('.feedback-link');
+  const bounds = await link.boundingBox();
+  assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width,
+    `Feedback button fits ${width}px viewport`);
+  await checkFeedback(page, employeeName, String(width));
+  assert.equal(await page.evaluate(() => (
+    document.documentElement.scrollWidth > innerWidth
+  )), false, `Feedback submission: ${width}px overflow`);
+}
+
 try {
   const unknown = process.argv.slice(2).filter(arg => arg !== '--headed');
   assert.equal(unknown.length, 0, `Unknown argument: ${unknown.join(' ')}`);
@@ -814,6 +864,7 @@ try {
   await option(page,'#id_employee','Гущин Даниил');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:/Открыть лабораторию/}).click()]);
   await go('/');
+  await checkFeedback(page, 'Гущин Даниил');
   await checkSidebarFirstPaint(browser, await context.storageState());
   assert.equal(await page.locator('.demo-banner,.demo-label').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/DEMO-/);
@@ -821,7 +872,7 @@ try {
   const desktopPaths = ['/recipes/','/tests/','/history/','/sources/','/materials/','/material-categories/','/material-categories/new/','/lots/','/metrics/','/mixtures/',
     '/recipe-templates/','/calculation-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
     '/mixtures/new/','/recipe-templates/new/','/calculation-templates/new/','/recipes/new/','/tests/new/',
-    '/recipes/1/','/tests/1/','/sources/1/','/sources/4/'];
+    '/recipes/1/','/tests/1/','/sources/1/','/sources/4/','/feedback/'];
   for (const path of desktopPaths) {
     await go(path);
     await assertLiveSearchMarkers(page);
@@ -915,7 +966,8 @@ try {
   await mobilePage.emulateMedia({reducedMotion:'no-preference'});
   for (const viewport of [{width:768,height:1024},{width:320,height:740}]) {
     await mobilePage.setViewportSize(viewport);
-    for (const path of ['/', '/recipes/new/', '/recipes/1/', '/sources/1/']) {
+    for (const path of ['/', '/recipes/new/', '/recipes/1/', '/sources/1/',
+      '/feedback/']) {
       await mobilePage.goto(base+path,{waitUntil:'networkidle'});
       assert.equal(await mobilePage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${path}: ${viewport.width}px overflow`);
       if (path === '/recipes/new/') {
@@ -928,6 +980,9 @@ try {
       await mobilePage.goto(base+'/',{waitUntil:'networkidle'});
       await mobilePage.screenshot({path:join(artifacts,'tablet.png'),fullPage:true});
     }
+  }
+  for (const width of [390, 320]) {
+    await checkMobileFeedback(mobilePage, 'Гущин Даниил', width);
   }
   await mobilePage.close();
   await mobile.close();
@@ -1213,6 +1268,7 @@ try {
   await go('/employees/');
   await option(page,'#id_employee','Иван Иванов');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:/Открыть лабораторию/}).click()]);
+  await checkFeedback(page, 'Иван Иванов');
   await go('/recipes/');
   assert.equal(await page.locator('a[href="/recipes/new/"]').count(),0);
   await go(card);

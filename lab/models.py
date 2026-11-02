@@ -76,6 +76,26 @@ class EmployeeProfile(models.Model):
         return self.full_name
 
 
+class Feedback(models.Model):
+    text = models.TextField("Сообщение", max_length=5000)
+    employee = models.ForeignKey(
+        EmployeeProfile, verbose_name="Сотрудник", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="feedback",
+    )
+    employee_name = models.CharField("Автор на момент отправки", max_length=180)
+    created_at = models.DateTimeField(
+        "Дата отправки", auto_now_add=True, db_index=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        verbose_name = "Сообщение обратной связи"
+        verbose_name_plural = "Обратная связь"
+
+    def __str__(self):
+        return f"{self.employee_name}: {self.text[:80]}"
+
+
 class AssistantRequestLog(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "В работе"

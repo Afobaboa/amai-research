@@ -1,0 +1,31 @@
+{% extends 'lab/base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block breadcrumb %}Обратная связь{% endblock %}
+{% block content %}
+<div class="narrow-form">
+  <a class="back-link" href="{% url 'dashboard' %}">← Обзор лаборатории</a>
+  <div class="page-heading">
+    <div>
+      <h1>{{ title }}</h1>
+      <p>Расскажите об ошибке или предложите улучшение.
+        Сообщение увидит администратор.</p>
+    </div>
+  </div>
+  <form method="post" action="{% url 'feedback' %}">
+    {% csrf_token %}
+    <section class="panel">
+      <div class="panel-body">
+        {{ form.non_field_errors }}
+        {% for field in form %}
+          {% include 'lab/includes/field.html' %}
+        {% endfor %}
+      </div>
+    </section>
+    <div class="form-actions">
+      <button class="button primary" type="submit">Отправить</button>
+      <a class="button quiet" href="{% url 'dashboard' %}">Отмена</a>
+      <small>Сотрудник: {{ employee.full_name }}</small>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,6 +1,8 @@
 from django.urls import include, path
 
-from . import assistant_conversations, assistant_views, status_views, views
+from . import (
+    assistant_conversations, assistant_views, feedback_views, status_views, views,
+)
 
 urlpatterns = [
     path('source-cell-choices/', views.source_cell_choices, name='source_cell_choices'),
@@ -15,6 +17,7 @@ urlpatterns = [
     path("login/", views.login_view, name="login"),
     path("employees/", views.choose_employee, name="choose_employee"),
     path("logout/", views.logout_view, name="logout"),
+    path("feedback/", feedback_views.feedback, name="feedback"),
     path("", views.dashboard, name="dashboard"),
     path("recipes/", views.recipe_list, name="recipe_list"),
     path("recipes/new/", views.recipe_create, name="recipe_create"),
