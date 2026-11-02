@@ -170,7 +170,6 @@ svg {
   margin-bottom: 8px; color: var(--amai-muted); font-size: 14px;
   font-weight: 600; letter-spacing: .04em;
 }
-.heading-dot { color: var(--amai-brand); }
 .page-heading p { color: var(--amai-muted); font-size: 14px; }
 .heading-actions {
   max-width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
