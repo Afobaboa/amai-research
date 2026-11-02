@@ -1,5 +1,6 @@
 """Exercise the automatic initializer without touching development databases."""
 import os
+import json
 from pathlib import Path
 import shutil
 import sqlite3
@@ -11,6 +12,41 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INITIALIZE = ROOT / 'deploy' / 'initialize.sh'
 PYTHON = ROOT / '.venv' / 'bin' / 'python'
+
+
+class InitialSourceDistributionTests(unittest.TestCase):
+    def prepare_distribution(self, directory):
+        root = Path(directory) / 'LIMS'
+        shutil.copytree(ROOT / 'initial_data', root / 'initial_data')
+        (root / 'scripts').mkdir()
+        shutil.copyfile(ROOT / 'scripts/check_initial_sources.py',
+                        root / 'scripts/check_initial_sources.py')
+        return root
+
+    def run_source_check(self, root):
+        return subprocess.run(
+            [str(PYTHON), 'scripts/check_initial_sources.py'], cwd=root,
+            text=True, capture_output=True, timeout=10,
+        )
+
+    def test_standalone_distribution_requires_all_unchanged_excel_sources(self):
+        with tempfile.TemporaryDirectory(prefix='lims-source-bundle-') as tmp:
+            root = self.prepare_distribution(tmp)
+            result = self.run_source_check(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('verified: 6', result.stdout)
+            manifest = json.loads(
+                (root / 'initial_data/sources/manifest.json').read_text(),
+            )
+            workbook = root / 'initial_data/sources' / (
+                manifest[0]['sha256'] + '.xlsx'
+            )
+            workbook.unlink()
+            self.assertNotEqual(self.run_source_check(root).returncode, 0)
+            workbook.write_bytes(b'changed Excel file')
+            result = self.run_source_check(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Source checksum mismatch', result.stderr)
 
 
 @unittest.skipUnless(shutil.which('sh'), 'The container initializer requires sh.')

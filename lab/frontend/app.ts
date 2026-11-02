@@ -139,9 +139,10 @@
   }
 
   async function loadSourceChoices(
-    select: HTMLSelectElement, sheet: string,
+    select: HTMLSelectElement, sheet: string, preserveSelected: boolean,
   ): Promise<void> {
     const selected = select.value;
+    const selectedLabel = select.selectedOptions[0]?.textContent;
     if (!sheet) {
       select.replaceChildren(new Option('---------', ''));
       return;
@@ -151,23 +152,27 @@
       const options = [new Option('---------', ''), ...data.cells.map(cell => (
         new Option(cell.label, String(cell.id), false, String(cell.id) === selected)
       ))];
+      if (preserveSelected && selected && selectedLabel
+          && !data.cells.some(cell => String(cell.id) === selected)) {
+        options.push(new Option(selectedLabel, selected, true, true));
+      }
       select.replaceChildren(...options);
     } catch {
       sourceChoiceCache.delete(sheet);
     }
   }
 
-  function refreshSourceChoices(): void {
+  function refreshSourceChoices(preserveSelected = true): void {
     const sheet = document.querySelector<HTMLSelectElement>('[name="source_sheet"]')
       ?.value;
     document.querySelectorAll<HTMLSelectElement>('select[data-source-cell]')
       .forEach(select => {
         const sourceSheet = sheet || select.dataset.sourceSheet;
-        if (sourceSheet) void loadSourceChoices(select, sourceSheet);
+        if (sourceSheet) void loadSourceChoices(select, sourceSheet, preserveSelected);
       });
   }
 
   document.querySelector('[name="source_sheet"]')
-    ?.addEventListener('change', refreshSourceChoices);
-  refreshSourceChoices();
+    ?.addEventListener('change', () => refreshSourceChoices(false));
+  refreshSourceChoices(true);
 }

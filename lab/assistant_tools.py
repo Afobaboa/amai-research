@@ -25,12 +25,22 @@ DETAIL_SECTIONS = (
     'test_links', 'calculations', 'recipe_links', 'conditions', 'conditioning',
     'runs', 'results', 'observations', 'lots', 'recipes', 'sheets', 'cells',
     'dependencies', 'source', 'effective_density_g_ml', 'effective_price_per_kg',
+    'effective_price_currency',
 )
 
 # Fields are deliberately explicit: adding a model field does not publish it.
 ENTITIES = {
-    'materials': (m.Material, 'material_detail', 'id name category supplier density_g_ml price_per_kg notes', ['name', 'category', 'supplier', 'notes']),
-    'lots': (m.MaterialLot, 'lot_detail', 'id material_id material__name lot_code supplier received_on expires_on status density_g_ml price_per_kg source_id notes', ['lot_code', 'material__name', 'supplier', 'notes']),
+    'materials': (
+        m.Material, 'material_detail',
+        'id name category supplier notes',
+        ['name', 'category', 'supplier', 'notes'],
+    ),
+    'lots': (
+        m.MaterialLot, 'lot_detail',
+        'id material_id material__name lot_code supplier received_on expires_on '
+        'status density_g_ml price_per_kg price_currency source_id notes',
+        ['lot_code', 'material__name', 'supplier', 'notes'],
+    ),
     'mixtures': (m.MixtureType, 'mixture_detail', 'id code title', ['code', 'title']),
     'recipes': (m.RecipeVersion, 'recipe_detail', 'id mixture_type_id mixture_type__code version_label recorded_on title status notes batch_mass_g recipe_template_id calculation_template_id source_sheet_id', ['version_label', 'title', 'notes', 'mixture_type__code', 'mixture_type__title', 'groups__components__unbatched_material__name', 'groups__components__specified_lot__material__name']),
     'tests': (m.TestSession, 'test_detail', 'id identifier title status notes recorded_manufactured_on recorded_tested_on source_sheet_id', ['identifier', 'title', 'notes', 'recipe_matches__recipe_version__version_label', 'runs__scope', 'runs__observations__text_value', 'runs__results__text_value']),
@@ -377,7 +387,7 @@ FILLING_FIELDS = (
 )
 PROPERTY_FIELDS = (
     'id recipe_version_id group_id component_id filling_plan_line_id '
-    'property_code value unit_code source_cell_id'
+    'property_code value unit_code source_cell_id origin provenance_note'
 )
 CONDITION_FIELDS = (
     'id metric_id metric__code metric__label metric__unit_code '
@@ -460,7 +470,8 @@ def _materials_sections(obj, related, offset, limit):
     return {
         'lots': lambda: related(
             obj.lots,
-            'id lot_code supplier status density_g_ml price_per_kg source_id',
+            'id lot_code supplier status density_g_ml price_per_kg '
+            'price_currency source_id',
         ),
         'recipes': lambda: compact_search(
             entity='recipes', material_id=obj.pk, offset=offset, limit=limit,
@@ -479,6 +490,7 @@ def _lots_sections(obj, related, offset, limit):
     return {
         'effective_density_g_ml': lambda: obj.effective_density_g_ml,
         'effective_price_per_kg': lambda: obj.effective_price_per_kg,
+        'effective_price_currency': lambda: obj.effective_price_currency,
         'recipes': lambda: related(
             _lot_recipes(obj), 'id version_label title status',
         ),

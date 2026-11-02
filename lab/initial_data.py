@@ -9,6 +9,8 @@ from django.db import transaction
 
 from . import models as lab
 from .initial_cleanup import remove_demo
+from .initial_materials import ArchiveMaterials, property_source_cell, row_name
+from .categories import seed_material_categories, sync_material_categories
 
 
 DATA_PATH = Path(settings.BASE_DIR) / 'initial_data' / 'winter.json'
@@ -50,6 +52,7 @@ class ArchiveLoader:
         self.counts = {'recipes': 0, 'tests': 0, 'sources': 0}
 
     def load(self, data):
+        self.catalog = ArchiveMaterials(data, self.author)
         for mixture in data['mixtures']:
             self.mixtures[mixture['code']], _ = lab.MixtureType.objects.get_or_create(
                 code=mixture['code'], defaults={'title': mixture['title']},
@@ -57,6 +60,9 @@ class ArchiveLoader:
         for source in data['files']:
             self.load_file(source)
         self.link_recipes()
+        self.catalog.finish()
+        seed_material_categories(self.author)
+        sync_material_categories()
         return self.counts
 
     def load_file(self, data):
@@ -71,6 +77,7 @@ class ArchiveLoader:
         if created:
             self.counts['sources'] += 1
             event(self.author, source, 'source', 'Перенесён источник: ' + source.title)
+        self.current_source = source
         for item in data['sheets']:
             self.load_sheet(source, item)
 
@@ -100,14 +107,7 @@ class ArchiveLoader:
                 )
 
     def material(self, name):
-        if not name:
-            return None
-        if name not in self.materials:
-            material = lab.Material.objects.filter(name=name).order_by('pk').first()
-            if material is None:
-                material = lab.Material.objects.create(name=name)
-            self.materials[name] = material
-        return self.materials[name]
+        return self.catalog.material(name)
 
     def load_recipe(self, sheet, cells, data):
         recipe = lab.RecipeVersion.objects.filter(
@@ -124,7 +124,70 @@ class ArchiveLoader:
             self.recipe_rows(recipe, cells, data)
             event(self.author, recipe, 'recipe', 'Перенесена рецептура ' + recipe.title)
             self.counts['recipes'] += 1
+        else:
+            self.upgrade_recipe(recipe, cells, data)
         self.recipes[(sheet.file.original_path, sheet.name)] = recipe
+
+    def upgrade_recipe(self, recipe, cells, data):
+        for group in data['groups']:
+            for row in group['components']:
+                component = lab.RecipeComponent.objects.filter(
+                    group__recipe_version=recipe,
+                    name_cell=cells.get(row.get('name_cell')),
+                    quantity_cell=cells.get(row.get('quantity_cell')),
+                ).first()
+                if component:
+                    self.upgrade_row(component, 'component', cells, row, recipe)
+        for row in data.get('filling', []):
+            line = recipe.filling_plan.filter(
+                label_cell=cells.get(row.get('label_cell')),
+                mass_cell=cells.get(row.get('mass_cell')),
+            ).first()
+            if line:
+                self.upgrade_row(line, 'filling_plan_line', cells, row, recipe)
+        self.upgrade_notes(recipe, data)
+
+    def upgrade_row(self, owner, field, cells, data, recipe):
+        name = row_name(data)
+        current = owner.specified_lot.material if owner.specified_lot_id else (
+            owner.unbatched_material)
+        raw = ' '.join(str(data.get('name_raw') or '').split())
+        expected = {name, raw}
+        if current is None and name:
+            return
+        if field == 'filling_plan_line' and owner.input_group_id and name:
+            return
+        if current and current.name not in expected:
+            return
+        if owner.specified_lot_id and (
+            owner.specified_lot.lot_code != data.get('lot_code')
+        ):
+            return
+        binding = self.catalog.binding(data, recipe.source_sheet.file)
+        if owner.unbatched_material_id != getattr(
+            binding['unbatched_material'], 'pk', None,
+        ) or owner.specified_lot_id != getattr(binding['specified_lot'], 'pk', None):
+            for key, value in binding.items():
+                setattr(owner, key, value)
+            owner.save(update_fields=list(binding))
+        self.catalog.observe(data, binding, recipe, cells)
+        self.properties(field, owner, cells, data.get('properties', []))
+
+    def upgrade_notes(self, recipe, data):
+        old = ('Исторические цены сохранены в свойствах компонентов без '
+               'назначения валюты: в исходном столбце указано только Price.')
+        replacement = next((note for note in data.get('notes', '').split('\n\n')
+                            if 'EUR' in note or 'евро' in note), '')
+        notes = recipe.notes.replace(old, replacement)
+        for paragraph in data.get('notes', '').split('\n\n'):
+            correction = ('вместо марки изоцианата' in paragraph or
+                          paragraph.lstrip().startswith(
+                              'По указанию пользователя отсутствующая цена'))
+            if correction and paragraph not in notes:
+                notes += '\n\n' + paragraph
+        if notes != recipe.notes:
+            recipe.notes = notes
+            recipe.save(update_fields=['notes'])
 
     def recipe_rows(self, recipe, cells, data):
         groups = {}
@@ -142,32 +205,46 @@ class ArchiveLoader:
         self.properties('recipe_version', recipe, cells, data.get('properties', []))
 
     def component(self, group, position, cells, data):
+        recipe = group.recipe_version
+        binding = self.catalog.binding(data, recipe.source_sheet.file)
         component = lab.RecipeComponent.objects.create(
             group=group, position=position,
-            unbatched_material=self.material(data['name']),
+            **binding,
             name_cell=cells.get(data.get('name_cell')),
             quantity_value=number(data.get('quantity')),
             quantity_cell=cells.get(data.get('quantity_cell')),
         )
         self.properties('component', component, cells, data.get('properties', []))
+        self.catalog.observe(data, binding, recipe, cells)
 
     def filling(self, recipe, groups, cells, data):
+        binding = self.catalog.binding(data, recipe.source_sheet.file)
         line = lab.FillingPlanLine.objects.create(
             recipe_version=recipe, input_group=groups.get(data.get('group_label')),
-            unbatched_material=self.material(data.get('material_name')),
+            **binding,
             label_cell=cells.get(data.get('label_cell')),
             mass_g=number(data.get('mass_g')), mass_status=data['mass_status'],
             mass_cell=cells.get(data.get('mass_cell')),
         )
         self.properties('filling_plan_line', line, cells, data.get('properties', []))
+        self.catalog.observe(data, binding, recipe, cells)
 
     def properties(self, owner_field, owner, cells, rows):
         for row in rows:
-            lab.RecipeProperty.objects.create(
+            prop, created = lab.RecipeProperty.objects.get_or_create(
                 **{owner_field: owner}, property_code=row['code'],
-                value=number(row['value']), unit_code=row.get('unit'),
-                source_cell=cells.get(row.get('cell')),
+                source_cell=property_source_cell(row, cells, self.current_source),
+                defaults={
+                    'value': number(row['value']), 'unit_code': row.get('unit'),
+                    'origin': row.get('origin', 'recorded'),
+                    'provenance_note': row.get('provenance_note', ''),
+                },
             )
+            if not created and prop.value == number(row['value']) and (
+                prop.unit_code == 'source_currency/kg' and row.get('unit') == 'EUR/kg'
+            ):
+                prop.unit_code = row['unit']
+                prop.save(update_fields=['unit_code'])
 
     def load_test(self, sheet, cells, data):
         if lab.TestSession.objects.filter(source_sheet=sheet).exists():
@@ -271,7 +348,7 @@ class ArchiveLoader:
 @transaction.atomic
 def seed_initial():
     data = json.loads(DATA_PATH.read_text(encoding='utf-8'))
-    if data.get('schema_version') != 1:
+    if data.get('schema_version') not in (1, 2):
         raise CommandError('Неизвестная версия набора начальных данных.')
     author = employees()
     counts = remove_demo(author)

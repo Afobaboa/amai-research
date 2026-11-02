@@ -120,8 +120,9 @@
         }
         return pending;
     }
-    async function loadSourceChoices(select, sheet) {
+    async function loadSourceChoices(select, sheet, preserveSelected) {
         const selected = select.value;
+        const selectedLabel = select.selectedOptions[0]?.textContent;
         if (!sheet) {
             select.replaceChildren(new Option('---------', ''));
             return;
@@ -129,23 +130,27 @@
         try {
             const data = await cachedSourceChoices(sheet);
             const options = [new Option('---------', ''), ...data.cells.map(cell => (new Option(cell.label, String(cell.id), false, String(cell.id) === selected)))];
+            if (preserveSelected && selected && selectedLabel
+                && !data.cells.some(cell => String(cell.id) === selected)) {
+                options.push(new Option(selectedLabel, selected, true, true));
+            }
             select.replaceChildren(...options);
         }
         catch {
             sourceChoiceCache.delete(sheet);
         }
     }
-    function refreshSourceChoices() {
+    function refreshSourceChoices(preserveSelected = true) {
         const sheet = document.querySelector('[name="source_sheet"]')
             ?.value;
         document.querySelectorAll('select[data-source-cell]')
             .forEach(select => {
             const sourceSheet = sheet || select.dataset.sourceSheet;
             if (sourceSheet)
-                void loadSourceChoices(select, sourceSheet);
+                void loadSourceChoices(select, sourceSheet, preserveSelected);
         });
     }
     document.querySelector('[name="source_sheet"]')
-        ?.addEventListener('change', refreshSourceChoices);
-    refreshSourceChoices();
+        ?.addEventListener('change', () => refreshSourceChoices(false));
+    refreshSourceChoices(true);
 }

@@ -321,6 +321,8 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.screenshot({path:join(artifacts,'desktop-history.png'),fullPage:true});
   await search.press('Escape');
   await history.waitFor({state:'hidden'});
+  await page.waitForFunction(() => document.activeElement?.id ===
+    'assistant-conversations');
   assert.equal(await picker.evaluate(node => node === document.activeElement), true, 'Escape restores history trigger focus');
   assert.equal(await page.locator('#lab-assistant').isVisible(), true);
 
@@ -561,7 +563,16 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     [390, 320, 'mobile-history-landscape.png'],
   ]) {
     await paginated.setViewportSize({width, height});
+    // The media-query listener may close the default-open desktop panel after
+    // setViewportSize resolves. Wait for that state before opening it on mobile.
+    await paginated.waitForFunction(() => {
+      const panel = document.getElementById('lab-assistant');
+      const desktop = window.matchMedia('(min-width: 1400px)').matches;
+      return panel.hidden || panel.getAttribute('role') === (
+        desktop ? 'complementary' : 'dialog');
+    });
     if (!await paginated.locator('#lab-assistant').isVisible()) await paginated.locator('#assistant-launcher').click();
+    await paginated.locator('#lab-assistant').waitFor({state:'visible'});
     await paginated.mouse.move(0, 0);
     await paginated.locator('#assistant-input-hint').waitFor({state:'hidden'});
     if (!await paginated.locator('#assistant-chat-menu').isVisible()) await paginated.locator('#assistant-conversations').click();

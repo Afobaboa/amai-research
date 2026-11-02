@@ -17,24 +17,48 @@ from .models import (
 class ExpandedWorkflowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.author = EmployeeProfile.objects.create(full_name='Автор новых возможностей', role='author')
-        cls.reader = EmployeeProfile.objects.create(full_name='Читатель новых возможностей', role='reader')
-        cls.material = Material.objects.create(name='Зимний полиол', density_g_ml=1, price_per_kg=100)
-        cls.calc_template = CalculationTemplate.objects.create(name='Плотность и цена', created_by=cls.author)
+        cls.author = EmployeeProfile.objects.create(
+            full_name='Автор новых возможностей', role='author')
+        cls.reader = EmployeeProfile.objects.create(
+            full_name='Читатель новых возможностей', role='reader')
+        cls.material = Material.objects.create(name='Зимний полиол')
+        cls.lot = MaterialLot.objects.create(
+            material=cls.material, lot_code='WINTER-01',
+            density_g_ml=1, price_per_kg=100,
+        )
+        cls.template_fixture()
+        cls.source_fixture()
+
+    @classmethod
+    def template_fixture(cls):
+        cls.calc_template = CalculationTemplate.objects.create(
+            name='Плотность и цена', created_by=cls.author)
         cls.recipe_template = RecipeTemplate.objects.create(
-            name='Зимняя пена', created_by=cls.author, calculation_template=cls.calc_template,
-            definition={'components': [{'group_label': 'A', 'quantity_basis': 'mass_percent',
-                                       'completeness': 'complete', 'material': cls.material.pk,
+            name='Зимняя пена', created_by=cls.author,
+            calculation_template=cls.calc_template,
+            definition={'components': [{'group_label': 'A',
+                                       'quantity_basis': 'mass_percent',
+                                       'completeness': 'complete',
+                                       'specified_lot': cls.lot.pk,
                                        'quantity_value': '100'}],
                         'filling': [{'group_label': 'A', 'mass_g': '220'}]},
         )
-        cls.source = SourceFile.objects.create(original_path='Первичная запись', title='Первичная запись', kind='note')
+
+    @classmethod
+    def source_fixture(cls):
+        cls.source = SourceFile.objects.create(
+            original_path='Первичная запись', title='Первичная запись', kind='note')
         cls.sheet = SourceSheet.objects.create(file=cls.source, name='Зимняя пена')
-        cls.other_sheet = SourceSheet.objects.create(file=cls.source, name='Другой режим')
-        cls.name_cell = SourceCell.objects.create(sheet=cls.sheet, address='A1', cell_kind='text', raw_value='Зимний полиол')
-        cls.qty_cell = SourceCell.objects.create(sheet=cls.sheet, address='B1', cell_kind='numeric', raw_value='100')
-        cls.other_cell = SourceCell.objects.create(sheet=cls.other_sheet, address='A1', cell_kind='numeric', raw_value='50')
-        cls.metric = Metric.objects.create(code='V2_TEMP', label='Температура', value_kind='numeric', unit_code='°C')
+        cls.other_sheet = SourceSheet.objects.create(
+            file=cls.source, name='Другой режим')
+        cls.name_cell = SourceCell.objects.create(
+            sheet=cls.sheet, address='A1', cell_kind='text', raw_value='Зимний полиол')
+        cls.qty_cell = SourceCell.objects.create(
+            sheet=cls.sheet, address='B1', cell_kind='numeric', raw_value='100')
+        cls.other_cell = SourceCell.objects.create(
+            sheet=cls.other_sheet, address='A1', cell_kind='numeric', raw_value='50')
+        cls.metric = Metric.objects.create(
+            code='V2_TEMP', label='Температура', value_kind='numeric', unit_code='°C')
 
     def setUp(self):
         self.sign_in(self.author)
@@ -51,12 +75,15 @@ class ExpandedWorkflowTests(TestCase):
             'calculation_template': str(self.calc_template.pk), 'batch_mass_g': '1000',
             'components-TOTAL_FORMS': '1', 'components-INITIAL_FORMS': '0',
             'components-MIN_NUM_FORMS': '0', 'components-MAX_NUM_FORMS': '100',
-            'components-0-group_label': 'A', 'components-0-quantity_basis': 'mass_percent',
-            'components-0-completeness': 'complete', 'components-0-material': str(self.material.pk),
+            'components-0-group_label': 'A',
+            'components-0-quantity_basis': 'mass_percent',
+            'components-0-completeness': 'complete', 'components-0-material': '',
+            'components-0-specified_lot': str(self.lot.pk),
             'components-0-quantity_value': '100',
             'filling-TOTAL_FORMS': '1', 'filling-INITIAL_FORMS': '0',
             'filling-MIN_NUM_FORMS': '0', 'filling-MAX_NUM_FORMS': '50',
-            'filling-0-group_label': 'A', 'filling-0-mass_g': '220', 'filling-0-mass_status': 'recorded',
+            'filling-0-group_label': 'A', 'filling-0-mass_g': '220',
+            'filling-0-mass_status': 'recorded',
         }
         result.update(changes)
         return result
@@ -165,9 +192,11 @@ class ExpandedWorkflowTests(TestCase):
         self.assertFalse(ChangeEvent.objects.exists())
 
     def test_published_price_snapshot_remains_default_after_new_calculation(self):
-        recipe = self.assert_saved(self.client.post(reverse('recipe_create'), self.payload()))
+        recipe = self.assert_saved(self.client.post(
+            reverse('recipe_create'), self.payload()))
         original = recipe.calculations.get()
-        Material.objects.filter(pk=self.material.pk).update(price_per_kg=900, density_g_ml=2)
+        MaterialLot.objects.filter(pk=self.lot.pk).update(
+            price_per_kg=900, density_g_ml=2)
         response = self.client.post(reverse('recipe_calculate', args=[recipe.pk]))
         self.assertEqual(response.status_code, 302)
         newer = recipe.calculations.order_by('-pk').first()
@@ -234,37 +263,50 @@ class ExpandedWorkflowTests(TestCase):
         self.assertEqual(card.conditions.get().numeric_value, Decimal(-18))
 
     def test_publication_snapshot_distinguishes_unknown_price_from_free_batch(self):
-        Material.objects.filter(pk=self.material.pk).update(price_per_kg=None)
+        MaterialLot.objects.filter(pk=self.lot.pk).update(price_per_kg=None)
         missing = self.assert_saved(self.client.post(reverse('recipe_create'),
             self.payload(version_label='WINTER.MISSING')), 'WINTER.MISSING')
         unknown = missing.calculations.get().outputs['groups'][0]
         self.assertIsNone(unknown['total_cost'])
         self.assertIsNone(unknown['rows'][0]['price_per_kg'])
-        lot = MaterialLot.objects.create(material=self.material, lot_code='WINTER.FREE', price_per_kg=0)
-        free = self.assert_saved(self.client.post(reverse('recipe_create'), self.payload(
-            version_label='WINTER.FREE', **{'components-0-material': '',
-                                           'components-0-specified_lot': str(lot.pk)})), 'WINTER.FREE')
+        lot = MaterialLot.objects.create(
+            material=self.material, lot_code='WINTER.FREE', price_per_kg=0)
+        payload = self.payload(version_label='WINTER.FREE', **{
+            'components-0-material': '', 'components-0-specified_lot': str(lot.pk)})
+        free = self.assert_saved(self.client.post(
+            reverse('recipe_create'), payload), 'WINTER.FREE')
         output = free.calculations.get().outputs['groups'][0]
         self.assertEqual(output['total_cost'], '0')
         self.assertEqual(output['cost_per_kg'], '0')
         self.assertEqual(output['rows'][0]['price_per_kg'], '0')
 
     def test_manual_draft_calculation_is_not_the_published_composition_baseline(self):
-        free = Material.objects.create(name='Первоначальный бесплатный компонент', density_g_ml=1, price_per_kg=0)
-        draft = self.assert_saved(self.client.post(reverse('recipe_create'), self.payload(
-            status='draft', **{'components-0-material': str(free.pk)})))
+        free = Material.objects.create(name='Первоначальный бесплатный компонент')
+        free_lot = MaterialLot.objects.create(
+            material=free, lot_code='FREE', density_g_ml=1, price_per_kg=0)
+        payload = self.payload(status='draft', **{
+            'components-0-specified_lot': str(free_lot.pk)})
+        draft = self.assert_saved(self.client.post(reverse('recipe_create'), payload))
         self.assertFalse(draft.calculations.exists())
-        self.assertEqual(self.client.post(reverse('recipe_calculate', args=[draft.pk])).status_code, 302)
+        response = self.client.post(reverse('recipe_calculate', args=[draft.pk]))
+        self.assertEqual(response.status_code, 302)
         manual = draft.calculations.get()
         self.assertEqual(manual.outputs['purpose'], 'manual')
         self.assertEqual(manual.outputs['groups'][0]['total_cost'], '0')
         page = self.client.get(reverse('recipe_edit', args=[draft.pk]))
         payload = self.displayed_payload(page)
-        payload.update(status='published', **{'components-0-material': str(self.material.pk)})
-        self.assert_saved(self.client.post(reverse('recipe_edit', args=[draft.pk]), payload))
+        payload.update(status='published', **{
+            'components-0-material': '',
+            'components-0-specified_lot': str(self.lot.pk)})
+        self.assert_saved(self.client.post(
+            reverse('recipe_edit', args=[draft.pk]), payload))
+        self.check_publication_baseline(draft, manual)
+
+    def check_publication_baseline(self, draft, manual):
         publication = draft.calculations.get(outputs__purpose='publication')
         self.assertEqual(publication.outputs['groups'][0]['total_cost'], '100')
-        self.assertEqual(publication.inputs['groups'][0]['components'][0]['material_id'], self.material.pk)
+        self.assertEqual(publication.inputs['groups'][0]['components'][0]['material_id'],
+                         self.material.pk)
         self.assertNotEqual(publication.pk, manual.pk)
         page = self.client.get(reverse('recipe_detail', args=[draft.pk]))
         self.assertEqual(page.context['calculation']['purpose'], 'publication')

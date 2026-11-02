@@ -11,7 +11,8 @@ from django.urls import reverse
 
 from .catalog_forms import SourceForm
 from .models import (
-    ChangeEvent, EmployeeProfile, FillingPlanLine, Material, MaterialLot, Metric,
+    ChangeEvent, EmployeeProfile, FillingPlanLine, Material, MaterialCategory,
+    MaterialLot, Metric,
     MixtureType, RecipeComponent, RecipeGroup, RecipeMatch, RecipeVersion,
     Result, SourceCell, SourceFile, SourceSheet, TestRun, TestSession,
 )
@@ -21,10 +22,14 @@ from .models import (
 class CatalogWorkflowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        MaterialCategory.objects.create(name='Полиол')
         cls.author = EmployeeProfile.objects.create(full_name='Каталоги: автор', role='author')
         cls.reader = EmployeeProfile.objects.create(full_name='Каталоги: читатель', role='reader')
-        cls.material = Material.objects.create(name='Тестовый полиол', density_g_ml=Decimal('1.05'), price_per_kg=Decimal('200'))
-        cls.lot = MaterialLot.objects.create(material=cls.material, lot_code='LOT-001')
+        cls.material = Material.objects.create(name='Тестовый полиол')
+        cls.lot = MaterialLot.objects.create(
+            material=cls.material, lot_code='LOT-001',
+            density_g_ml=Decimal('1.05'), price_per_kg=Decimal('200'),
+        )
         cls.source = SourceFile.objects.create(title='Паспорт партии', kind='note', original_path='Паспорт партии',
                                                notes='Плотность записана поставщиком.', created_by=cls.author)
         cls.sheet = SourceSheet.objects.create(file=cls.source, name='Показатели')
@@ -49,8 +54,8 @@ class CatalogWorkflowTests(TestCase):
         return data
 
     def material_payload(self, **extra):
-        data = {'name': 'Материал QA', 'category': 'Полиол', 'supplier': 'Поставщик QA',
-                'density_g_ml': '1.05', 'price_per_kg': '0', 'notes': 'Тестовая запись'}
+        data = {'name': 'Материал QA', 'category': 'Полиол',
+                'supplier': 'Поставщик QA', 'notes': 'Тестовая запись'}
         data.update(extra)
         return data
 
@@ -69,36 +74,48 @@ class CatalogWorkflowTests(TestCase):
         FillingPlanLine.objects.create(recipe_version=recipe, specified_lot=self.lot, mass_g=20, mass_status='recorded')
         return recipe
 
-    def test_author_creates_and_edits_material_with_zero_price_and_audit(self):
+    def test_author_creates_and_edits_material_identity_with_audit(self):
         response = self.client.post(reverse('material_create'), self.material_payload())
         material = Material.objects.get(name='Материал QA')
         self.assertRedirects(response, reverse('material_detail', args=[material.pk]))
-        self.assertEqual(material.price_per_kg, Decimal('0'))
-        self.assertEqual(material.density_g_ml, Decimal('1.05'))
-        response = self.client.post(reverse('material_edit', args=[material.pk]), self.material_payload(price_per_kg='235'))
+        self.assertEqual(material.category, 'Полиол')
+        response = self.client.post(
+            reverse('material_edit', args=[material.pk]),
+            self.material_payload(supplier='Новый поставщик'),
+        )
         self.assertRedirects(response, reverse('material_detail', args=[material.pk]))
         event = ChangeEvent.objects.filter(entity_type='material', entity_id=material.pk).latest('pk')
-        self.assertEqual(Decimal(event.before['price_per_kg']), Decimal('0'))
-        self.assertEqual(Decimal(event.after['price_per_kg']), Decimal('235'))
+        self.assertEqual(event.before['supplier'], 'Поставщик QA')
+        self.assertEqual(event.after['supplier'], 'Новый поставщик')
 
     def test_invalid_material_does_not_mutate_or_audit(self):
-        for density, price in [('0', '1'), ('-1', '1'), ('1', '-1')]:
-            response = self.client.post(reverse('material_create'), self.material_payload(density_g_ml=density, price_per_kg=price))
+        for name in ['', ' ']:
+            response = self.client.post(reverse('material_create'),
+                                        self.material_payload(name=name))
             self.assertEqual(response.status_code, 200)
         self.assertFalse(Material.objects.filter(name='Материал QA').exists())
         self.assertEqual(ChangeEvent.objects.count(), 0)
 
-    def test_lot_properties_fallback_and_status_change(self):
+    def test_lot_properties_unknown_density_zero_price_and_status_change(self):
         response = self.client.post(reverse('lot_create'), self.lot_payload())
         lot = MaterialLot.objects.get(lot_code='LOT-002')
         self.assertRedirects(response, reverse('lot_detail', args=[lot.pk]))
-        self.assertEqual(lot.effective_density_g_ml, Decimal('1.05'))
+        self.assertIsNone(lot.effective_density_g_ml)
         self.assertEqual(lot.effective_price_per_kg, Decimal('0'))
         self.client.post(reverse('lot_edit', args=[lot.pk]), self.lot_payload(status='quarantine', density_g_ml='1.07'))
         lot.refresh_from_db()
         self.assertEqual(lot.status, 'quarantine')
         self.assertEqual(lot.effective_density_g_ml, Decimal('1.07'))
         self.assertEqual(ChangeEvent.objects.filter(entity_type='lot', entity_id=lot.pk).count(), 2)
+
+    def test_invalid_lot_properties_do_not_mutate_or_audit(self):
+        for density, price in [('0', '1'), ('-1', '1'), ('1', '-1')]:
+            response = self.client.post(reverse('lot_create'), self.lot_payload(
+                density_g_ml=density, price_per_kg=price,
+            ))
+            self.assertEqual(response.status_code, 200)
+        self.assertFalse(MaterialLot.objects.filter(lot_code='LOT-002').exists())
+        self.assertEqual(ChangeEvent.objects.count(), 0)
 
     def test_used_lot_identity_is_preserved_and_traceability_does_not_duplicate_cards(self):
         recipe = self.used_recipe()

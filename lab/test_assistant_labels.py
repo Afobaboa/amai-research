@@ -18,10 +18,11 @@ from .ui_text import FIELD_LABELS, PROPERTY_LABELS, UNIT_LABELS
 class AssistantLabelTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.material = Material.objects.create(
-            name='Полиол', density_g_ml=Decimal('1.05'), price_per_kg=0,
+        cls.material = Material.objects.create(name='Полиол')
+        cls.lot = MaterialLot.objects.create(
+            material=cls.material, lot_code='П-01',
+            density_g_ml=Decimal('1.05'), price_per_kg=0,
         )
-        cls.lot = MaterialLot.objects.create(material=cls.material, lot_code='П-01')
         cls.recipe = RecipeVersion.objects.create(version_label='316Ф-3')
         cls.group = RecipeGroup.objects.create(recipe_version=cls.recipe, label='A')
         cls.unbatched_component = RecipeComponent.objects.create(
@@ -113,7 +114,7 @@ class AssistantLabelTests(TestCase):
         self.assertNotIn('custom_lab_property', result['value_labels']['property_code'])
         self.assertNotIn('custom_lab_unit', result['value_labels']['unit_code'])
 
-    def test_property_density_label_does_not_replace_material_field_label(self):
+    def test_property_density_label_does_not_replace_lot_field_label(self):
         RecipeProperty.objects.create(
             component=self.unbatched_component, property_code='density_g_ml',
             value=Decimal('1.05'), unit_code='g/ml',
@@ -121,11 +122,12 @@ class AssistantLabelTests(TestCase):
         properties = self.recipe_section('properties')
         density = next(row for row in properties['properties']['items']
                        if row['property_code'] == 'density_g_ml')
-        material = execute_tool('get_lab_record', {
-            'entity': 'materials', 'id': self.material.pk,
+        lot = execute_tool('get_lab_record', {
+            'entity': 'lots', 'id': self.lot.pk,
         })
         self.assertEqual(density['property_label'], 'Плотность компонента')
-        self.assertEqual(material['field_labels']['density_g_ml'], 'Плотность, г/мл')
+        self.assertEqual(lot['field_labels']['density_g_ml'],
+                         'Плотность партии, г/мл')
         self.assertEqual(
             properties['value_labels']['property_code']['density_g_ml'],
             'Плотность компонента',

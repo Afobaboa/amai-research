@@ -1,5 +1,5 @@
 {
-  "schema_version":1,
+  "schema_version":2,
   "command":"Пена/.venv/bin/python LIMS/scripts/build_initial_data.py",
   "files":[
     {
@@ -53,6 +53,60 @@
       "calculation_checked":675
     }
   },
+  "material_import":{
+    "counts":{
+      "materials":72,
+      "lots":124,
+      "component_ohv":405,
+      "component_source_price_per_kg":1050,
+      "component_density_g_ml":1050,
+      "filling_source_price_per_kg":637,
+      "filling_density_g_ml":535
+    },
+    "missing_component_prices":[],
+    "invalid_material_labels":[
+      {
+        "file":"Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sheet":"302.51.1"
+      }
+    ],
+    "non_euro_headers_overridden_by_user":[
+      {
+        "file":"Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sheet":"316.1"
+      },
+      {
+        "file":"Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sheet":"316.2"
+      },
+      {
+        "file":"Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sheet":"316.3"
+      },
+      {
+        "file":"Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sheet":"316.4"
+      }
+    ]
+  },
+  "price_completions":[
+    {
+      "source_path":"Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+      "target_sheet":"302.84",
+      "target_name_cell":"A11",
+      "target_cell":"C11",
+      "source_sheet":"302.83",
+      "donor_name_cell":"A12",
+      "cell":"C12",
+      "material":"TEP-Z",
+      "target_lot_code":"260409",
+      "donor_lot_code":null,
+      "value":"64.69",
+      "origin":"carried_forward",
+      "provenance_note":"По указанию пользователя отсутствующая цена TEP-Z в 302.84!C11 дополнена значением 64,69 €/кг из предыдущего листа 302.83!C12 (название TEP-Z в A12). В листе-доноре партия не указана; совпадение партии 260409 не подтверждено. Исходная C11 остаётся пустой.",
+      "unit":"EUR/kg"
+    }
+  ],
   "identifier_differences":[
     {
       "file":"Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
@@ -285,5 +339,5 @@
       ]
     }
   ],
-  "policy":"Source cells retained; no invented or cache-only values. Recipe matches are candidates, not proof of manufacture."
+  "policy":"Source cells retained; no invented or cache-only values. Historical prices are EUR/kg by explicit user instruction, without conversion; original currency headers retained. Recipe matches are candidates, not proof of manufacture."
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,88 @@ const init = args => {
   if (run.error) throw new Error(`Cannot run ${python}. Set up Python dependencies first. ${run.error.message}`);
   assert.equal(run.status, 0, run.stdout + run.stderr);
 };
+
+async function checkArchiveDownload(page) {
+  const digest = await page.locator('dl div').filter({
+    has: page.locator('dt', {hasText: 'SHA-256 файла'}),
+  }).locator('dd').innerText();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('link', {name: 'Скачать файл ↓', exact: true}).click(),
+  ]);
+  const bytes = readFileSync(await download.path());
+  assert.deepEqual([...bytes.subarray(0, 4)], [0x50, 0x4b, 0x03, 0x04]);
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), digest);
+  assert.equal(download.suggestedFilename(), '316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx');
+}
+
+function carriedProperty(page) {
+  const origin = 'select[name$="-origin"] option:checked[value="carried_forward"]';
+  return page.locator('#properties-formset .formset-row').filter({
+    has: page.locator(origin),
+  });
+}
+
+async function assertCarriedProperty(page, donorId, note) {
+  const row = carriedProperty(page);
+  assert.equal(await row.count(), 1, 'One explicitly carried-forward property');
+  const selected = row.locator('select[data-source-cell]');
+  assert.equal(await selected.inputValue(), donorId,
+    'Initial async source loading must retain the selected donor from another sheet');
+  assert.equal(await selected.locator('option:checked').innerText(), '302.83!C12');
+  assert.equal(await row.locator('[name$="-property_code"]').inputValue(),
+    'source_price_per_kg');
+  assert.equal(Number(await row.locator('[name$="-value"]').inputValue()), 64.69);
+  assert.equal(await row.locator('[name$="-provenance_note"]').inputValue(), note);
+}
+
+async function checkExplicitSourceChange(page) {
+  const sheet = page.locator('#id_source_sheet');
+  const current = await sheet.inputValue();
+  const other = await sheet.locator('option').evaluateAll((options, current) => (
+    options.find(option => option.value && option.value !== current
+      && !option.textContent.includes('302.83'))?.value
+  ), current);
+  assert.ok(other, 'Another source sheet is available');
+  await Promise.all([
+    page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return url.pathname === '/source-cell-choices/'
+        && url.searchParams.get('sheet') === other;
+    }),
+    sheet.selectOption(other),
+  ]);
+  const select = carriedProperty(page).locator('select[data-source-cell]');
+  await page.waitForFunction(name => document.getElementsByName(name)[0]?.value === '',
+    await select.getAttribute('name'));
+  assert.equal(await select.inputValue(), '',
+    'Explicitly changing source clears unrelated donor selection');
+}
+
+async function checkCarriedForwardFork(page, go, submit) {
+  await go('/recipes/?q=302.84');
+  const path = await page.getByRole('link', {name: '302.84', exact: true})
+    .getAttribute('href');
+  await go(path);
+  const donorLink = page.getByRole('link', {name: '302.83!C12', exact: true});
+  const donorId = (await donorLink.getAttribute('href')).match(/#cell-(\d+)$/)?.[1];
+  assert.ok(donorId, 'The completed TEP-Z price points to its actual donor cell');
+  const note = await donorLink.locator('..').locator('.cell-subtitle').innerText();
+  assert.match(note, /По указанию пользователя/);
+  await go(path + 'fork/');
+  await assertCarriedProperty(page, donorId, note);
+  await page.locator('[data-add-form="properties-formset"]').click();
+  await page.waitForLoadState('networkidle');
+  await assertCarriedProperty(page, donorId, note);
+  await page.locator('#id_version_label').fill('QA-TEP-PROVENANCE');
+  await page.locator('#id_status').selectOption('draft');
+  await submit('Сохранить рецептуру');
+  const fork = new URL(page.url()).pathname;
+  await go(fork + 'edit/');
+  await assertCarriedProperty(page, donorId, note);
+  await checkExplicitSourceChange(page);
+  console.log('302.84 fork preserves donor selection and carried-forward provenance.');
+}
 
 // Let the OS bind port 0 in the actual server process, avoiding a free-port race.
 // An explicit occupied port fails at bind; no browser request is sent to it.
@@ -182,12 +264,12 @@ try {
   assert.equal(await page.locator('.demo-banner,.demo-label').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/DEMO-/);
   await page.screenshot({path:join(artifacts, 'overview.png'),fullPage:true});
-  const desktopPaths = ['/recipes/','/tests/','/history/','/sources/','/materials/','/lots/','/metrics/','/mixtures/',
+  const desktopPaths = ['/recipes/','/tests/','/history/','/sources/','/materials/','/material-categories/','/material-categories/new/','/lots/','/metrics/','/mixtures/',
     '/recipe-templates/','/calculation-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
     '/mixtures/new/','/recipe-templates/new/','/calculation-templates/new/','/recipes/new/','/tests/new/',
     '/recipes/1/','/tests/1/','/sources/1/','/sources/4/'];
   for (const path of desktopPaths) await go(path);
-  for (const [path, filename] of [['/lots/','lots.png'],['/recipe-templates/','recipe-templates.png'],
+  for (const [path, filename] of [['/lots/','lots.png'],['/material-categories/','categories.png'],['/recipe-templates/','recipe-templates.png'],
     ['/sources/1/','source.png']]) {
     await go(path); await page.screenshot({path:join(artifacts,filename),fullPage:true});
   }
@@ -196,6 +278,40 @@ try {
   await go('/tests/1/');
   await page.screenshot({path:join(artifacts, 'test.png'),fullPage:true});
   console.log('Desktop pages render without overflow; pristine winter UI screenshots saved.');
+
+  await go('/material-categories/');
+  assert.ok(await page.locator('tbody a[href^="/material-categories/"]').count() > 0,
+    'Seeded categories must be populated');
+  assert.ok((await page.locator('main').innerText()).includes('Полиолы'));
+  assert.ok((await page.locator('main').innerText()).includes('Изоцианаты'));
+  assert.ok((await page.locator('tbody tr td:last-child').allTextContents())
+    .every(value => Number(value.trim()) > 0), 'Seeded categories have materials');
+  assert.equal(await page.locator('.sidebar a[href="/material-categories/"]').count(), 1);
+
+  await go('/recipes/?q=316.26');
+  const archiveRecipe = await page.getByRole('link', {
+    name: '316.26', exact: true,
+  }).getAttribute('href');
+  await go(archiveRecipe);
+  const archiveComponent = page.locator('.panel').filter({
+    has: page.getByRole('heading', {name: 'Состав · группа Смесь A'}),
+  }).locator('tbody tr').first();
+  assert.equal(await archiveComponent.locator('a[href^="/materials/"]').innerText(), 'Inovol C210');
+  const importedLot = archiveComponent.locator('a[href^="/lots/"]');
+  assert.equal(await importedLot.innerText(), '260613G');
+  const importedLotPath = await importedLot.getAttribute('href');
+  const archiveSource = await page.locator('.detail-grid > aside a[href^="/sources/"]').first().getAttribute('href');
+  assert.match(await page.locator('#recipe-calculation').innerText(), /€/);
+  await go(importedLotPath);
+  assert.match(await page.locator('main').innerText(), /Inovol C210/);
+  assert.match(await page.locator('main').innerText(), /€/);
+  await go(archiveSource);
+  await checkArchiveDownload(page);
+  await go('/materials/?q=Inovol%20C210');
+  assert.equal(await page.locator('tbody tr').count(), 1);
+  assert.match(await page.locator('tbody tr td').nth(1).innerText(), /Полиол/i);
+  console.log('Imported 316.26 uses canonical material, extracted lot, EUR prices and a verified Excel download.');
+  await checkCarriedForwardFork(page, go, submit);
 
   const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,storageState:await context.storageState()});
   const mobilePage=await mobile.newPage();
@@ -401,19 +517,35 @@ try {
   assert.match(download.headers()['content-disposition'],/attachment/);
 
   // A real lot can be registered, quarantined, released and traced to a plan.
+  await go('/material-categories/new/');
+  await page.locator('#id_name').fill('QA полиолы');
+  await page.locator('#id_description').fill('QA описание категории сырья');
+  await submit('Сохранить');
+  const categoryPath = new URL(page.url()).pathname;
   await go('/materials/new/');
   await page.locator('#id_name').fill('QA зимний полиол');
-  await page.locator('#id_category').fill('Полиол');
+  await page.locator('#id_category').selectOption('QA полиолы');
   await page.locator('#id_supplier').fill('QA поставщик');
-  await page.locator('#id_density_g_ml').fill('1.05');
-  await page.locator('#id_price_per_kg').fill('200');
+  assert.equal(await page.locator('#id_density_g_ml,#id_price_per_kg,#id_price_currency').count(), 0);
   await submit('Сохранить');
   const materialPath=new URL(page.url()).pathname;
   const materialId=materialPath.split('/')[2];
+  await go(categoryPath + 'edit/');
+  await page.locator('#id_name').fill('QA полиолы уточнённые');
+  await submit('Сохранить');
+  assert.equal(await page.locator(`a[href="${materialPath}"]`).count(), 1);
+  await go(materialPath);
+  assert.match(await page.locator('main').innerText(), /QA полиолы уточнённые/);
+  await go('/materials/?category=' + encodeURIComponent('QA полиолы уточнённые'));
+  assert.equal(await page.locator('tbody tr').count(), 1);
+  await go('/material-categories/');
+  assert.match(await page.locator('main').innerText(), /QA описание категории сырья/);
   await go('/lots/new/?material='+materialId);
   await page.locator('#id_lot_code').fill('QA-WINTER-LOT-001');
   await page.locator('#id_status').selectOption('quarantine');
   await page.locator('#id_density_g_ml').fill('1.1');
+  await page.locator('#id_price_per_kg').fill('200');
+  await page.locator('#id_price_currency').selectOption('RUB');
   await page.locator('#id_source').selectOption(uploadedSource.split('/')[2]);
   await submit('Сохранить');
   const lotPath=new URL(page.url()).pathname;
@@ -477,7 +609,7 @@ try {
   assert.ok(baselineCalculation);
   await go(lotPath);
   assert.equal(await page.locator(`a[href="${calculatedRecipePath}"]`).count(),1);
-  await go(materialPath+'edit/');
+  await go(lotPath+'edit/');
   await page.locator('#id_price_per_kg').fill('400');
   await submit('Сохранить');
   await go(calculatedRecipePath);
@@ -494,7 +626,7 @@ try {
   assert.match(await cost(),/^400\s*₽$/);
   await go(baselineCalculation);
   assert.equal(await cost(),baselineCost);
-  await checkAdditionalMobile([lotPath,recipeTemplatePath,calculationTemplatePath,baselineCalculation]);
+  await checkAdditionalMobile([categoryPath,categoryPath+'edit/',lotPath,recipeTemplatePath,calculationTemplatePath,baselineCalculation]);
   for (const [path,filename] of [[calculationTemplatePath,'calculation-template.png'],[baselineCalculation,'calculation.png']]) {
     await go(path);
     await page.screenshot({path:join(artifacts,filename),fullPage:true});
@@ -504,7 +636,7 @@ try {
   assert.ok((await historyTarget.getAttribute('href')).startsWith('/sources/'));
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),historyTarget.click()]);
   assert.ok(new URL(page.url()).pathname.startsWith('/sources/'));
-  console.log('Sources, uploads/SHA, provenance, materials/lots, quarantine, recipe/calculation templates and immutable recalculation all passed.');
+  console.log('Sources, uploads/SHA, provenance, material categories/rename/filter, materials/lots, quarantine, recipe/calculation templates and immutable recalculation all passed.');
 
   await go('/employees/');
   await option(page,'#id_employee','Иван Иванов');
@@ -515,7 +647,7 @@ try {
   for(const word of ['Редактировать','Записать результат','Добавить наблюдение','Записать обработку']) assert.equal(await page.getByRole('link',{name:new RegExp(word)}).count(),0,`Reader controls: ${word}`);
   const csrf=await page.locator('[name="csrfmiddlewaretoken"]').first().inputValue();
   for(const path of ['/recipes/new/','/tests/new/',card+'results/new/',card+'observations/new/',card+'conditioning/new/',
-    '/sources/new/','/materials/new/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/',
+    '/sources/new/','/materials/new/','/material-categories/new/',categoryPath+'edit/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/',
     '/calculation-templates/new/',calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/']){
     const response=await page.request.post(base+path,{form:{csrfmiddlewaretoken:csrf},headers:{Referer:base+card}});
     assert.equal(response.status(),403,`Reader direct POST ${path}`);

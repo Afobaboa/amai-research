@@ -1,0 +1,50 @@
+{% extends 'lab/base.html' %}
+{% block title %}Категории материалов{% endblock %}
+{% block breadcrumb %}Категории материалов{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <h1>Категории материалов</h1>
+    <p>Группы сырья и объяснение их назначения. Материалу назначается одна категория.</p>
+  </div>
+  {% if can_write %}
+  <a class="button primary" href="{% url 'category_create' %}">+ Новая категория</a>
+  {% endif %}
+</div>
+<div class="info-note">
+  <a class="record-link" href="{% url 'material_list' %}?category=unclassified">Без категории: {{ unclassified_count }}</a>.
+  {% if unclassified_count %}
+  Для материалов без указанной категории классификация пока не задана.
+  Автор может создать категорию и назначить её в карточке материала.
+  {% else %}
+  Все материалы распределены по категориям. Классификацию можно уточнить в карточке материала.
+  {% endif %}
+</div>
+<section class="panel">
+  <form class="filter-bar" method="get">
+    <div class="search-field">
+      <svg><use href="#i-search"/></svg>
+      <input name="q" value="{{ q }}" aria-label="Поиск категорий" placeholder="Название или описание…">
+    </div>
+    <button class="button small">Найти</button>
+    {% if q %}<a class="text-link" href="{% url 'category_list' %}">Сбросить</a>{% endif %}
+  </form>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>КАТЕГОРИЯ</th><th>ОПИСАНИЕ</th><th>МАТЕРИАЛОВ</th></tr></thead>
+      <tbody>
+        {% for category in categories %}
+        <tr>
+          <td><a class="record-link" href="{% url 'category_detail' category.pk %}">{{ category.name }}</a></td>
+          <td>{{ category.description|default:'Описание не задано' }}</td>
+          <td>{{ category.material_count }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3" class="muted">Категорий пока нет. Материалы без классификации доступны по ссылке выше.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include 'lab/includes/pagination.html' %}
+</section>
+{% endblock %}

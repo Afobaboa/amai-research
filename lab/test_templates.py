@@ -16,15 +16,29 @@ from .models import (CalculationRecord, CalculationTemplate, ChangeEvent, Employ
 class TemplateWorkflowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.author = EmployeeProfile.objects.create(full_name='Автор шаблонов', role='author')
-        cls.reader = EmployeeProfile.objects.create(full_name='Читатель шаблонов', role='reader')
-        cls.material = Material.objects.create(name='Материал шаблона', density_g_ml=Decimal('1.1'), price_per_kg=Decimal('100'))
-        cls.mixture = MixtureType.objects.create(code='TEMPLATE', title='Зимняя тестовая серия')
-        cls.calculation = CalculationTemplate.objects.create(name='Расчёт плотности', operations=['mass', 'density'], created_by=cls.author)
-        cls.recipe = RecipeVersion.objects.create(version_label='TPL.1', title='Исходная рецептура', status='published',
-                                                  mixture_type=cls.mixture, calculation_template=cls.calculation, created_by=cls.author)
-        cls.group = RecipeGroup.objects.create(recipe_version=cls.recipe, label='A', quantity_basis='mass_percent', completeness='complete')
-        RecipeComponent.objects.create(group=cls.group, position=1, unbatched_material=cls.material, quantity_value=Decimal('100'))
+        cls.author = EmployeeProfile.objects.create(
+            full_name='Автор шаблонов', role='author')
+        cls.reader = EmployeeProfile.objects.create(
+            full_name='Читатель шаблонов', role='reader')
+        cls.material = Material.objects.create(name='Материал шаблона')
+        cls.lot = MaterialLot.objects.create(
+            material=cls.material, lot_code='TEMPLATE-01',
+            density_g_ml=Decimal('1.1'), price_per_kg=Decimal('100'))
+        cls.mixture = MixtureType.objects.create(
+            code='TEMPLATE', title='Зимняя тестовая серия')
+        cls.calculation = CalculationTemplate.objects.create(
+            name='Расчёт плотности', operations=['mass', 'density'],
+            created_by=cls.author)
+        cls.recipe = RecipeVersion.objects.create(
+            version_label='TPL.1', title='Исходная рецептура', status='published',
+            mixture_type=cls.mixture, calculation_template=cls.calculation,
+            created_by=cls.author)
+        cls.group = RecipeGroup.objects.create(
+            recipe_version=cls.recipe, label='A', quantity_basis='mass_percent',
+            completeness='complete')
+        RecipeComponent.objects.create(
+            group=cls.group, position=1, specified_lot=cls.lot,
+            quantity_value=Decimal('100'))
 
     def sign_in(self, employee=None):
         session = self.client.session
@@ -33,14 +47,19 @@ class TemplateWorkflowTests(TestCase):
         session.save()
 
     def recipe_payload(self, **extra):
-        payload = {'name': 'Зимний шаблон', 'version': '1', 'mixture_type': str(self.mixture.pk),
-                   'calculation_template': str(self.calculation.pk), 'batch_mass_g': '1000', 'description': 'Учебный шаблон',
-                   'components-TOTAL_FORMS': '1', 'components-INITIAL_FORMS': '0',
-                   'components-0-group_label': 'A', 'components-0-quantity_basis': 'mass_percent',
-                   'components-0-completeness': 'complete', 'components-0-material': str(self.material.pk),
-                   'components-0-quantity_value': '100',
-                   'filling-TOTAL_FORMS': '1', 'filling-INITIAL_FORMS': '0',
-                   'filling-0-group_label': 'A', 'filling-0-mass_g': '220'}
+        payload = {
+            'name': 'Зимний шаблон', 'version': '1',
+            'mixture_type': str(self.mixture.pk),
+            'calculation_template': str(self.calculation.pk), 'batch_mass_g': '1000',
+            'description': 'Учебный шаблон',
+            'components-TOTAL_FORMS': '1', 'components-INITIAL_FORMS': '0',
+            'components-0-group_label': 'A',
+            'components-0-quantity_basis': 'mass_percent',
+            'components-0-completeness': 'complete', 'components-0-material': '',
+            'components-0-specified_lot': str(self.lot.pk),
+            'components-0-quantity_value': '100',
+            'filling-TOTAL_FORMS': '1', 'filling-INITIAL_FORMS': '0',
+            'filling-0-group_label': 'A', 'filling-0-mass_g': '220'}
         payload.update(extra)
         return payload
 
@@ -91,12 +110,15 @@ class TemplateWorkflowTests(TestCase):
 
     def test_saving_existing_recipe_as_template_uses_actual_saved_rows(self):
         self.sign_in()
-        response = self.client.get(reverse('recipe_template_from_recipe', args=[self.recipe.pk]))
+        response = self.client.get(reverse(
+            'recipe_template_from_recipe', args=[self.recipe.pk]))
         self.assertEqual(response.status_code, 200)
         formset = response.context['component_formset']
-        self.assertEqual(formset.initial[0]['material'], self.material.pk)
+        self.assertIsNone(formset.initial[0]['material'])
+        self.assertEqual(formset.initial[0]['specified_lot'], self.lot.pk)
         self.assertEqual(Decimal(formset.initial[0]['quantity_value']), Decimal('100'))
-        self.assertEqual(response.context['form'].initial['calculation_template'], self.calculation.pk)
+        self.assertEqual(response.context['form'].initial['calculation_template'],
+                         self.calculation.pk)
 
     def test_reader_views_templates_and_cannot_create_or_fork(self):
         template = RecipeTemplate.objects.create(name='Чтение', definition={'components': [], 'filling': []})

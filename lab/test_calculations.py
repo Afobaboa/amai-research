@@ -14,14 +14,27 @@ from .models import (
 class CalculationTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.author = EmployeeProfile.objects.create(full_name="Автор расчетов", role="author")
-        cls.first = Material.objects.create(name="Первый полиол", density_g_ml=1, price_per_kg=100)
-        cls.second = Material.objects.create(name="Второй полиол", density_g_ml=2, price_per_kg=200)
-        cls.template = CalculationTemplate.objects.create(name="Масса, объем и цена", created_by=cls.author)
-        cls.recipe = RecipeVersion.objects.create(version_label="WINTER.1", batch_mass_g=1000, calculation_template=cls.template)
-        cls.group = RecipeGroup.objects.create(recipe_version=cls.recipe, label="A", quantity_basis="mass_percent", completeness="complete")
-        cls.row_a = RecipeComponent.objects.create(group=cls.group, position=1, unbatched_material=cls.first, quantity_value=50)
-        cls.row_b = RecipeComponent.objects.create(group=cls.group, position=2, unbatched_material=cls.second, quantity_value=50)
+        cls.author = EmployeeProfile.objects.create(
+            full_name="Автор расчетов", role="author")
+        cls.first = Material.objects.create(name="Первый полиол")
+        cls.second = Material.objects.create(name="Второй полиол")
+        cls.first_lot = MaterialLot.objects.create(
+            material=cls.first, lot_code='FIRST', density_g_ml=1, price_per_kg=100)
+        cls.second_lot = MaterialLot.objects.create(
+            material=cls.second, lot_code='SECOND', density_g_ml=2, price_per_kg=200)
+        cls.template = CalculationTemplate.objects.create(
+            name="Масса, объем и цена", created_by=cls.author)
+        cls.recipe = RecipeVersion.objects.create(
+            version_label="WINTER.1", batch_mass_g=1000,
+            calculation_template=cls.template)
+        cls.group = RecipeGroup.objects.create(
+            recipe_version=cls.recipe, label="A", quantity_basis="mass_percent",
+            completeness="complete")
+        cls.row_a = RecipeComponent.objects.create(
+            group=cls.group, position=1, specified_lot=cls.first_lot, quantity_value=50)
+        cls.row_b = RecipeComponent.objects.create(
+            group=cls.group, position=2, specified_lot=cls.second_lot,
+            quantity_value=50)
 
     def group_output(self):
         return calculate_recipe(self.recipe)["groups"][0]
@@ -36,8 +49,8 @@ class CalculationTests(TestCase):
         self.assertEqual(output["rows"][0]["mass_g"], "500")
 
     def test_batch_price_zero_and_density_override_are_used_without_fallback(self):
-        lot = MaterialLot.objects.create(material=self.first, lot_code="WINTER-01", density_g_ml=4, price_per_kg=0)
-        self.row_a.unbatched_material = None
+        lot = MaterialLot.objects.create(
+            material=self.first, lot_code="WINTER-01", density_g_ml=4, price_per_kg=0)
         self.row_a.specified_lot = lot
         self.row_a.save()
         output = self.group_output()
@@ -48,7 +61,8 @@ class CalculationTests(TestCase):
         self.assertEqual(output["volume_ml"], "375")
 
     def test_missing_prices_and_density_do_not_become_zero(self):
-        Material.objects.filter(pk=self.first.pk).update(density_g_ml=None, price_per_kg=None)
+        MaterialLot.objects.filter(pk=self.first_lot.pk).update(
+            density_g_ml=None, price_per_kg=None)
         output = self.group_output()
         self.assertIsNone(output["total_cost"])
         self.assertIsNone(output["density_g_ml"])
@@ -57,7 +71,8 @@ class CalculationTests(TestCase):
         self.assertTrue(output["issues"])
 
     def test_zero_mass_row_contributes_zero_despite_unknown_price_and_density(self):
-        Material.objects.filter(pk=self.first.pk).update(density_g_ml=None, price_per_kg=None)
+        MaterialLot.objects.filter(pk=self.first_lot.pk).update(
+            density_g_ml=None, price_per_kg=None)
         RecipeComponent.objects.filter(pk=self.row_a.pk).update(quantity_value=0)
         RecipeComponent.objects.filter(pk=self.row_b.pk).update(quantity_value=100)
         output = self.group_output()
@@ -66,6 +81,20 @@ class CalculationTests(TestCase):
         self.assertEqual(output["rows"][0]["volume_ml"], "0")
         self.assertEqual(output["total_cost"], "200")
         self.assertEqual(output["density_g_ml"], "2")
+
+    def test_material_without_selected_lot_has_unknown_price_and_density(self):
+        self.row_a.specified_lot = None
+        self.row_a.unbatched_material = self.first
+        self.row_a.save()
+        output = self.group_output()
+        row = output['rows'][0]
+        self.assertIsNone(row['lot_id'])
+        self.assertIsNone(row['price_per_kg'])
+        self.assertIsNone(row['density_g_ml'])
+        self.assertIsNone(row['cost'])
+        self.assertIsNone(row['volume_ml'])
+        self.assertIsNone(output['total_cost'])
+        self.assertEqual(output['rows'][1]['cost'], '100')
 
     def test_missing_quantity_stops_group_calculations(self):
         RecipeComponent.objects.filter(pk=self.row_a.pk).update(quantity_value=None)
@@ -99,12 +128,15 @@ class CalculationTests(TestCase):
     def test_saved_inputs_are_immutable_when_catalogue_or_lot_changes(self):
         record = save_calculation(self.recipe, self.author)
         self.assertEqual(record.outputs["groups"][0]["total_cost"], "150")
-        self.assertEqual(record.inputs["groups"][0]["components"][0]["price_per_kg"], "100")
-        Material.objects.filter(pk=self.first.pk).update(price_per_kg=900, density_g_ml=4)
+        self.assertEqual(
+            record.inputs["groups"][0]["components"][0]["price_per_kg"], "100")
+        MaterialLot.objects.filter(pk=self.first_lot.pk).update(
+            price_per_kg=900, density_g_ml=4)
         self.assertEqual(self.group_output()["total_cost"], "550")
         record.refresh_from_db()
         self.assertEqual(record.outputs["groups"][0]["total_cost"], "150")
-        self.assertEqual(record.inputs["groups"][0]["components"][0]["price_per_kg"], "100")
+        self.assertEqual(
+            record.inputs["groups"][0]["components"][0]["price_per_kg"], "100")
         with self.assertRaises(ValidationError):
             CalculationRecord.objects.filter(pk=record.pk).update(outputs={})
         with self.assertRaises(ValidationError):
@@ -131,9 +163,11 @@ class CalculationTests(TestCase):
         with self.assertRaises(ValidationError):
             RecipeTemplate.objects.filter(pk=template.pk).update(name="Changed")
 
-    def test_material_property_constraints_and_note_source_without_fake_hash(self):
-        note = SourceFile.objects.create(title="Учебная заметка", original_path="Учебная заметка", kind="note", notes="Без исходного файла")
+    def test_lot_property_constraints_and_note_source_without_fake_hash(self):
+        note = SourceFile.objects.create(
+            title="Учебная заметка", original_path="Учебная заметка",
+            kind="note", notes="Без исходного файла")
         self.assertEqual(note.sha256, "")
         for update in ({"density_g_ml": 0}, {"price_per_kg": -1}):
             with self.assertRaises(IntegrityError), transaction.atomic():
-                Material.objects.filter(pk=self.first.pk).update(**update)
+                MaterialLot.objects.filter(pk=self.first_lot.pk).update(**update)

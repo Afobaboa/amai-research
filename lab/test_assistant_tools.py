@@ -20,8 +20,11 @@ class LaboratoryAssistantToolTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.employee = EmployeeProfile.objects.create(full_name='Не передавать профиль сотрудника')
-        cls.material = Material.objects.create(name='Полиол А', density_g_ml=Decimal('1.10'), price_per_kg=0)
-        cls.lot = MaterialLot.objects.create(material=cls.material, lot_code='А-01')
+        cls.material = Material.objects.create(name='Полиол А')
+        cls.lot = MaterialLot.objects.create(
+            material=cls.material, lot_code='А-01',
+            density_g_ml=Decimal('1.10'), price_per_kg=0,
+        )
         cls.source = SourceFile.objects.create(title='Протокол', original_path='Архив/опыт.xlsx')
         cls.sheet = SourceSheet.objects.create(file=cls.source, name='Испытания')
         cls.cell = SourceCell.objects.create(sheet=cls.sheet, address='C12', cell_kind='number', raw_value='42')
@@ -76,6 +79,54 @@ class LaboratoryAssistantToolTests(TestCase):
         self.assertEqual(recipes['total'], 1)
         by_observation = execute_tool('search_lab_data', {'entity': 'tests', 'q': 'Мелкая'})
         self.assertEqual(by_observation['total'], 1)
+
+    def test_material_and_lot_prices_publish_explicit_currencies(self):
+        self.lot.price_per_kg = Decimal('2.50')
+        self.lot.price_currency = 'EUR'
+        self.lot.save()
+        search = execute_tool('search_lab_data', {'entity': 'materials'})
+        self.assertNotIn('price_per_kg', search['items'][0])
+        self.assertNotIn('density_g_ml', search['items'][0])
+        material = execute_tool('get_lab_record', {
+            'entity': 'materials', 'id': self.material.pk, 'section': 'all',
+        })
+        self.assertNotIn('price_per_kg', material)
+        self.assertNotIn('density_g_ml', material)
+        self.assertNotIn('price_currency', material)
+        self.assertEqual(material['lots']['items'][0]['price_currency'], 'EUR')
+        lot = execute_tool('get_lab_record', {
+            'entity': 'lots', 'id': self.lot.pk, 'section': 'all',
+        })
+        self.assertEqual(lot['effective_price_currency'], 'EUR')
+        self.assertEqual(Decimal(lot['effective_price_per_kg']), Decimal('2.50'))
+
+    def test_lot_price_currency_follows_the_selected_price(self):
+        self.lot.price_per_kg = Decimal('250')
+        self.lot.price_currency = 'RUB'
+        self.lot.save()
+        lot = execute_tool('get_lab_record', {
+            'entity': 'lots', 'id': self.lot.pk, 'section': 'all',
+        })
+        self.assertEqual(lot['price_currency'], 'RUB')
+        self.assertEqual(lot['effective_price_currency'], 'RUB')
+        self.assertEqual(Decimal(lot['effective_price_per_kg']), Decimal('250'))
+        section = execute_tool('get_lab_record', {
+            'entity': 'lots', 'id': self.lot.pk,
+            'section': 'effective_price_currency',
+        })
+        self.assertEqual(section['effective_price_currency'], 'RUB')
+
+    def test_missing_lot_properties_are_not_filled_from_material(self):
+        self.lot.price_per_kg = None
+        self.lot.density_g_ml = None
+        self.lot.save()
+        lot = execute_tool('get_lab_record', {
+            'entity': 'lots', 'id': self.lot.pk, 'section': 'all',
+        })
+        self.assertIsNone(lot['price_per_kg'])
+        self.assertIsNone(lot['density_g_ml'])
+        self.assertIsNone(lot['effective_price_per_kg'])
+        self.assertIsNone(lot['effective_density_g_ml'])
 
     def test_cyrillic_search_is_case_insensitive_across_related_fields(self):
         queries = [('materials', 'пОлИоЛ', 1), ('recipes', 'полиол', 1),

@@ -7,19 +7,24 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.forms.models import model_to_dict
-from django.http import FileResponse, Http404
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .catalog_forms import MaterialForm, MaterialLotForm, MetricForm, MixtureTypeForm, SourceCellForm, SourceForm, SourceSheetForm
+from .catalog_forms import (
+    MaterialCategoryForm, MaterialForm, MaterialLotForm, MetricForm,
+    MixtureTypeForm, SourceCellForm, SourceForm, SourceSheetForm,
+)
 from .models import (
-    ChangeEvent, Material, MaterialLot, Metric, MixtureType, RecipeVersion,
+    ChangeEvent, Material, MaterialCategory, MaterialLot, Metric, MixtureType,
+    RecipeVersion,
     SourceCell, SourceFile, SourceSheet, TestSession,
 )
 from .views import author_required, site_required
+from .source_files import download_available, download_response
 
 
 def snapshot(instance):
@@ -51,12 +56,25 @@ def form_page(request, form, title, cancel_url, description=''):
 
 @site_required
 def material_list(request):
-    materials = Material.objects.all()
+    materials = Material.objects.annotate(lot_count=Count('lots')).order_by(
+        'name', 'pk',
+    )
     q = request.GET.get('q', '').strip()
     if q:
-        materials = materials.filter(Q(name__icontains=q) | Q(category__icontains=q) | Q(supplier__icontains=q))
+        materials = materials.filter(
+            Q(name__icontains=q) | Q(category__icontains=q) |
+            Q(supplier__icontains=q),
+        )
+    category = request.GET.get('category', '')
+    if category == 'unclassified':
+        materials = materials.filter(category='')
+    elif category:
+        materials = materials.filter(category=category)
     result = page(request, materials)
-    return render(request, 'lab/catalog/material_list.html', {'materials': result, 'page_obj': result, 'q': q})
+    return render(request, 'lab/catalog/material_list.html', {
+        'materials': result, 'page_obj': result, 'q': q,
+        'category': category, 'categories': MaterialCategory.objects.all(),
+    })
 
 
 @site_required
@@ -77,14 +95,86 @@ def material_save(request, pk=None):
     form = MaterialForm(request.POST or None, instance=material)
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
-            before = snapshot(Material.objects.select_for_update().get(pk=pk)) if pk else {}
+            before = (snapshot(Material.objects.select_for_update().get(pk=pk))
+                      if pk else {})
             material = form.save()
-            audit(request, material, 'material', before, f'Сохранён материал {material.name}')
-        messages.success(request, 'Материал сохранён. Новые расчёты используют актуальные свойства; сохранённые снимки не меняются.')
+            if material.category:
+                MaterialCategory.objects.get_or_create(name=material.category)
+            audit(request, material, 'material', before,
+                  f'Сохранён материал {material.name}')
+        messages.success(request, 'Материал сохранён.')
         return redirect('material_detail', pk=material.pk)
     return form_page(request, form, 'Редактирование материала' if pk else 'Новый материал',
                      reverse('material_detail', args=[pk]) if pk else reverse('material_list'),
-                     'Справочные свойства материала и данные поставщика.')
+                     'Марка сырья, категория и данные поставщика. '
+                     'Плотность и цена указываются в партиях материала.')
+
+
+@site_required
+def category_list(request):
+    categories = MaterialCategory.objects.all()
+    q = request.GET.get('q', '').strip()
+    if q:
+        categories = categories.filter(
+            Q(name__icontains=q) | Q(description__icontains=q),
+        )
+    result = page(request, categories)
+    counts = dict(Material.objects.order_by().values_list('category').annotate(
+        total=Count('pk'),
+    ))
+    for category in result:
+        category.material_count = counts.get(category.name, 0)
+    return render(request, 'lab/catalog/category_list.html', {
+        'categories': result, 'page_obj': result, 'q': q,
+        'unclassified_count': counts.get('', 0),
+    })
+
+
+@site_required
+def category_detail(request, pk):
+    category = get_object_or_404(MaterialCategory, pk=pk)
+    materials = page(request, Material.objects.filter(
+        category=category.name,
+    ).annotate(lot_count=Count('lots')).order_by('name', 'pk'))
+    return render(request, 'lab/catalog/category_detail.html', {
+        'category': category, 'materials': materials, 'page_obj': materials,
+        'events': events('material_category', pk),
+    })
+
+
+def rename_material_category(request, previous, category):
+    if not previous or previous == category.name:
+        return
+    materials = Material.objects.select_for_update().filter(category=previous)
+    for material in materials:
+        before = snapshot(material)
+        material.category = category.name
+        material.save(update_fields=['category'])
+        audit(request, material, 'material', before,
+              f'Категория материала переименована: {category.name}')
+
+
+@author_required
+def category_save(request, pk=None):
+    category = get_object_or_404(MaterialCategory, pk=pk) if pk else None
+    form = MaterialCategoryForm(request.POST or None, instance=category)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            locked = (MaterialCategory.objects.select_for_update().get(pk=pk)
+                      if pk else None)
+            before = snapshot(locked) if locked else {}
+            category = form.save()
+            rename_material_category(request, before.get('name'), category)
+            audit(request, category, 'material_category', before,
+                  f'Сохранена категория материалов {category.name}')
+        messages.success(request, 'Категория материалов сохранена.')
+        return redirect('category_detail', pk=category.pk)
+    cancel = (reverse('category_detail', args=[pk]) if pk
+              else reverse('category_list'))
+    return form_page(
+        request, form, 'Редактирование категории' if pk else 'Новая категория',
+        cancel, 'Назначение категории и состав входящих в неё материалов.',
+    )
 
 
 @site_required
@@ -145,6 +235,8 @@ def source_list(request):
     if kind in {'file', 'link', 'note'}:
         sources = sources.filter(kind=kind)
     result = page(request, sources.order_by('-created_at', '-pk'))
+    for source in result:
+        source.download_available = download_available(source)
     return render(request, 'lab/catalog/source_list.html', {'sources': result, 'page_obj': result,
                   'q': q, 'kind': kind})
 
@@ -155,6 +247,7 @@ def source_detail(request, pk):
     context = _source_fragments(request, source)
     context.update(
         source=source,
+        download_available=download_available(source),
         recipes=RecipeVersion.objects.filter(source_sheet__file=source),
         cards=TestSession.objects.filter(source_sheet__file=source),
         lots=source.lots.select_related('material'), events=events('source', pk),
@@ -225,15 +318,7 @@ def source_save(request, pk=None):
 @site_required
 def source_download(request, pk):
     source = get_object_or_404(SourceFile, pk=pk)
-    if not source.attachment:
-        raise Http404('Вложение отсутствует.')
-    try:
-        response = FileResponse(source.attachment.open('rb'), as_attachment=True,
-                                filename=PureWindowsPath(source.original_path).name)
-    except FileNotFoundError:
-        raise Http404('Файл источника не найден.')
-    response['X-Content-Type-Options'] = 'nosniff'
-    return response
+    return download_response(source)
 
 
 @author_required

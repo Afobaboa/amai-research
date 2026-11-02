@@ -15,6 +15,7 @@ from . import models as lab
 from .initial_cleanup import RECIPE_NOTE
 from .initial_data import DATA_PATH, seed_initial
 from .forms import ComponentForm
+from .calculations import calculate_recipe
 
 
 class InitialDataTests(TestCase):
@@ -33,17 +34,19 @@ class InitialDataTests(TestCase):
         self.assertEqual(lab.TestSession.objects.count(), 167)
         self.assertEqual(lab.SourceFile.objects.count(), 6)
         self.assertEqual(lab.SourceSheet.objects.count(), 302)
-        self.assertFalse(lab.MaterialLot.objects.exists())
-        self.assertFalse(lab.Material.objects.exclude(
-            density_g_ml=None, price_per_kg=None,
+        self.assertEqual(lab.Material.objects.count(), 72)
+        self.assertEqual(lab.MaterialLot.objects.count(), 124)
+        self.assertTrue(lab.MaterialLot.objects.filter(
+            price_currency='EUR', price_per_kg__isnull=False,
+            density_g_ml__isnull=False,
         ).exists())
 
     def test_snapshot_hashes_and_every_raw_cell_survive_loading(self):
         data = json.loads(DATA_PATH.read_text())
-        root = Path(__file__).resolve().parents[2]
+        root = Path(__file__).resolve().parents[1]
         for source in data['files']:
             self.assertEqual(hashlib.sha256(
-                (root / source['path']).read_bytes(),
+                (root / 'initial_data/sources' / f"{source['sha256']}.xlsx").read_bytes(),
             ).hexdigest(), source['sha256'])
             sheets = lab.SourceSheet.objects.filter(
                 file__original_path=source['path'],
@@ -82,14 +85,46 @@ class InitialDataTests(TestCase):
     def test_repeated_initialization_preserves_user_work_and_has_no_duplicates(self):
         material = lab.Material.objects.first()
         material.notes = 'Проверено сотрудником'
-        material.price_per_kg = Decimal('123')
         material.save()
+        lot = lab.MaterialLot.objects.first()
+        lot.price_per_kg = Decimal('123')
+        lot.save()
         before = self.counts()
         call_command('seed_initial', stdout=StringIO())
         self.assertEqual(self.counts(), before)
         material.refresh_from_db()
         self.assertEqual(material.notes, 'Проверено сотрудником')
-        self.assertEqual(material.price_per_kg, Decimal('123'))
+        lot.refresh_from_db()
+        self.assertEqual(lot.price_per_kg, Decimal('123'))
+
+    def test_material_has_identity_fields_and_properties_belong_to_lots(self):
+        fields = {field.name for field in lab.Material._meta.fields}
+        self.assertFalse(fields & {'price_per_kg', 'density_g_ml', 'price_currency'})
+        self.assertTrue(lab.MaterialLot.objects.filter(
+            density_g_ml__isnull=False, price_per_kg__isnull=False,
+        ).exists())
+
+    def test_tep_price_uses_previous_sheet_with_explicit_provenance(self):
+        recipe = lab.RecipeVersion.objects.get(
+            mixture_type__code='302', version_label='302.84',
+        )
+        prop = lab.RecipeProperty.objects.get(
+            component__group__recipe_version=recipe,
+            component__specified_lot__material__name='TEP-Z',
+            property_code='source_price_per_kg',
+        )
+        self.assertEqual(prop.value, Decimal('64.69'))
+        self.assertEqual(prop.unit_code, 'EUR/kg')
+        self.assertEqual(prop.origin, 'carried_forward')
+        self.assertEqual(prop.source_cell.sheet.name, '302.83')
+        self.assertEqual(prop.source_cell.address, 'C12')
+        self.assertIn('302.83', prop.provenance_note)
+        self.assertFalse(recipe.source_sheet.cells.filter(address='C11').exists())
+        group = calculate_recipe(recipe)['groups'][0]
+        row = next(row for row in group['rows'] if row['name'] == 'TEP-Z')
+        self.assertEqual(Decimal(row['price_per_kg']), Decimal('64.69'))
+        self.assertEqual(row['price_source_cell_id'], prop.source_cell_id)
+        self.assertEqual(row['price_source_origin'], 'carried_forward')
 
     def test_cross_run_formula_dependencies_link_existing_recorded_results(self):
         result = lab.Result.objects.get(

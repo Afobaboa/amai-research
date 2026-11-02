@@ -1,0 +1,1314 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-11-02",
+  "policy": "Кураторская функциональная классификация начального набора. Это справочные категории, а не измерения. Исходные названия и марки не объединяются по внешнему сходству; спорные обозначения выделены отдельно. Категории можно уточнять в LIMS.",
+  "references": {
+    "momentive_ocf": {
+      "title": "Momentive — Niax One Component Foams, 2024",
+      "url": "https://www.momentive.com/content/dam/momentive/en-us/products/marketing-documents/niax/Niax%20One%20Component%20Foams_Brochure_EU-IMEA_2024.pdf"
+    },
+    "momentive_a1": {
+      "title": "Momentive — Niax Catalyst A-1",
+      "url": "https://www.momentive.com/en-us/product-categories/additives/polyurethane-additives/rigid-foam-polyurethane-additives/niaxcatalysta-1"
+    },
+    "huntsman_zf22": {
+      "title": "Huntsman — JEFFCAT ZF-22",
+      "url": "https://products.huntsman.com/brands/jeffcat"
+    },
+    "mingxu_a1": {
+      "title": "Hebei Mingxu — amine catalysts, MXC-A1",
+      "url": "https://www.aminecatalyst.com/amine-catalysts.html"
+    },
+    "mingxu_dmdee": {
+      "title": "Hebei Mingxu — MXC-DMDEE",
+      "url": "https://www.aminecatalyst.com/products/2-2-dimorpholinodiethylether-dmdee.html"
+    },
+    "struktol8006": {
+      "title": "Schill + Seilacher — STRUKSILON 8006 technical sheet",
+      "url": "https://struktol.de/fileadmin/user_upload/Produkte/Silicone/Downloads/de/05226_8006_DE_TECH.PDF"
+    },
+    "maysta8872": {
+      "title": "Maysta International — MATESTAB AK-8872 SDS, 2022 (manufacturer-authored document hosted by distributor)",
+      "url": "https://www.moellerchemie.com/wp-content/uploads/2021/04/1943-Matestab-AK-8872.pdf"
+    },
+    "concentrol": {
+      "title": "Concentrol — Polyurethane systems, STB PU stabilizers",
+      "url": "https://concentrol.com/wp-content/uploads/2022/08/EN_sistemes-PUR.pdf"
+    },
+    "evonik84729": {
+      "title": "Evonik — TEGOSTAB B 84729 technical information",
+      "url": "https://products.evonik.com/assets/57/55/TEGOSTAB_B_84729_032021_EN_Asset_1165755.pdf"
+    },
+    "evonik_family": {
+      "title": "Evonik — TEGOSTAB surfactant family",
+      "url": "https://www.evonik.com/en/company/businesslines/ou/brands.html"
+    },
+    "sr234_patent": {
+      "title": "European Patent Office — EP0533202A1, SR-234 silicone surfactant",
+      "url": "https://data.epo.org/publication-server/rest/v1.0/publication-dates/19930324/patents/EP0533202NWA1/document.pdf"
+    },
+    "lanxess_tcpp": {
+      "title": "LANXESS — flame retardants product guide, TCPP",
+      "url": "https://lanxess.com/-/media/Project/Lanxess/Corporate-Internet/Products-and-Solutions/Brands/Mesamoll/Download2023/LANXESS_Flame_Retardants_product_guide_EN_20221014_w_mk.pdf"
+    },
+    "lanxess_tepz": {
+      "title": "LANXESS — LEVAGARD TEP-Z",
+      "url": "https://lanxess.com/en-us/products/products/l/levagard--tep-z"
+    },
+    "shivachlor": {
+      "title": "Shivtek Spechemi — ShivaCHLOR plasticizer product family",
+      "url": "https://shivtekspechemi.com/industries/plasticizers/"
+    },
+    "dow_polyols": {
+      "title": "Dow — VORANOL polyol product family",
+      "url": "https://www.dow.com/en-us/product-technology/pt-polyurethanes/pg-polyurethanes-polyols.html"
+    },
+    "inovol_polyols": {
+      "title": "INOV — INOVOL C210 polyether polyol",
+      "url": "https://www.inovchem.com/good-quality-polyether-polyol-case-series-inov.html"
+    }
+  },
+  "categories": [
+    {
+      "name": "Полиолы",
+      "description": "Гидроксилсодержащая основа полиуретановой системы. В эту группу отнесены полиольные марки с записанным в рецептурах гидроксильным числом (OHV)."
+    },
+    {
+      "name": "Аминные катализаторы",
+      "description": "Добавки для регулирования скорости реакций полиуретановой системы. Назначение подтверждено описанием марки или прямой пометкой A1 / DMDEE в исходнике."
+    },
+    {
+      "name": "Стабилизаторы и регуляторы ячеек",
+      "description": "Поверхностно-активные добавки, стабилизаторы пены и регуляторы открытия ячеек. Объединены по функции; марки сохраняются отдельно."
+    },
+    {
+      "name": "Антипирены и пластификаторы",
+      "description": "Фосфатные добавки и хлорпарафиновые продукты, применяемые как антипирены и/или пластификаторы. Категория не подтверждает огнестойкость готовой пены."
+    },
+    {
+      "name": "Изоцианаты",
+      "description": "Материалы, обозначенные в исходных рецептурах как компонент Iso. Исторические торговые названия сохранены без предположения о точной марке или составе."
+    },
+    {
+      "name": "Пропелленты и вспенивающие газы",
+      "description": "Газы и летучие компоненты плана заправки: DME, пропан-изобутан и фреоны. Противоречивые подписи исходника сохраняются для проверки."
+    },
+    {
+      "name": "Добавки (тип требует уточнения)",
+      "description": "Торговые марки добавок, для которых пока недостаточно надёжных данных о функции. Категорию следует уточнить по паспорту или техническому описанию конкретного продукта; химический тип не назначен по сходству названия."
+    }
+  ],
+  "materials": [
+    {
+      "name": "AC-8006",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.84",
+        "name_cell": "A17",
+        "raw_name": "AC-8006 "
+      }
+    },
+    {
+      "name": "AC8006",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.72",
+        "name_cell": "A16",
+        "raw_name": "AC8006 "
+      }
+    },
+    {
+      "name": "Alface 536 (5351)",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.60",
+        "name_cell": "A18",
+        "raw_name": "Alface 536 (5351)"
+      }
+    },
+    {
+      "name": "Algaurd TCPP",
+      "category": "Антипирены и пластификаторы",
+      "basis": "chemical_label",
+      "reason": "Назначение TCPP подтверждено каталогом производителя. Принадлежность конкретного исторического образца поставщику LANXESS не утверждается.",
+      "references": [
+        "lanxess_tcpp"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.61",
+        "name_cell": "A13",
+        "raw_name": "Algaurd TCPP "
+      }
+    },
+    {
+      "name": "Almin 004 is A1",
+      "category": "Аминные катализаторы",
+      "basis": "manufacturer_grade",
+      "reason": "Функция A-1 подтверждена производителем; для Almin сохранена прямая пометка «is A1» из Excel.",
+      "references": [
+        "momentive_a1"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.62",
+        "name_cell": "A15",
+        "raw_name": "Almin 004 is A1"
+      }
+    },
+    {
+      "name": "Almin 025 is DMDEE",
+      "category": "Аминные катализаторы",
+      "basis": "manufacturer_grade",
+      "reason": "Функция DMDEE подтверждена описанием производителя; для Almin сохранена прямая пометка «is DMDEE» из Excel.",
+      "references": [
+        "mingxu_dmdee"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.63",
+        "name_cell": "A14",
+        "raw_name": "Almin 025 is DMDEE"
+      }
+    },
+    {
+      "name": "BA-101",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.59",
+        "name_cell": "A15",
+        "raw_name": "BA-101 п."
+      }
+    },
+    {
+      "name": "CS-614",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.58",
+        "name_cell": "A19",
+        "raw_name": "CS-614 п.22082601"
+      }
+    },
+    {
+      "name": "Concentrol STB PU-2211",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_family",
+      "reason": "Производитель относит семейство STB PU к стабилизаторам; точная спецификация PU-2211 не восстанавливается.",
+      "references": [
+        "concentrol"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.38",
+        "name_cell": "A19",
+        "raw_name": "Concentrol STB PU-2211"
+      }
+    },
+    {
+      "name": "DMDEE",
+      "category": "Аминные катализаторы",
+      "basis": "manufacturer_grade",
+      "reason": "Функция DMDEE подтверждена описанием производителя; для Almin сохранена прямая пометка «is DMDEE» из Excel.",
+      "references": [
+        "mingxu_dmdee"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "A20",
+        "raw_name": "DMDEE п.2025-09-03"
+      }
+    },
+    {
+      "name": "DMDLЕ",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.83",
+        "name_cell": "A14",
+        "raw_name": "DMDLЕ п.2025-11-01"
+      }
+    },
+    {
+      "name": "Dismadur",
+      "category": "Изоцианаты",
+      "basis": "source_role",
+      "reason": "В исходном плане заправки материал расположен в строке Iso; точная марка и химический состав не уточняются.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.8",
+        "name_cell": "F2",
+        "raw_name": "Dismadur",
+        "role_cell": "E34",
+        "source_role": "Iso"
+      }
+    },
+    {
+      "name": "HGD-8806",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.5",
+        "name_cell": "A18",
+        "raw_name": "HGD-8806"
+      }
+    },
+    {
+      "name": "Inovol C210",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "inovol_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "A4",
+        "raw_name": "Inovol C210  п.260411G",
+        "ohv": {
+          "cell": "B4",
+          "value": "112.2",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Inovol C307",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "inovol_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "A6",
+        "raw_name": "Inovol С307 п.260305В",
+        "ohv": {
+          "cell": "B6",
+          "value": "240.3",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Inovol C310",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "inovol_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.4",
+        "name_cell": "A5",
+        "raw_name": "Inovol C310 п.260310Р",
+        "ohv": {
+          "cell": "B5",
+          "value": "164.3",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Jeffcat ZF-22",
+      "category": "Аминные катализаторы",
+      "basis": "manufacturer_grade",
+      "reason": "В каталоге производителя JEFFCAT ZF-22 обозначен катализатором.",
+      "references": [
+        "huntsman_zf22"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.46",
+        "name_cell": "A15",
+        "raw_name": "Jeffcat ZF-22"
+      }
+    },
+    {
+      "name": "L 6164 NIAX",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Брошюра Niax для однокомпонентных пен описывает соответствующие марки как стабилизаторы или регуляторы ячеек.",
+      "references": [
+        "momentive_ocf"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.6",
+        "name_cell": "A17",
+        "raw_name": "L 6164 NIAX  "
+      }
+    },
+    {
+      "name": "L-5351 NIAX",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Брошюра Niax для однокомпонентных пен описывает соответствующие марки как стабилизаторы или регуляторы ячеек.",
+      "references": [
+        "momentive_ocf"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.61",
+        "name_cell": "A18",
+        "raw_name": "L-5351 NIAX "
+      }
+    },
+    {
+      "name": "L-5351 NIAX (образец)",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Брошюра Niax для однокомпонентных пен описывает соответствующие марки как стабилизаторы или регуляторы ячеек.",
+      "references": [
+        "momentive_ocf"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.25",
+        "name_cell": "A18",
+        "raw_name": "L-5351 NIAX (образец)"
+      }
+    },
+    {
+      "name": "L-6164",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Брошюра Niax для однокомпонентных пен описывает соответствующие марки как стабилизаторы или регуляторы ячеек.",
+      "references": [
+        "momentive_ocf"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.68",
+        "name_cell": "A17",
+        "raw_name": "L-6164"
+      }
+    },
+    {
+      "name": "LUPRONAT",
+      "category": "Изоцианаты",
+      "basis": "source_role",
+      "reason": "В исходном плане заправки материал расположен в строке Iso; точная марка и химический состав не уточняются.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.69 (2)",
+        "name_cell": "F2",
+        "raw_name": "LUPRONAT п.0025919211",
+        "role_cell": "E34",
+        "source_role": "Iso"
+      }
+    },
+    {
+      "name": "MATESTAB AK 8872",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "grade_label_inference",
+      "reason": "В SDS производителя AK-8872 обозначен стабилизатором. Вариант написания Metastab отнесён по совпадающему коду AK-8872, без объединения материалов.",
+      "references": [
+        "maysta8872"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.23",
+        "name_cell": "A19",
+        "raw_name": "MATESTAB AK 8872"
+      }
+    },
+    {
+      "name": "MXC-A1",
+      "category": "Аминные катализаторы",
+      "basis": "manufacturer_grade",
+      "reason": "Производитель относит MXC-A1 к аминным катализаторам.",
+      "references": [
+        "mingxu_a1"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.50",
+        "name_cell": "A15",
+        "raw_name": "MXC-A1"
+      }
+    },
+    {
+      "name": "MXC-DMDEE",
+      "category": "Аминные катализаторы",
+      "basis": "manufacturer_grade",
+      "reason": "Функция DMDEE подтверждена описанием производителя; для Almin сохранена прямая пометка «is DMDEE» из Excel.",
+      "references": [
+        "mingxu_dmdee"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.50",
+        "name_cell": "A14",
+        "raw_name": "MXC-DMDEE"
+      }
+    },
+    {
+      "name": "Metastab AK-8872",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "grade_label_inference",
+      "reason": "В SDS производителя AK-8872 обозначен стабилизатором. Вариант написания Metastab отнесён по совпадающему коду AK-8872, без объединения материалов.",
+      "references": [
+        "maysta8872"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.7",
+        "name_cell": "A16",
+        "raw_name": "Metastab AK-8872"
+      }
+    },
+    {
+      "name": "Metastab AK-88906",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "A25",
+        "raw_name": "Metastab AK-88906 п.260130-1-3-5"
+      }
+    },
+    {
+      "name": "Metastab AK-88906 (PH 30906)",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.56",
+        "name_cell": "A18",
+        "raw_name": "Metastab AK-88906 (PH 30906)"
+      }
+    },
+    {
+      "name": "NIAX 5388",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Брошюра Niax для однокомпонентных пен описывает соответствующие марки как стабилизаторы или регуляторы ячеек.",
+      "references": [
+        "momentive_ocf"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.46",
+        "name_cell": "A18",
+        "raw_name": "NIAX 5388"
+      }
+    },
+    {
+      "name": "NIAX A-1",
+      "category": "Аминные катализаторы",
+      "basis": "manufacturer_grade",
+      "reason": "Функция A-1 подтверждена производителем; для Almin сохранена прямая пометка «is A1» из Excel.",
+      "references": [
+        "momentive_a1"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "A15",
+        "raw_name": "NIAX A-1 п. 21HSBB004"
+      }
+    },
+    {
+      "name": "NIAX Y-16371",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Брошюра Niax для однокомпонентных пен описывает соответствующие марки как стабилизаторы или регуляторы ячеек.",
+      "references": [
+        "momentive_ocf"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.15",
+        "name_cell": "A20",
+        "raw_name": "NIAX Y-16371"
+      }
+    },
+    {
+      "name": "Petol 250-3",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "A6",
+        "raw_name": "Petol 250-3 п. 3",
+        "ohv": {
+          "cell": "B6",
+          "value": "254",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Polyol YD-310",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.50.1",
+        "name_cell": "A5",
+        "raw_name": "Polyol YD-310 \nп.21112201",
+        "ohv": {
+          "cell": "B5",
+          "value": "170.7",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Puranol D210",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.8",
+        "name_cell": "A4",
+        "raw_name": "Puranol D210 п.BPD6126523",
+        "ohv": {
+          "cell": "B4",
+          "value": "113.67",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Puranol G307",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.32",
+        "name_cell": "A6",
+        "raw_name": "Puranol G307 пFB21824B25",
+        "ohv": {
+          "cell": "B6",
+          "value": "240.4",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Puranol G310",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.36",
+        "name_cell": "A5",
+        "raw_name": "Puranol G310 п.FB21C05B25",
+        "ohv": {
+          "cell": "B5",
+          "value": "174.6",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "RZ-9164",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.33",
+        "name_cell": "A15",
+        "raw_name": "RZ-9164"
+      }
+    },
+    {
+      "name": "RZ-9348",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.31",
+        "name_cell": "A15",
+        "raw_name": "RZ-9348"
+      }
+    },
+    {
+      "name": "RZ-9351",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.30",
+        "name_cell": "A15",
+        "raw_name": "RZ-9351"
+      }
+    },
+    {
+      "name": "SR 234 NIAX",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Первичная патентная публикация описывает SR-234 как силиконовую поверхностно-активную добавку.",
+      "references": [
+        "sr234_patent"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "A18",
+        "raw_name": "SR 234 NIAX"
+      }
+    },
+    {
+      "name": "Sabic",
+      "category": "Изоцианаты",
+      "basis": "source_role",
+      "reason": "В исходном плане заправки материал расположен в строке Iso; точная марка и химический состав не уточняются.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.72",
+        "name_cell": "F2",
+        "raw_name": "Sabic",
+        "role_cell": "E34",
+        "source_role": "Iso"
+      }
+    },
+    {
+      "name": "Shivachlor 008",
+      "category": "Антипирены и пластификаторы",
+      "basis": "manufacturer_family",
+      "reason": "Отнесено по семейству ShivaCHLOR; точное содержание хлора и спецификация марки 008 не назначаются.",
+      "references": [
+        "shivachlor"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "A11",
+        "raw_name": "Shivachlor 008"
+      }
+    },
+    {
+      "name": "Struksilon 8006",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Технический лист производителя описывает стабилизацию пены этой маркой.",
+      "references": [
+        "struktol8006"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "A16",
+        "raw_name": "Struksilon 8006"
+      }
+    },
+    {
+      "name": "Struksilon 8009",
+      "category": "Добавки (тип требует уточнения)",
+      "basis": "provisional",
+      "reason": "Торговая марка присутствует в составе; надёжного подтверждения функции конкретной марки пока нет. Не отождествляется с похожими названиями.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.73",
+        "name_cell": "A16",
+        "raw_name": "Struksilon 8009"
+      }
+    },
+    {
+      "name": "TCPP",
+      "category": "Антипирены и пластификаторы",
+      "basis": "chemical_label",
+      "reason": "Назначение TCPP подтверждено каталогом производителя. Принадлежность конкретного исторического образца поставщику LANXESS не утверждается.",
+      "references": [
+        "lanxess_tcpp"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "A19",
+        "raw_name": "TCPP п.34JY2602046"
+      }
+    },
+    {
+      "name": "TCPP Nantong",
+      "category": "Антипирены и пластификаторы",
+      "basis": "chemical_label",
+      "reason": "Назначение TCPP подтверждено каталогом производителя. Принадлежность конкретного исторического образца поставщику LANXESS не утверждается.",
+      "references": [
+        "lanxess_tcpp"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.50",
+        "name_cell": "A13",
+        "raw_name": "TCPP Nantong"
+      }
+    },
+    {
+      "name": "TEP-Z",
+      "category": "Антипирены и пластификаторы",
+      "basis": "grade_label_inference",
+      "reason": "Марка TEP-Z сопоставлена с LEVAGARD TEP-Z по обозначению; назначение подтверждено производителем, конкретный поставщик не установлен.",
+      "references": [
+        "lanxess_tepz"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.19",
+        "name_cell": "A12",
+        "raw_name": "TEP-Z п.260409"
+      }
+    },
+    {
+      "name": "Tegostab B 84729",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_grade",
+      "reason": "Технический лист Evonik указывает функцию стабилизации однокомпонентной пены.",
+      "references": [
+        "evonik84729"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.31.1",
+        "name_cell": "A18",
+        "raw_name": "Tegostab B 84729"
+      }
+    },
+    {
+      "name": "Tegostab B84705",
+      "category": "Стабилизаторы и регуляторы ячеек",
+      "basis": "manufacturer_family",
+      "reason": "Отнесено по семейству TEGOSTAB, которое производитель описывает как ПАВ; точный паспорт B84705 не использован.",
+      "references": [
+        "evonik_family"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.14",
+        "name_cell": "A19",
+        "raw_name": "Tegostab B84705"
+      }
+    },
+    {
+      "name": "Voranol 1010L",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "dow_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.28",
+        "name_cell": "A4",
+        "raw_name": "Voranol 1010L п.F359LAMLB1",
+        "ohv": {
+          "cell": "B4",
+          "value": "112",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Voranol CP 1010",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "dow_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.45",
+        "name_cell": "A4",
+        "raw_name": "Voranol CP 1010 п.F359M34LB1",
+        "ohv": {
+          "cell": "B4",
+          "value": "111",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Voranol CP 1010L",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "dow_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "A4",
+        "raw_name": "Voranol CP 1010L п.F359LAMLB1",
+        "ohv": {
+          "cell": "B4",
+          "value": "112",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Voranol CP 1050",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "dow_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "A5",
+        "raw_name": "Voranol CP 1050 F359LAJL05",
+        "ohv": {
+          "cell": "B5",
+          "value": "156",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Voranol CP 755",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [
+        "dow_polyols"
+      ],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.34.2",
+        "name_cell": "A6",
+        "raw_name": "Voranol CP 755 пF359LANL08",
+        "ohv": {
+          "cell": "B6",
+          "value": "240",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Wannate",
+      "category": "Изоцианаты",
+      "basis": "source_role",
+      "reason": "В исходном плане заправки материал расположен в строке Iso; точная марка и химический состав не уточняются.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.58",
+        "name_cell": "F2",
+        "raw_name": "Wannate",
+        "role_cell": "E34",
+        "source_role": "Iso"
+      }
+    },
+    {
+      "name": "Wannate pm-200",
+      "category": "Изоцианаты",
+      "basis": "source_role",
+      "reason": "В исходном плане заправки материал расположен в строке Iso; точная марка и химический состав не уточняются.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "F2",
+        "raw_name": "wannate pm-200",
+        "role_cell": "E44",
+        "source_role": "Iso"
+      }
+    },
+    {
+      "name": "Wanol 2010",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.60",
+        "name_cell": "A4",
+        "raw_name": "Wanol 2010 п.ZG22092713",
+        "ohv": {
+          "cell": "B4",
+          "value": "112",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Wanol C2010",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.32",
+        "name_cell": "A4",
+        "raw_name": "Wanol C2010 п.ZG21092541",
+        "ohv": {
+          "cell": "B4",
+          "value": "111.6",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Wanol R2307",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.73",
+        "name_cell": "A6",
+        "raw_name": "Wanol R2307 п.DА24080107",
+        "ohv": {
+          "cell": "B6",
+          "value": "237.5",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Wanol R2310",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.31.1",
+        "name_cell": "A5",
+        "raw_name": "Wanol R2310 пZG21091611",
+        "ohv": {
+          "cell": "B5",
+          "value": "167",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "Wanol S3007",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.31.1",
+        "name_cell": "A6",
+        "raw_name": "Wanol S3007 пPT21092160",
+        "ohv": {
+          "cell": "B6",
+          "value": "248",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "YD-1020",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.73",
+        "name_cell": "A4",
+        "raw_name": "YD-1020 п.24082901",
+        "ohv": {
+          "cell": "B4",
+          "value": "110.5",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "YD-307",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.5",
+        "name_cell": "A6",
+        "raw_name": "YD-307 п. 26052104",
+        "ohv": {
+          "cell": "B6",
+          "value": "237.9",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "YD-310",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "A5",
+        "raw_name": "YD-310 п.26041502",
+        "ohv": {
+          "cell": "B5",
+          "value": "166.9",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "YD-C307",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.84",
+        "name_cell": "A6",
+        "raw_name": "YD- C307 п.26070503",
+        "ohv": {
+          "cell": "B6",
+          "value": "238",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "YD-C310",
+      "category": "Полиолы",
+      "basis": "source_ohv_inference",
+      "reason": "Отнесено к полиолам по торговому обозначению и записанному в рецептуре OHV; точный химический состав не выводится из числа OHV.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.8",
+        "name_cell": "A5",
+        "raw_name": "YD- C310 п.26041502",
+        "ohv": {
+          "cell": "B5",
+          "value": "166.9",
+          "unit": "mg KOH/g"
+        }
+      }
+    },
+    {
+      "name": "cosmonate",
+      "category": "Изоцианаты",
+      "basis": "source_role",
+      "reason": "В исходном плане заправки материал расположен в строке Iso; точная марка и химический состав не уточняются.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.6",
+        "name_cell": "F2",
+        "raw_name": "cosmonate",
+        "role_cell": "E34",
+        "source_role": "Iso"
+      }
+    },
+    {
+      "name": "Диметиловый эфир (DME)",
+      "category": "Пропелленты и вспенивающие газы",
+      "basis": "source_role",
+      "reason": "Функция определена по обозначению газа в исходном плане заправки.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "E46",
+        "raw_name": "DME",
+        "role_cell": "E46",
+        "source_role": "DME"
+      }
+    },
+    {
+      "name": "М-200",
+      "category": "Изоцианаты",
+      "basis": "source_role",
+      "reason": "В исходном плане заправки материал расположен в строке Iso; точная марка и химический состав не уточняются.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.11",
+        "name_cell": "F2",
+        "raw_name": "    М-200",
+        "role_cell": "E34",
+        "source_role": "Iso"
+      }
+    },
+    {
+      "name": "Пропан-изобутан",
+      "category": "Пропелленты и вспенивающие газы",
+      "basis": "source_role",
+      "reason": "Функция определена по обозначению газа в исходном плане заправки.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "E48",
+        "raw_name": "Prop/IB",
+        "role_cell": "E48",
+        "source_role": "Prop/IB"
+      }
+    },
+    {
+      "name": "Фреон R134a",
+      "category": "Пропелленты и вспенивающие газы",
+      "basis": "source_role",
+      "reason": "Функция определена по обозначению газа в исходном плане заправки.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/316 ЗИМНЯЯ УЛУЧШЕННАЯ.xlsx",
+        "sha256": "017e937fd969bb011e1fb63dce6d2108de51357a2cd5515897a5597a3bc9a7a6",
+        "sheet": "316.1",
+        "name_cell": "E47",
+        "raw_name": "F134a",
+        "role_cell": "E47",
+        "source_role": "F134a"
+      }
+    },
+    {
+      "name": "Фреон R152a",
+      "category": "Пропелленты и вспенивающие газы",
+      "basis": "source_role",
+      "reason": "Функция определена по обозначению газа в исходном плане заправки.",
+      "references": [],
+      "excel_evidence": {
+        "file": "Пена/pena/Разработка рецептур/302 рецептура ЗИМНЯЯ.xlsx",
+        "sha256": "7ad854e6301733dfb3890b47d8d94da009d40b83f844a836ea4b4fabf8b34e42",
+        "sheet": "302.84",
+        "name_cell": "E37",
+        "raw_name": "F152a",
+        "role_cell": "E37",
+        "source_role": "F152a"
+      }
+    }
+  ]
+}

@@ -194,7 +194,12 @@ def _initial_properties(recipe):
             target, label, position = 'component', prop.component.group.label, prop.component.position
         elif prop.filling_plan_line_id:
             target, position = 'filling', filling_positions[prop.filling_plan_line_id]
-        rows.append({'target': target, 'group_label': label, 'position': position, 'property_code': prop.property_code, 'value': prop.value, 'unit_code': prop.unit_code, 'source_cell': prop.source_cell})
+        rows.append({
+            'target': target, 'group_label': label, 'position': position,
+            'property_code': prop.property_code, 'value': prop.value,
+            'unit_code': prop.unit_code, 'source_cell': prop.source_cell,
+            'origin': prop.origin, 'provenance_note': prop.provenance_note,
+        })
     return rows
 
 
@@ -205,46 +210,96 @@ def _template_snapshot(template):
 
 
 def _validate_plan(form, rows, fills, properties):
-    groups, counts, group_rows = {}, {}, {}
+    groups, group_rows = _plan_groups(form, rows)
+    for row in fills:
+        if row.get('group_label') and row['group_label'] not in groups:
+            form.add_error(None, f"В составе отсутствует группа "
+                           f"{row['group_label']} из плана заправки.")
+    _validate_property_targets(form, properties, group_rows, fills)
+    _validate_source_cells(form, [*rows, *fills, *properties])
+    _validate_group_completeness(form, groups, group_rows)
+    _validate_publication(form, rows, fills)
+    return groups
+
+
+def _plan_groups(form, rows):
+    groups, group_rows = {}, {}
     for row in rows:
         label = row['group_label']
         description = (row['quantity_basis'], row.get('completeness') or 'unknown')
         if label in groups and groups[label] != description:
-            form.add_error(None, f'Для группы {label} задайте одинаковую базу и полноту во всех строках.')
+            form.add_error(None, f'Для группы {label} задайте одинаковую базу '
+                           'и полноту во всех строках.')
         groups[label] = description
-        counts[label] = counts.get(label, 0) + 1
         group_rows.setdefault(label, []).append(row)
-    for row in fills:
-        if row.get('group_label') and row['group_label'] not in groups:
-            form.add_error(None, f"В составе отсутствует группа {row['group_label']} из плана заправки.")
+    return groups, group_rows
+
+
+def _validate_property_targets(form, properties, group_rows, fills):
     for row in properties:
-        target, label, position = row['target'], row.get('group_label'), row.get('position')
-        if target in ('group', 'component') and label not in groups:
-            form.add_error(None, f'Для свойства {row["property_code"]} не найдена группа {label}.')
-        elif target == 'component' and (not position or position > counts.get(label, 0)):
-            form.add_error(None, f'Для свойства {row["property_code"]} не найден компонент №{position} в группе {label}.')
+        target = row['target']
+        label, position = row.get('group_label'), row.get('position')
+        if target in ('group', 'component') and label not in group_rows:
+            message = f'не найдена группа {label}'
+        elif target == 'component' and (
+            not position or position > len(group_rows.get(label, []))
+        ):
+            message = f'не найден компонент №{position} в группе {label}'
         elif target == 'filling' and (not position or position > len(fills)):
-            form.add_error(None, f'Для свойства {row["property_code"]} не найдена строка заправки №{position}.')
-    sheet = form.cleaned_data.get('source_sheet')
-    for row in [*rows, *fills, *properties]:
-        for key in ('source_cell', 'name_cell', 'quantity_cell', 'label_cell', 'mass_cell'):
-            cell = row.get(key)
-            if cell and sheet and cell.sheet_id != sheet.pk:
-                form.add_error(None, f'Первичная ячейка {cell} относится к другому листу. Выберите лист соответствующего источника.')
+            message = f'не найдена строка заправки №{position}'
+        else:
+            continue
+        form.add_error(None, f"Для свойства {row['property_code']} {message}.")
+
+
+def _validate_group_completeness(form, groups, group_rows):
     for label, values in group_rows.items():
-        if groups[label][1] == 'complete':
-            if any(row.get('quantity_value') is None for row in values):
-                form.add_error(None, f'Группа {label} помечена полной: заполните количества или выберите другую полноту.')
-            elif groups[label][0] == 'mass_percent' and abs(sum((row['quantity_value'] for row in values), Decimal(0)) - Decimal(100)) > Decimal('0.001'):
-                form.add_error(None, f'Полная группа {label} должна содержать 100 массовых процентов.')
-    if form.cleaned_data['status'] == 'published':
-        if not rows:
-            form.add_error(None, 'Перед публикацией добавьте хотя бы один компонент состава.')
-        for row in [*rows, *fills]:
-            lot = row.get('specified_lot')
-            if lot and (lot.status != 'active' or (lot.expires_on and lot.expires_on < timezone.localdate())):
-                form.add_error(None, f'Партия {lot.lot_code} недоступна для нового опубликованного плана: проверьте статус и срок годности.')
-    return groups
+        if groups[label][1] != 'complete':
+            continue
+        if any(row.get('quantity_value') is None for row in values):
+            form.add_error(None, f'Группа {label} помечена полной: заполните '
+                           'количества или выберите другую полноту.')
+        elif groups[label][0] == 'mass_percent' and abs(sum(
+            (row['quantity_value'] for row in values), Decimal(0),
+        ) - Decimal(100)) > Decimal('0.001'):
+            form.add_error(None, f'Полная группа {label} должна содержать '
+                           '100 массовых процентов.')
+
+
+def _validate_publication(form, rows, fills):
+    if form.cleaned_data['status'] != 'published':
+        return
+    if not rows:
+        form.add_error(None, 'Перед публикацией добавьте хотя бы один '
+                       'компонент состава.')
+    for row in [*rows, *fills]:
+        lot = row.get('specified_lot')
+        if lot and (lot.status != 'active' or (
+            lot.expires_on and lot.expires_on < timezone.localdate()
+        )):
+            form.add_error(None, f'Партия {lot.lot_code} недоступна для нового '
+                           'опубликованного плана: проверьте статус '
+                           'и срок годности.')
+
+
+def _validate_source_cells(form, rows):
+    sheet = form.cleaned_data.get('source_sheet')
+    if not sheet:
+        return
+    for row in rows:
+        for key in ('source_cell', 'name_cell', 'quantity_cell',
+                    'label_cell', 'mass_cell'):
+            cell = row.get(key)
+            if not cell or cell.sheet_id == sheet.pk:
+                continue
+            carried = (key == 'source_cell' and
+                       row.get('origin') == 'carried_forward' and
+                       bool(row.get('provenance_note')) and
+                       cell.sheet.file_id == sheet.file_id)
+            if not carried:
+                form.add_error(None, f'Первичная ячейка {cell} относится к '
+                               'другому листу. Выберите лист соответствующего '
+                               'источника.')
 
 
 def _save_properties(recipe, rows, groups, components, fills):
@@ -258,7 +313,12 @@ def _save_properties(recipe, rows, groups, components, fills):
             targets['component'] = components[(row['group_label'], row['position'])]
         else:
             targets['filling_plan_line'] = fills[row['position'] - 1]
-        RecipeProperty.objects.create(**targets, property_code=row['property_code'], value=row['value'], unit_code=row.get('unit_code') or None, source_cell=row.get('source_cell'))
+        RecipeProperty.objects.create(
+            **targets, property_code=row['property_code'], value=row['value'],
+            unit_code=row.get('unit_code') or None, source_cell=row.get('source_cell'),
+            origin=row.get('origin') or 'recorded',
+            provenance_note=row.get('provenance_note', ''),
+        )
 
 
 @author_required
@@ -539,7 +599,7 @@ def history(request):
     q, entity = request.GET.get("q", "").strip(), request.GET.get("entity", "")
     if q:
         events = events.filter(Q(summary__icontains=q) | Q(employee__full_name__icontains=q))
-    if entity in {'recipe', 'test', 'source', 'material', 'lot', 'metric', 'mixture_type', 'recipe_template', 'calculation_template'}:
+    if entity in {'recipe', 'test', 'source', 'material', 'material_category', 'lot', 'metric', 'mixture_type', 'recipe_template', 'calculation_template'}:
         events = events.filter(entity_type=entity)
     page = _page(request, events)
     return render(request, "lab/history.html", {"events": page, "page_obj": page, "q": q, "entity": entity})

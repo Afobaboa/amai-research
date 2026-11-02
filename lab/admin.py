@@ -20,7 +20,7 @@ class MixtureTypeAdmin(admin.ModelAdmin):
 
 @admin.register(models.Material)
 class MaterialAdmin(admin.ModelAdmin):
-    list_display = ["name", "category", "supplier", "density_g_ml", "price_per_kg"]
+    list_display = ["name", "category", "supplier"]
     search_fields = ["name"]
 
     def has_delete_permission(self, request, obj=None):

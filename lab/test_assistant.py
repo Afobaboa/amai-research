@@ -19,7 +19,7 @@ class AssistantWorkflowTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.reader = EmployeeProfile.objects.create(full_name='Читатель чата', role='reader')
-        cls.material = Material.objects.create(name='Полиол', density_g_ml='1.05')
+        cls.material = Material.objects.create(name='Полиол')
         mixture = MixtureType.objects.create(code='AI', title='Смесь')
         cls.recipe = RecipeVersion.objects.create(mixture_type=mixture, version_label='AI.1', title='Проверяемый состав')
 

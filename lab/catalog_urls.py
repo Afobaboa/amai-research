@@ -3,6 +3,10 @@ from django.urls import path
 from . import catalog_views as views
 
 urlpatterns = [
+    path('material-categories/', views.category_list, name='category_list'),
+    path('material-categories/new/', views.category_save, name='category_create'),
+    path('material-categories/<int:pk>/', views.category_detail, name='category_detail'),
+    path('material-categories/<int:pk>/edit/', views.category_save, name='category_edit'),
     path('materials/', views.material_list, name='material_list'),
     path('materials/new/', views.material_save, name='material_create'),
     path('materials/<int:pk>/', views.material_detail, name='material_detail'),

@@ -6,7 +6,7 @@ from django.urls import reverse
 
 UI_TEXT = {
     'density_g_ml': 'Плотность, г/мл',
-    'price_per_kg': 'Цена, ₽/кг',
+    'price_per_kg': 'Цена за кг',
     'dashboard': 'Обзор лаборатории',
     'recipe_list': 'Рецептуры', 'recipe_create': 'Новая рецептура',
     'recipe_detail': 'Карточка рецептуры', 'recipe_edit': 'Редактировать рецептуру',
@@ -17,6 +17,8 @@ UI_TEXT = {
     'conditioning_add': 'Записать обработку',
     'material_list': 'Материалы', 'material_create': 'Новый материал',
     'material_detail': 'Карточка материала', 'material_edit': 'Редактировать материал',
+    'category_list': 'Категории материалов', 'category_create': 'Новая категория',
+    'category_detail': 'Карточка категории', 'category_edit': 'Редактировать категорию',
     'lot_list': 'Партии сырья', 'lot_create': 'Новая партия',
     'lot_detail': 'Карточка партии', 'lot_edit': 'Редактировать партию',
     'mixture_list': 'Типы смесей', 'mixture_create': 'Новый тип смеси',
@@ -77,7 +79,7 @@ FIELD_LABELS.update({'category': 'Категория', 'supplier': 'Постав
                'property_code': 'Свойство', 'unit_code': 'Единица', 'cell': 'Фрагмент источника',
                'address': 'Адрес фрагмента', 'raw_value': 'Исходное значение', 'formula_text': 'Формула',
                'cached_value': 'Кэш формулы', 'number_format': 'Исходный формат', 'sheet': 'Раздел источника',
-               'total_cost': 'Стоимость, ₽', 'cost_per_kg': 'Цена за кг', 'volume_ml': 'Объём, мл',
+               'total_cost': 'Стоимость', 'cost_per_kg': 'Цена за кг', 'volume_ml': 'Объём, мл',
                'rows': 'Строки расчёта', 'quantity_total': 'Сумма количеств', 'issues': 'Замечания',
                'cost': 'Стоимость компонента', 'density_origin': 'Происхождение плотности', 'price_origin': 'Происхождение цены'})
 
@@ -95,9 +97,20 @@ PROPERTY_LABELS = {
 }
 UNIT_LABELS = {
     'mg KOH/g': 'мг KOH/г', 'g/ml': 'г/мл', 'ml': 'мл',
+    'EUR/kg': '€/кг', 'RUB/kg': '₽/кг', 'USD/kg': '$/кг',
     'source_currency/kg': 'валюта не указана / кг',
     'weight_parts': 'масс. ч.',
 }
+FIELD_LABELS.update({
+    'price_currency': 'Валюта цены', 'currency': 'Валюта расчёта',
+    'price_unit': 'Единица цены', 'currency_symbol': 'Обозначение валюты',
+    'effective_price_currency': 'Применяемая валюта цены',
+    'price_source_cell_id': 'Ячейка исходной цены',
+    'density_source_cell_id': 'Ячейка исходной плотности',
+    'provenance_note': 'Основание переноса',
+    'price_provenance_note': 'Основание переноса цены',
+    'price_source_origin': 'Происхождение цены в рецептуре',
+})
 SOURCE_CELL_KIND_LABELS = {
     'text': 'Текст', 'numeric': 'Число', 'formula': 'Формула',
     'blank': 'Пусто', 'other': 'Другое',

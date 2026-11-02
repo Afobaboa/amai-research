@@ -8,7 +8,7 @@ from .source_fields import SourceCellField, SourceCellSelect
 from .models import (
     ConditioningEvent, EmployeeProfile, FillingPlanLine, Material, MaterialLot,
     Metric, MixtureType, RecipeVersion, TestSession, TestRun, SourceCell, SourceSheet,
-    RecipeGroup, RecipeTemplate, CalculationTemplate,
+    RecipeGroup, RecipeProperty, RecipeTemplate, CalculationTemplate,
 )
 
 
@@ -133,6 +133,14 @@ class RecipePropertyForm(forms.Form):
     value = LIMSDecimalField(label='Значение', required=False)
     unit_code = forms.CharField(label='Единица', required=False, max_length=60)
     source_cell = SourceCellField(label='Первичная ячейка')
+    origin = forms.ChoiceField(
+        label='Происхождение свойства', choices=RecipeProperty.Origin.choices,
+        required=False, initial='recorded',
+    )
+    provenance_note = forms.CharField(
+        label='Основание переноса', required=False,
+        widget=forms.Textarea(attrs={'rows': 2}),
+    )
 
     def clean(self):
         data = super().clean()
@@ -149,6 +157,11 @@ class RecipePropertyForm(forms.Form):
             self.add_error('group_label', 'Укажите группу состава.')
         if data.get('target') in ('component', 'filling') and not data.get('position'):
             self.add_error('position', 'Укажите номер строки.')
+        if data.get('origin') == 'carried_forward' and (
+            not data.get('source_cell') or not data.get('provenance_note')
+        ):
+            self.add_error('provenance_note',
+                           'Для переноса нужны исходная ячейка и основание.')
         return data
 
 

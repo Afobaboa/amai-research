@@ -19,6 +19,7 @@
 <div class="nav-caption nav-section">СПРАВОЧНИКИ И ИСТОЧНИКИ</div>
 <a class="nav-link {% if 'mixture' in active_page %}active{% endif %}" {% if 'mixture' in active_page %}aria-current="page"{% endif %} href="{% url 'mixture_list' %}"><svg><use href="#i-flask"/></svg>{{ ui_text.mixture_list }}</a>
 <a class="nav-link {% if 'material' in active_page %}active{% endif %}" {% if 'material' in active_page %}aria-current="page"{% endif %} href="{% url 'material_list' %}"><svg><use href="#i-box"/></svg>{{ ui_text.material_list }}</a>
+<a class="nav-link {% if 'category_' in active_page %}active{% endif %}" {% if 'category_' in active_page %}aria-current="page"{% endif %} href="{% url 'category_list' %}"><svg><use href="#i-grid"/></svg>Категории материалов</a>
 <a class="nav-link {% if 'lot_' in active_page %}active{% endif %}" {% if 'lot_' in active_page %}aria-current="page"{% endif %} href="{% url 'lot_list' %}"><svg><use href="#i-box"/></svg>{{ ui_text.lot_list }}</a>
 <a class="nav-link {% if 'source' in active_page %}active{% endif %}" {% if 'source' in active_page %}aria-current="page"{% endif %} href="{% url 'source_list' %}"><svg><use href="#i-file"/></svg>{{ ui_text.source_list }}</a>
 <a class="nav-link {% if 'metric' in active_page %}active{% endif %}" {% if 'metric' in active_page %}aria-current="page"{% endif %} href="{% url 'metric_list' %}"><svg><use href="#i-grid"/></svg>{{ ui_text.metric_list }}</a>

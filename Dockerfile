@@ -9,7 +9,8 @@ COPY requirements.txt ./
 RUN pip install -r requirements.txt \
     && useradd --create-home --uid 10001 lims
 COPY --chown=lims:lims . ./
-RUN mkdir -p /app/var /app/media /app/staticfiles \
+RUN python scripts/check_initial_sources.py \
+    && mkdir -p /app/var /app/media /app/staticfiles \
     && chown -R lims:lims /app/var /app/media /app/staticfiles \
     && chmod +x /app/deploy/entrypoint.sh /app/deploy/initialize.sh
 USER lims

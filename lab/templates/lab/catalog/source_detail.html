@@ -9,7 +9,7 @@
     <p>{{ source.get_kind_display }} · {{ source.created_by.full_name|default:'Автор не указан' }} · {{ source.created_at|date:'d.m.Y, H:i' }}</p>
   </div>
   <div class="heading-actions">
-    {% if source.attachment %}<a class="button" href="{% url 'source_download' source.pk %}">Скачать файл ↓</a>{% endif %}
+    {% if download_available %}<a class="button" href="{% url 'source_download' source.pk %}">Скачать файл ↓</a>{% endif %}
     {% if can_write %}
     <a class="button" href="{% url 'source_edit' source.pk %}">Редактировать</a>
     <a class="button primary" href="{% url 'source_sheet_create' source.pk %}">+ Лист / раздел</a>

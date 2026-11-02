@@ -1,39 +1,109 @@
 """Author-facing forms for the material and documentary catalogues."""
 from django import forms
-from .ui_text import SOURCE_CELL_KIND_LABELS, UI_TEXT
+from .ui_text import SOURCE_CELL_KIND_LABELS
 
 from .forms import CompactNumberInput
-from .models import Material, MaterialLot, Metric, MixtureType, SourceCell, SourceFile, SourceSheet
+from .models import (
+    Material, MaterialCategory, MaterialLot, Metric, MixtureType, SourceCell,
+    SourceFile, SourceSheet,
+)
+
+
+class MaterialCategoryForm(forms.ModelForm):
+    class Meta:
+        model = MaterialCategory
+        fields = ['name', 'description']
+        labels = {'name': 'Название категории', 'description': 'Описание'}
+        widgets = {'description': forms.Textarea(attrs={'rows': 4})}
+
+    def clean_name(self):
+        name = self.cleaned_data['name']
+        existing = MaterialCategory.objects.exclude(
+            pk=self.instance.pk,
+        ).values_list('name', flat=True)
+        if any(value.casefold() == name.casefold() for value in existing):
+            raise forms.ValidationError('Такая категория уже существует.')
+        return name
 
 
 class MaterialForm(forms.ModelForm):
+    category = forms.ChoiceField(label='Категория', required=False)
+
     class Meta:
         model = Material
-        fields = ['name', 'category', 'supplier', 'density_g_ml', 'price_per_kg', 'notes']
-        labels = {'name': 'Название материала', 'category': 'Категория', 'supplier': 'Производитель / поставщик',
-                  'density_g_ml': UI_TEXT['density_g_ml'], 'price_per_kg': UI_TEXT['price_per_kg'], 'notes': 'Примечание'}
-        widgets = {'density_g_ml': CompactNumberInput(), 'price_per_kg': CompactNumberInput(),
-                   'notes': forms.Textarea(attrs={'rows': 4})}
-        help_texts = {'density_g_ml': 'Справочное значение. Для конкретной партии можно записать собственное.',
-                      'price_per_kg': 'Пустое значение — цена неизвестна. Ноль означает явно указанную нулевую цену.'}
+        fields = ['name', 'category', 'supplier', 'notes']
+        labels = {
+            'name': 'Название материала', 'category': 'Категория',
+            'supplier': 'Производитель / поставщик', 'notes': 'Примечание',
+        }
+        widgets = {'notes': forms.Textarea(attrs={'rows': 4})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        names = set(MaterialCategory.objects.values_list('name', flat=True))
+        names.update(Material.objects.exclude(category='').values_list(
+            'category', flat=True,
+        ))
+        self.fields['category'].choices = [('', 'Без категории')] + [
+            (name, name) for name in sorted(names)
+        ]
+        self.fields['category'].help_text = (
+            'Категории и их описания находятся в отдельном справочнике '
+            '«Категории материалов».'
+        )
 
 
 class MaterialLotForm(forms.ModelForm):
     class Meta:
         model = MaterialLot
-        fields = ['material', 'lot_code', 'supplier', 'received_on', 'expires_on', 'status',
-                  'density_g_ml', 'price_per_kg', 'source', 'notes']
-        labels = {'material': 'Материал', 'lot_code': 'Номер партии', 'supplier': 'Поставщик партии',
-                  'received_on': 'Дата поступления', 'expires_on': 'Годен до', 'status': 'Статус партии',
-                  'density_g_ml': 'Плотность партии, г/мл', 'price_per_kg': 'Цена партии, ₽/кг',
-                  'source': 'Паспорт / источник', 'notes': 'Примечание'}
-        widgets = {'received_on': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
-                   'expires_on': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}),
-                   'density_g_ml': CompactNumberInput(), 'price_per_kg': CompactNumberInput(),
-                   'notes': forms.Textarea(attrs={'rows': 4})}
-        help_texts = {'density_g_ml': 'Если не заполнено, используется справочная плотность материала.',
-                      'price_per_kg': 'Если не заполнено, используется справочная цена материала.',
-                      'status': 'Карантин и израсходованные партии сохраняются в истории использования.'}
+        fields = [
+            'material', 'lot_code', 'supplier', 'received_on', 'expires_on',
+            'status', 'density_g_ml', 'price_per_kg', 'price_currency',
+            'source', 'notes',
+        ]
+        labels = {
+            'material': 'Материал', 'lot_code': 'Номер партии',
+            'supplier': 'Поставщик партии', 'received_on': 'Дата поступления',
+            'expires_on': 'Годен до', 'status': 'Статус партии',
+            'density_g_ml': 'Плотность партии, г/мл',
+            'price_per_kg': 'Цена партии за кг',
+            'price_currency': 'Валюта цены партии',
+            'source': 'Паспорт / источник', 'notes': 'Примечание',
+        }
+        widgets = {
+            'received_on': forms.DateInput(
+                format='%Y-%m-%d', attrs={'type': 'date'},
+            ),
+            'expires_on': forms.DateInput(
+                format='%Y-%m-%d', attrs={'type': 'date'},
+            ),
+            'density_g_ml': CompactNumberInput(),
+            'price_per_kg': CompactNumberInput(),
+            'notes': forms.Textarea(attrs={'rows': 4}),
+        }
+        help_texts = {
+            'density_g_ml': (
+                'Плотность этой партии. Пустое значение означает, '
+                'что плотность неизвестна.'
+            ),
+            'price_per_kg': (
+                'Цена этой партии за кг. Пустое значение — цена неизвестна; '
+                'ноль — явно указанная нулевая цена.'
+            ),
+            'status': (
+                'Карантин и израсходованные партии сохраняются '
+                'в истории использования.'
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['price_currency'].required = False
+
+    def clean_price_currency(self):
+        return self.cleaned_data.get('price_currency') or (
+            self.instance.price_currency if self.instance.pk else 'RUB'
+        )
 
     def clean(self):
         data = super().clean()

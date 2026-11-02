@@ -105,7 +105,7 @@ class CompactContextTests(TestCase):
         lot = MaterialLot.objects.create(material=self.material, lot_code='Партия')
         result = execute_tool('get_lab_record', {'entity': 'lots', 'id': lot.pk})
         self.assertEqual(result['field_labels']['effective_density_g_ml'], 'Плотность, г/мл')
-        self.assertEqual(result['field_labels']['effective_price_per_kg'], 'Цена, ₽/кг')
+        self.assertEqual(result['field_labels']['effective_price_per_kg'], 'Цена за кг')
         self.assertIn('effective_price_per_kg', result['available_sections'])
         result = execute_tool('search_lab_data', {'entity': 'materials'})
         self.assertEqual(result['field_labels']['name'], MaterialForm.base_fields['name'].label)

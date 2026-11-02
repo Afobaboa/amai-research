@@ -43,6 +43,16 @@ def default_calculation_operations():
     return ["mass", "cost", "volume", "totalCost", "density"]
 
 
+class PriceCurrency(models.TextChoices):
+    RUB = "RUB", "₽ (RUB)"
+    EUR = "EUR", "€ (EUR)"
+    USD = "USD", "$ (USD)"
+
+
+def currency_symbol(currency):
+    return {"RUB": "₽", "EUR": "€", "USD": "$"}.get(currency, currency)
+
+
 class EmployeeProfile(models.Model):
     class Role(models.TextChoices):
         READER = "reader", "Читатель"
@@ -251,20 +261,27 @@ class RecipeGroup(models.Model):
         return f"{self.recipe_version} · {self.label}"
 
 
+class MaterialCategory(models.Model):
+    name = models.CharField("Категория материалов", max_length=100, unique=True)
+    description = models.TextField("Описание", blank=True)
+
+    class Meta:
+        ordering = ["name", "pk"]
+        verbose_name = "Категория материалов"
+        verbose_name_plural = "Категории материалов"
+
+    def __str__(self):
+        return self.name
+
+
 class Material(models.Model):
     name = models.CharField("Материал", max_length=255)
     category = models.CharField("Категория", max_length=100, blank=True)
     supplier = models.CharField("Поставщик", max_length=255, blank=True)
-    density_g_ml = number(verbose_name=UI_TEXT['density_g_ml'], validators=[MinValueValidator(Decimal("0.00000001"))])
-    price_per_kg = number(verbose_name=UI_TEXT['price_per_kg'], validators=[MinValueValidator(0)])
     notes = models.TextField("Примечание", blank=True)
 
     class Meta:
         ordering = ["name", "pk"]
-        constraints = [
-            models.CheckConstraint(condition=Q(density_g_ml__isnull=True) | Q(density_g_ml__gt=0), name="material_positive_density"),
-            models.CheckConstraint(condition=Q(price_per_kg__isnull=True) | Q(price_per_kg__gte=0), name="material_nonnegative_price"),
-        ]
 
     def __str__(self):
         return self.name
@@ -283,7 +300,12 @@ class MaterialLot(models.Model):
     expires_on = models.DateField("Годна до", null=True, blank=True)
     status = models.CharField("Статус", max_length=20, choices=Status.choices, default=Status.ACTIVE)
     density_g_ml = number(verbose_name="Плотность партии, г/мл", validators=[MinValueValidator(Decimal("0.00000001"))])
-    price_per_kg = number(verbose_name="Цена партии, ₽/кг", validators=[MinValueValidator(0)])
+    price_per_kg = number(verbose_name="Цена партии за кг", validators=[MinValueValidator(0)])
+    price_currency = models.CharField(
+        "Валюта цены партии", max_length=3,
+        choices=PriceCurrency.choices, default="RUB",
+    )
+    import_snapshot = models.JSONField(default=dict, blank=True, editable=False)
     source = models.ForeignKey(SourceFile, on_delete=models.PROTECT, null=True, blank=True, related_name="lots")
     notes = models.TextField("Примечание", blank=True)
 
@@ -293,15 +315,28 @@ class MaterialLot(models.Model):
             models.CheckConstraint(condition=Q(status__in=["active", "quarantine", "exhausted"]), name="lot_valid_status"),
             models.CheckConstraint(condition=Q(density_g_ml__isnull=True) | Q(density_g_ml__gt=0), name="lot_positive_density"),
             models.CheckConstraint(condition=Q(price_per_kg__isnull=True) | Q(price_per_kg__gte=0), name="lot_nonnegative_price"),
+            models.CheckConstraint(condition=Q(price_currency__in=PriceCurrency.values), name="lot_valid_currency"),
         ]
 
     @property
     def effective_density_g_ml(self):
-        return self.density_g_ml if self.density_g_ml is not None else self.material.density_g_ml
+        return self.density_g_ml
 
     @property
     def effective_price_per_kg(self):
-        return self.price_per_kg if self.price_per_kg is not None else self.material.price_per_kg
+        return self.price_per_kg
+
+    @property
+    def effective_price_currency(self):
+        return self.price_currency
+
+    @property
+    def price_unit(self):
+        return f"{currency_symbol(self.price_currency)}/кг"
+
+    @property
+    def effective_price_unit(self):
+        return f"{currency_symbol(self.effective_price_currency)}/кг"
 
     def __str__(self):
         return f"{self.material} · {self.lot_code}"
@@ -386,6 +421,10 @@ class FillingPlanLine(models.Model):
 
 
 class RecipeProperty(models.Model):
+    class Origin(models.TextChoices):
+        RECORDED = "recorded", "Из исходной записи"
+        CARRIED_FORWARD = "carried_forward", "Перенесено с предыдущего листа"
+
     recipe_version = models.ForeignKey(RecipeVersion, on_delete=models.PROTECT, null=True, blank=True, related_name="properties")
     group = models.ForeignKey(RecipeGroup, on_delete=models.PROTECT, null=True, blank=True, related_name="properties")
     component = models.ForeignKey(RecipeComponent, on_delete=models.PROTECT, null=True, blank=True, related_name="properties")
@@ -394,6 +433,11 @@ class RecipeProperty(models.Model):
     value = models.DecimalField(max_digits=22, decimal_places=8)
     unit_code = models.CharField(max_length=60, null=True, blank=True)
     source_cell = source_cell()
+    origin = models.CharField(
+        "Происхождение свойства", max_length=24,
+        choices=Origin.choices, default=Origin.RECORDED,
+    )
+    provenance_note = models.TextField("Основание переноса", blank=True)
 
     class Meta:
         constraints = [models.CheckConstraint(condition=exactly_one("recipe_version", "group", "component", "filling_plan_line"), name="recipe_property_exactly_one_owner")]

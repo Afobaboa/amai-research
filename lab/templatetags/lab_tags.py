@@ -7,6 +7,12 @@ register = template.Library()
 
 
 @register.filter
+def calculation_currency(row):
+    # Saved calculations created before explicit currencies used RUB.
+    return row.get('currency_symbol', '₽')
+
+
+@register.filter
 def property_label(value):
     return PROPERTY_LABELS.get(value, value)
 
@@ -55,7 +61,8 @@ VALUES.update({'active': 'Активна / в работе', 'quarantine': 'Ка
                'file': 'Файл', 'link': 'Ссылка', 'note': 'Запись', 'mass': 'Масса компонентов',
                'cost': 'Стоимость компонентов', 'volume': 'Объём компонентов', 'totalCost': 'Стоимость смеси',
                'density': 'Аддитивная плотность', 'calculation_checked': 'Расчёт проверен',
-               'calculation_unchecked': 'Расчёт не проверен', 'lot': 'Из партии', 'material': 'Из справочника материала'})
+               'calculation_unchecked': 'Расчёт не проверен', 'lot': 'Из партии',
+               'source': 'Из исходной рецептуры', 'material': 'Из справочника материала'})
 SKIP_FIELDS = {'id', 'identifier_cell', 'name_cell', 'quantity_cell',
                'mass_cell', 'label_cell', 'scope_cell', 'session', 'test_run', 'group'}
 
@@ -117,6 +124,7 @@ def status_label(value):
 
 
 ENTITY_ROUTES = {'recipe': ('recipe_detail', 'Рецептура'), 'test': ('test_detail', 'Испытание'),
+                 'material_category': ('category_detail', 'Категория материала'),
                  'source': ('source_detail', 'Источник'), 'material': ('material_detail', 'Материал'),
                  'lot': ('lot_detail', 'Партия'), 'metric': ('metric_list', 'Показатель'),
                  'mixture_type': ('mixture_detail', 'Тип смеси'),

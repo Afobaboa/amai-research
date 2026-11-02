@@ -32,7 +32,9 @@ class InitialBundleTests(SimpleTestCase):
         recipe = sheet["recipe"]
         self.assertEqual(recipe["recorded_on"], "2026-09-08")
         component = recipe["groups"][0]["components"][0]
-        self.assertEqual(component["name"], "Inovol C210 п.260613G")
+        self.assertEqual(component["name"], "Inovol C210")
+        self.assertEqual(component["lot_code"], "260613G")
+        self.assertEqual(component["name_raw"], "Inovol C210 п.260613G")
         self.assertEqual(component["quantity"], "12.8")
         self.assertEqual(component["properties"][0]["value"], "112")
         self.assertEqual(sheet["cells"]["D4"]["raw_value"], "12.8")

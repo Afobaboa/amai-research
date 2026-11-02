@@ -140,7 +140,7 @@ def annotate_choice_values(data, model):
             from .templatetags.lab_tags import VALUES
             for key in ('density_origin', 'price_origin'):
                 code = component.get(key)
-                if isinstance(code, str) and code in ('lot', 'material'):
+                if isinstance(code, str) and code in ('lot', 'material', 'source'):
                     remember(component_path + '.' + key, code, VALUES[code])
 
         for group in rows(value, 'groups'):
