@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev:frontend": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "install:browsers": "playwright install chromium",
-    "test:frontend": "npm run build && node checks/browser.mjs && node checks/assistant_browser.mjs",
+    "test:frontend": "npm run build && node checks/date_picker.mjs && node checks/browser.mjs && node checks/assistant_browser.mjs",
     "test:frontend:headed": "npm run build && node checks/browser.mjs --headed && node checks/assistant_browser.mjs --headed",
     "test:assistant": "npm run build && node checks/assistant_browser.mjs"
   },

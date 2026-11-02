@@ -1,0 +1,59 @@
+.amai-ui { --lims-date-picker-ready: 1; }
+.date-picker { position: relative; width: 100%; min-width: 0; }
+.amai-ui .date-picker > input[type=text] {
+  width: 100%; padding-right: 48px; font-variant-numeric: tabular-nums;
+  border: 1px solid #d5deea; border-radius: 9px; background: #fff;
+  transition: border-color .15s, box-shadow .15s;
+}
+.amai-ui .date-picker > input::placeholder { color: #8995a6; }
+.amai-ui .date-picker > input:hover { border-color: #b0bfd2; }
+.amai-ui .date-picker > input:focus {
+  outline: none; border-color: #8eb5f0; box-shadow: 0 0 0 3px #1b73f810;
+}
+.amai-ui .date-picker-trigger {
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 36px; height: 36px;
+  padding: 8px; border: 0; border-radius: 7px; color: #718198;
+  background: transparent; cursor: pointer;
+}
+.date-picker-trigger svg { width: 20px; height: 20px; }
+.amai-ui .date-picker-trigger:hover, .amai-ui .date-picker-trigger[aria-expanded=true] { color: #1463db; background: #edf4ff; }
+.amai-ui .date-picker-popover {
+  box-sizing: border-box; position: fixed; z-index: 90; width: min(312px, calc(100vw - 16px));
+  padding: 16px; border: 1px solid #dfe6f0; border-radius: 16px;
+  background: #fff; color: #16243a; box-shadow: 0 6px 16px #16243a08, 0 18px 48px #16243a1a;
+  overflow: auto; font-size: 14px; line-height: 1.4;
+}
+.date-picker-popover[hidden] { display: none; }
+.date-picker-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+.date-picker-month { font-weight: 600; text-transform: capitalize; }
+.amai-ui .date-picker-popover button { border: 0; cursor: pointer; font: inherit; transition: background .12s, color .12s; }
+.amai-ui .date-picker-header button { width: 32px; height: 32px; border-radius: 8px; background: #f3f6fb; color: #5e6e84; font-size: 24px; line-height: 1; }
+.date-picker-weekdays, .date-picker-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.date-picker-weekdays { margin-bottom: 8px; text-align: center; color: #8995a6; font-size: 11px; font-weight: 500; }
+.amai-ui .date-picker-day { height: 36px; padding: 0; border-radius: 9px; background: transparent; color: #16243a; font-variant-numeric: tabular-nums; }
+.amai-ui .date-picker-day.is-outside { color: #adb7c5; }
+.amai-ui .date-picker-day.is-today { color: #1463db; background: #edf4ff; font-weight: 600; }
+.amai-ui .date-picker-popover button:hover { background: #edf4ff; color: #1463db; }
+.amai-ui .date-picker-day.is-selected { color: #fff; background: #1b73f8; font-weight: 600; }
+.amai-ui .date-picker-popover button:focus-visible { outline: 2px solid #8eb5f0; outline-offset: 1px; }
+.amai-ui .date-picker-popover button:disabled { opacity: .35; cursor: default; }
+.date-picker-footer { display: flex; justify-content: space-between; margin-top: 12px; padding-top: 12px; border-top: 1px solid #edf0f5; }
+.amai-ui .date-picker-footer button { border-radius: 7px; padding: 7px 10px; color: #1463db; background: transparent; font-size: 12px; font-weight: 500; }
+.amai-ui .date-picker-footer button:last-child { color: #718198; }
+.amai-ui .invalid .date-picker > input, .amai-ui .date-picker > input[aria-invalid=true] { border-color: var(--amai-danger); }
+/* Header controls use SVG geometry so arrows do not depend on font baselines. */
+.date-picker-heading { display: flex; align-items: center; justify-content: center; gap: 2px; min-width: 0; font-weight: 600; }
+.amai-ui .date-picker-header .date-picker-nav {
+  display: grid; place-items: center; flex: 0 0 32px; padding: 0;
+}
+.date-picker-nav svg { display: block; width: 18px; height: 18px; }
+.amai-ui .date-picker-heading button {
+  width: auto; height: 32px; padding: 0 6px; background: transparent;
+  color: #16243a; font-size: 13px; font-weight: 600; line-height: 1;
+}
+.amai-ui .date-picker-heading button:hover { background: #edf4ff; color: #1463db; }
+.date-picker-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.amai-ui .date-picker-choice { height: 48px; padding: 0 4px; border-radius: 9px; background: transparent; color: #16243a; font-size: 12px; text-transform: capitalize; }
+.amai-ui .date-picker-choice.is-selected { background: #1b73f8; color: #fff; font-weight: 600; }
+.amai-ui .date-picker > input.is-empty { color: #8995a6; }

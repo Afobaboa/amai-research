@@ -15,6 +15,7 @@ PUBLIC_ASSETS = frozenset({
     'lab/amai-theme.css', 'lab/amai-components.css',
     'lab/app.css', 'lab/app.js',
     'lab/live-search.js',
+    'lab/date-picker.css', 'lab/date-picker.js',
     'lab/search-select.css', 'lab/search-select.js',
     'lab/assistant.css', 'lab/assistant.js',
 })

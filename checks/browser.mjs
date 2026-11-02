@@ -1064,7 +1064,7 @@ try {
   const linkedRecipe = await page.locator('#id_recipe option:checked').textContent();
   await page.locator('#id_title').fill('QA нулевое измерение и история');
   await page.locator('#id_status').selectOption('active');
-  await page.locator('#id_recorded_tested_on').fill('2026-11-01');
+  await page.locator('#id_recorded_tested_on').fill('01.11.2026');
   await option(page,'#id_conditions-0-metric','QA температура испытания');
   await page.locator('#id_conditions-0-numeric_value').fill('0');
   await option(page,'#id_conditions-1-metric','QA относительная влажность');

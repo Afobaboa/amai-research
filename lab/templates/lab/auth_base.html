@@ -3,5 +3,7 @@
 <link rel="stylesheet" href="{% versioned_static 'lab/app.css' %}">
 <link rel="stylesheet" href="{% versioned_static 'lab/search-select.css' %}">
 <script defer src="{% versioned_static 'lab/search-select.js' %}"></script>
+<link rel="stylesheet" href="{% versioned_static 'lab/date-picker.css' %}">
+<script defer src="{% versioned_static 'lab/date-picker.js' %}"></script>
 <script defer src="{% versioned_static 'lab/app.js' %}"></script></head><body class="amai-ui">
 <a class="amai-skip" href="#main-content">Перейти к содержимому</a><div class="auth-page"><section class="auth-visual"><div class="brand">{% include 'lab/includes/brand.html' %}</div><h1>У каждого<br>результата есть<br>своя история</h1><p>Рецептуры, испытания и накопленные знания лаборатории в единой системе.</p><div class="auth-molecule"></div><div class="auth-footer">АМАИ ИССЛЕДОВАНИЯ · СИСТЕМА ЛАБОРАТОРНОГО УЧЕТА</div></section><main id="main-content" class="auth-form-shell" tabindex="-1"><div class="auth-form">{% block content %}{% endblock %}</div></main></div></body></html>
