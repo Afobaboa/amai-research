@@ -23,9 +23,56 @@
     </button>
   </header>
   <div class="assistant-chat-picker">
-    <label for="assistant-conversations">Диалоги</label>
-    <select id="assistant-conversations" aria-label="Сохранённые диалоги"></select>
-    <button id="assistant-more-chats" type="button" hidden>Ещё</button>
+    <button class="assistant-chat-trigger" id="assistant-conversations"
+            type="button" aria-expanded="false" aria-haspopup="dialog"
+            aria-controls="assistant-chat-menu" data-chat-id=""
+            aria-labelledby="assistant-chat-label assistant-current-chat">
+      <svg class="assistant-button-icon assistant-chat-symbol" viewBox="0 0 24 24"
+           aria-hidden="true" focusable="false">
+        <path d="M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z"/>
+        <path d="M8 9h8M8 13h5"/>
+      </svg>
+      <span class="assistant-chat-current">
+        <span class="assistant-chat-label" id="assistant-chat-label">Текущий диалог</span>
+        <span id="assistant-current-chat">Новый диалог</span>
+      </span>
+      <svg class="assistant-button-icon assistant-chat-chevron" viewBox="0 0 24 24"
+           aria-hidden="true" focusable="false"><path d="m8 10 4 4 4-4"/></svg>
+    </button>
+    <div class="assistant-chat-menu" id="assistant-chat-menu" role="dialog"
+         aria-labelledby="assistant-chat-menu-title" hidden>
+      <div class="assistant-chat-menu-heading">
+        <h3 id="assistant-chat-menu-title">Ваши диалоги</h3>
+        <span id="assistant-chat-count" aria-label="Загружено диалогов">0</span>
+        <button class="assistant-icon" id="assistant-chat-close" type="button"
+                aria-label="Закрыть список диалогов">
+          <svg class="assistant-button-icon" viewBox="0 0 24 24"
+               aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="assistant-chat-search-field">
+        <svg class="assistant-button-icon" viewBox="0 0 24 24"
+             aria-hidden="true" focusable="false">
+          <circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>
+        </svg>
+        <input id="assistant-chat-search" type="search" autocomplete="off"
+               placeholder="Поиск по названию" aria-label="Поиск диалогов"
+               aria-describedby="assistant-chat-search-note">
+      </div>
+      <button class="assistant-chat-new" id="assistant-chat-new" type="button">
+        <svg class="assistant-button-icon" viewBox="0 0 24 24"
+             aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+        Новый диалог
+      </button>
+      <div class="assistant-chat-list" id="assistant-chat-list"></div>
+      <div class="assistant-chat-empty" id="assistant-chat-empty" role="status" hidden>
+        <strong id="assistant-chat-empty-title">Пока нет диалогов</strong>
+        <p id="assistant-chat-empty-text">Начните разговор — он появится здесь.</p>
+      </div>
+      <p class="assistant-chat-search-note" id="assistant-chat-search-note" hidden>Поиск среди загруженных диалогов</p>
+      <button class="assistant-more-chats" id="assistant-more-chats"
+              type="button" hidden>Загрузить ещё</button>
+    </div>
   </div>
   <button class="assistant-history-notice" id="assistant-older-messages" type="button" hidden>Показать более ранние сообщения</button>
   <div class="assistant-status" id="assistant-status" role="status" hidden></div>

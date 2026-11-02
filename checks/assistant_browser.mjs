@@ -102,7 +102,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     if (request.method() === 'POST') assert.ok(request.headers()['x-csrftoken']);
     if (!parts.length) {
       if (request.method() === 'POST') {
-        const chat = {id:++counter, title:'Новый диалог', jobs:[], active:false};
+        const chat = {id:++counter, title:'Новый диалог', jobs:[], active:false, updated_at:new Date().toISOString()};
         chats.set(chat.id, chat);
         return route.fulfill({status:201,json:chat});
       }
@@ -117,6 +117,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
         reply:mode === 'pending' ? '' : reply, progress:[], activity:'Смотрю эксперименты…',
         sources:[{title:'Зимняя улучшенная пена — 316.1',url:'/recipes/1/'},{title:'Опасная ссылка',url:'javascript:alert(1)'}]};
       chat.jobs.push(job); chat.title = chat.jobs[0].question; chat.active = mode === 'pending';
+      chat.updated_at = new Date().toISOString();
       return route.fulfill({status:202,json:{id:job.id}});
     }
     if (parts[1] === 'jobs') {
@@ -221,17 +222,49 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     assert.ok(box.y >= 0 && box.y + box.height <= 1000, `${selector} stays visible after a reply`);
   }
 
-  // Background polling must leave the native picker intact while it is open
-  // and when it is dismissed without choosing another conversation.
+  const selectedChatId = target => target.locator('#assistant-conversations').getAttribute('data-chat-id');
+  const chooseSavedChat = async (target, id) => {
+    await target.locator('#assistant-conversations').click();
+    await target.locator(id ? `#assistant-chat-list button[data-chat-id="${id}"]` : '#assistant-chat-new').click();
+    await target.locator('#assistant-chat-menu').waitFor({state:'hidden'});
+  };
+
+  // Include older, long, and undated titles in the history without involving a model.
+  for (const [title, updated_at] of [
+    ['Сравнение зимних рецептур', new Date(Date.now() - 86400000).toISOString()],
+    ['Проверка гипотезы о влиянии нового сырья на стабильность пены при низкой температуре', new Date(Date.now() - 8 * 86400000).toISOString()],
+    ['Результаты испытаний', undefined],
+  ]) {
+    const chat = {id:++counter, title, updated_at, jobs:[], active:false};
+    chats.set(chat.id, chat);
+  }
+
+  // Background polling must preserve the open history, focus, and its keyed rows.
   const picker = page.locator('#assistant-conversations');
-  await page.waitForFunction(() => document.getElementById('assistant-conversations').options.length === 2);
+  const history = page.locator('#assistant-chat-menu');
+  const search = page.locator('#assistant-chat-search');
+  const historyRows = page.locator('#assistant-chat-list button[data-chat-id]');
+  await page.waitForFunction(() => document.querySelectorAll('#assistant-chat-list button[data-chat-id]').length === 4);
+  assert.equal(await picker.evaluate(node => node.tagName), 'BUTTON');
+  assert.equal(await picker.getAttribute('aria-haspopup'), 'dialog');
+  await picker.click();
+  await history.waitFor({state:'visible'});
+  assert.equal(await history.getAttribute('role'), 'dialog');
+  assert.equal(await search.evaluate(node => node === document.activeElement), true);
+  assert.equal(await page.locator('#assistant-chat-list button[aria-current="true"]').getAttribute('data-chat-id'), await selectedChatId(page));
+  await search.press('ArrowDown');
+  assert.equal(await historyRows.first().evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('End');
+  assert.equal(await historyRows.last().evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('Home');
+  assert.equal(await historyRows.first().evaluate(node => node === document.activeElement), true);
   await page.evaluate(() => {
-    const select = document.getElementById('assistant-conversations');
+    const list = document.getElementById('assistant-chat-list');
     const panel = document.getElementById('lab-assistant');
-    window.pickerCheck = {options:[...select.options], mutations:0, moved:false,
+    window.pickerCheck = {rows:[...list.querySelectorAll('button[data-chat-id]')], mutations:0, moved:false,
       box:JSON.stringify(panel.getBoundingClientRect().toJSON()), running:true};
     window.pickerObserver = new MutationObserver(records => { window.pickerCheck.mutations += records.length; });
-    window.pickerObserver.observe(select, {childList:true, subtree:true, characterData:true, attributes:true});
+    window.pickerObserver.observe(list, {childList:true, subtree:true, characterData:true, attributes:true});
     const sample = () => {
       if (JSON.stringify(panel.getBoundingClientRect().toJSON()) !== window.pickerCheck.box) window.pickerCheck.moved = true;
       if (window.pickerCheck.running) requestAnimationFrame(sample);
@@ -240,35 +273,56 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   });
   const nextPickerPoll = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/assistant/conversations/' && response.request().method() === 'GET');
-  await picker.click();
   await nextPickerPoll;
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await historyRows.first().evaluate(node => node === document.activeElement), true, 'Polling preserves the focused history row');
   const headingBox = await page.locator('#assistant-title').boundingBox();
   await page.mouse.click(headingBox.x + 5, headingBox.y + 5);
+  await history.waitFor({state:'hidden'});
   await page.locator('#assistant-input').focus();
   const pickerCheck = await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => {
     window.pickerCheck.running = false;
     window.pickerObserver.disconnect();
     resolve({mutations:window.pickerCheck.mutations, moved:window.pickerCheck.moved,
-      sameOptions:window.pickerCheck.options.every((option, index) => option === document.getElementById('assistant-conversations').options[index])});
+      sameRows:window.pickerCheck.rows.every(row => document.getElementById('assistant-chat-list').contains(row))});
   })));
   assert.equal(pickerCheck.mutations, 0, 'An unchanged background refresh must not rebuild the chat picker');
-  assert.equal(pickerCheck.sameOptions, true, 'Native option nodes must survive polling and dismissal');
+  assert.equal(pickerCheck.sameRows, true, 'History row nodes must survive polling and dismissal');
   assert.equal(pickerCheck.moved, false, 'Opening and dismissing the picker must not move the assistant panel');
 
   // Real updates arrive during interaction, then appear after leaving the picker.
-  await picker.focus();
-  const selectedChat = chats.get(Number(await picker.inputValue()));
+  await picker.click();
+  const selectedChat = chats.get(Number(await selectedChatId(page)));
+  const selectedTitle = page.locator(`#assistant-chat-list button[data-chat-id="${selectedChat.id}"] .assistant-chat-title`);
   const previousTitle = selectedChat.title;
   selectedChat.title = previousTitle + ' · обновлено';
   const changedPickerPoll = page.waitForResponse(response =>
     new URL(response.url()).pathname === '/assistant/conversations/' && response.request().method() === 'GET');
   await changedPickerPoll;
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  assert.equal(await picker.locator('option:checked').textContent(), previousTitle, 'Keep the focused native menu stable when data changes');
+  assert.equal(await selectedTitle.textContent(), previousTitle, 'Keep the open history stable when background data changes');
   await page.locator('#assistant-input').focus();
-  await page.waitForFunction(title => document.querySelector('#assistant-conversations option:checked')?.textContent === title, selectedChat.title);
-  assert.equal(await page.evaluate(() => window.pickerCheck.options.every((option, index) => option === document.getElementById('assistant-conversations').options[index])), true, 'Changed labels update existing options after blur');
+  await history.waitFor({state:'hidden'});
+  await page.waitForFunction(title => document.getElementById('assistant-current-chat')?.textContent === title, selectedChat.title);
+  assert.equal(await page.evaluate(() => window.pickerCheck.rows.every(row => document.getElementById('assistant-chat-list').contains(row))), true, 'Changed titles update existing rows after dismissal');
+
+  await picker.click();
+  await search.fill('ЗИМНИХ');
+  assert.equal(await historyRows.count(), 1, 'History search ignores title case');
+  assert.equal(await historyRows.first().locator('.assistant-chat-title').textContent(), 'Сравнение зимних рецептур');
+  await search.fill('нет-такого-диалога-123');
+  assert.equal(await historyRows.count(), 0);
+  assert.equal(await page.locator('#assistant-chat-empty').isVisible(), true);
+  assert.equal(await page.locator('#assistant-chat-new').isVisible(), true, 'A new chat remains available with no search results');
+  await search.fill('');
+  const historyBox = await history.boundingBox(), assistantBox = await page.locator('#lab-assistant').boundingBox();
+  assert.ok(historyBox.x >= assistantBox.x && historyBox.x + historyBox.width <= assistantBox.x + assistantBox.width + 1, 'History fits within the desktop panel');
+  assert.ok(historyBox.y >= 0 && historyBox.y + historyBox.height <= 1000, 'History fits within the desktop viewport');
+  await page.screenshot({path:join(artifacts,'desktop-history.png'),fullPage:true});
+  await search.press('Escape');
+  await history.waitFor({state:'hidden'});
+  assert.equal(await picker.evaluate(node => node === document.activeElement), true, 'Escape restores history trigger focus');
+  assert.equal(await page.locator('#lab-assistant').isVisible(), true);
 
   const panel = page.locator('#lab-assistant'), resize = page.locator('#assistant-resize');
   const panelWidth = async () => (await panel.boundingBox()).width;
@@ -332,7 +386,12 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.locator('#assistant-input').fill('Долгий вопрос');
   await page.locator('#assistant-send').click();
   await page.locator('#assistant-cancel').waitFor({state:'visible'});
-  const firstChat = await page.locator('#assistant-conversations').inputValue();
+  const firstChat = await selectedChatId(page);
+  await page.locator('#assistant-conversations').click();
+  await page.locator('#assistant-chat-search').press('Escape');
+  assert.equal(await page.locator('#assistant-chat-menu').isVisible(), false);
+  assert.equal(chats.get(Number(firstChat)).jobs.at(-1).status, 'running', 'Escape dismisses history without cancelling a running reply');
+  assert.equal(await page.locator('#assistant-cancel').isVisible(), true);
   await page.reload({waitUntil:'networkidle'});
   await page.locator('#assistant-cancel').waitFor({state:'visible'});
   assert.equal(captured.filter(item => item.question === 'Долгий вопрос').length, 1, 'Reload does not resubmit a running request');
@@ -341,31 +400,31 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(chats.get(Number(firstChat)).jobs.at(-1).status, 'running', 'New chat does not cancel the previous generation');
   const chatCount = chats.size;
   await page.reload({waitUntil:'networkidle'});
-  assert.equal(await page.locator('#assistant-conversations').inputValue(), '', 'An explicitly selected new chat survives reload');
+  assert.equal(await selectedChatId(page), '', 'An explicitly selected new chat survives reload');
   assert.equal(await page.locator('.assistant-message').count(), 0);
   assert.equal(await page.locator('#assistant-send').isEnabled(), true);
   await page.goto(base + '/recipes/1/', {waitUntil:'networkidle'});
-  assert.equal(await page.locator('#assistant-conversations').inputValue(), '', 'New chat also survives page navigation');
+  assert.equal(await selectedChatId(page), '', 'New chat also survives page navigation');
   assert.equal(await page.locator('.assistant-message').count(), 0);
   assert.equal(chats.size, chatCount, 'Restoring an empty selection does not create a saved conversation');
   mode = 'success';
   await page.locator('#assistant-input').fill('Другая тема');
   await page.locator('#assistant-send').click();
   await page.locator('.assistant-message.is-assistant').waitFor();
-  const secondChat = await page.locator('#assistant-conversations').inputValue();
+  const secondChat = await selectedChatId(page);
   assert.notEqual(secondChat, firstChat);
-  await page.locator('#assistant-conversations').selectOption(firstChat);
+  await chooseSavedChat(page, firstChat);
   await page.locator('#assistant-cancel').waitFor({state:'visible'});
   await page.reload({waitUntil:'networkidle'});
   await page.locator('#assistant-cancel').waitFor({state:'visible'});
-  assert.equal(await page.locator('#assistant-conversations').inputValue(), firstChat, 'An older selected conversation survives reload');
+  assert.equal(await selectedChatId(page), firstChat, 'An older selected conversation survives reload');
   await page.locator('#assistant-cancel').click();
   await page.locator('#assistant-error').waitFor({state:'visible'});
   assert.match(await page.locator('#assistant-error-text').textContent(), /остановлен/);
   assert.equal(chats.get(Number(firstChat)).jobs.at(-1).status, 'cancelled');
-  await page.locator('#assistant-conversations').selectOption('');
+  await chooseSavedChat(page, '');
   await page.reload({waitUntil:'networkidle'});
-  assert.equal(await page.locator('#assistant-conversations').inputValue(), '', 'Selecting new chat from the picker survives reload');
+  assert.equal(await selectedChatId(page), '', 'Selecting new chat from the picker survives reload');
   assert.equal(await page.locator('.assistant-message').count(), 0);
 
   // Simulate server completion after the browser tab has been closed.
@@ -374,7 +433,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.locator('#assistant-input').fill('Ответ после закрытия вкладки');
   await page.locator('#assistant-send').click();
   await page.locator('#assistant-cancel').waitFor({state:'visible'});
-  const closedChat = await page.locator('#assistant-conversations').inputValue();
+  const closedChat = await selectedChatId(page);
   const job = chats.get(Number(closedChat)).jobs.at(-1);
   await page.close();
   job.status = 'completed'; job.reply = reply; chats.get(Number(closedChat)).active = false;
@@ -382,15 +441,24 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   returned.on('pageerror', error => errors.push(error.message));
   await returned.goto(base, {waitUntil:'networkidle'});
   await returned.locator('.assistant-message.is-assistant').waitFor();
-  assert.equal(await returned.locator('#assistant-conversations').inputValue(), closedChat);
+  assert.equal(await selectedChatId(returned), closedChat);
   assert.match(await returned.locator('.assistant-message.is-user').textContent(), /после закрытия/);
-  await returned.locator('#assistant-conversations').selectOption(secondChat);
+  await chooseSavedChat(returned, secondChat);
   await returned.waitForFunction(() => document.querySelector('.assistant-message.is-user')?.textContent.includes('Другая тема'));
   assert.equal(await returned.locator('.assistant-message.is-user').count(), 1, 'Chats have independent transcripts');
   await returned.setViewportSize({width:390,height:844});
   await returned.waitForTimeout(100);
   if (!await returned.locator('#lab-assistant').isVisible()) await returned.locator('#assistant-launcher').click();
   await returned.waitForFunction(() => document.getElementById('lab-assistant').getAttribute('aria-modal') === 'true');
+  await returned.locator('#assistant-conversations').click();
+  await returned.locator('#assistant-chat-menu').waitFor({state:'visible'});
+  const mobileHistory = await returned.locator('#assistant-chat-menu').boundingBox();
+  assert.ok(mobileHistory.x >= 0 && mobileHistory.x + mobileHistory.width <= 390, 'History fits the mobile width');
+  assert.ok(mobileHistory.y >= 0 && mobileHistory.y + mobileHistory.height <= 844, 'History fits the mobile height');
+  assert.equal(await returned.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Long history titles do not overflow on mobile');
+  await returned.screenshot({path:join(artifacts,'mobile-history.png')});
+  await returned.locator('#assistant-chat-search').press('Escape');
+  assert.equal(await returned.locator('#lab-assistant').isVisible(), true, 'Escape dismisses mobile history before closing the assistant');
   await returned.locator('#assistant-input-help').click();
   await returned.locator('#assistant-input-hint').waitFor({state:'visible'});
   const hintBox = await returned.locator('#assistant-input-hint').boundingBox();
@@ -430,8 +498,94 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(await formPage.locator('#assistant-input').inputValue(), 'Проверь форму');
   await formPage.keyboard.press('ArrowDown');
   assert.equal(await formPage.locator('#assistant-input').inputValue(), '');
+
+  // A separate page exercises pagination without changing the durable-chat scenarios above.
+  const paginated = await context.newPage();
+  paginated.on('pageerror', error => errors.push(error.message));
+  const historyChats = [70003, 70002, 70001].map(id => ({
+    id, title:`История исследования ${id}`, active:false,
+    updated_at:new Date(Date.now() - (70003 - id) * 86400000).toISOString(),
+  }));
+  let moreRequests = 0, releaseHistoryPage;
+  await paginated.route('**/assistant/conversations/**', async route => {
+    const url = new URL(route.request().url());
+    const parts = url.pathname.split('/').filter(Boolean).slice(2);
+    if (parts.length) {
+      const chat = historyChats.find(chat => chat.id === Number(parts[0])) || historyChats[0];
+      return route.fulfill({json:{...chat, jobs:[], next_before:null}});
+    }
+    if (url.searchParams.has('before')) {
+      assert.equal(url.searchParams.get('before'), '70002');
+      moreRequests++;
+      await new Promise(resolve => { releaseHistoryPage = resolve; });
+      return route.fulfill({json:{conversations:historyChats.slice(2), next_before:null}});
+    }
+    return route.fulfill({json:{conversations:historyChats.slice(0, 2), next_before:70002}});
+  });
+  await paginated.goto(base, {waitUntil:'networkidle'});
+  await paginated.locator('#assistant-conversations').click();
+  const paginatedSearch = paginated.locator('#assistant-chat-search');
+  const moreChats = paginated.locator('#assistant-more-chats');
+  const checkSearchStyle = async width => {
+    const style = await paginatedSearch.evaluate(node => {
+      const style = getComputedStyle(node);
+      return {padding:style.padding, border:style.borderWidth, height:style.height, fontSize:style.fontSize};
+    });
+    assert.deepEqual(style, {padding:'0px', border:'0px', height:'22px', fontSize:width < 640 ? '16px' : '13px'},
+      'History search uses one surrounding field frame and a compact inner input');
+  };
+  await checkSearchStyle(1440);
+  await paginatedSearch.fill('История');
+  assert.equal(await paginated.locator('#assistant-chat-search-note').isVisible(), true,
+    'Search explains when only loaded conversations are included');
+  assert.equal(await paginated.locator('#assistant-chat-list button[data-chat-id]').count(), 2);
+  const moreHistoryRequest = paginated.waitForRequest(request =>
+    new URL(request.url()).searchParams.get('before') === '70002');
+  await moreChats.click();
+  await moreHistoryRequest;
+  await paginated.waitForFunction(() => document.getElementById('assistant-more-chats').getAttribute('aria-disabled') === 'true');
+  assert.equal(await moreChats.evaluate(node => node === document.activeElement), true,
+    'Loading another page preserves keyboard focus');
+  await paginated.keyboard.press('Enter');
+  assert.equal(moreRequests, 1, 'Repeated activation cannot enqueue duplicate history pages');
+  assert.equal(typeof releaseHistoryPage, 'function');
+  releaseHistoryPage();
+  await moreChats.waitFor({state:'hidden'});
+  assert.equal(await paginated.locator('#assistant-chat-list button[data-chat-id="70001"]').evaluate(node => node === document.activeElement), true,
+    'The first appended conversation receives focus when the final page removes the load-more button');
+  assert.equal(await paginated.locator('#assistant-chat-list button[data-chat-id]').count(), 3);
+  assert.equal(await paginated.locator('#assistant-chat-search-note').isVisible(), false);
+  for (const [width, height, filename] of [
+    [1440, 400, 'desktop-history-short.png'],
+    [390, 500, 'mobile-history-short.png'],
+    [390, 320, 'mobile-history-landscape.png'],
+  ]) {
+    await paginated.setViewportSize({width, height});
+    if (!await paginated.locator('#lab-assistant').isVisible()) await paginated.locator('#assistant-launcher').click();
+    await paginated.mouse.move(0, 0);
+    await paginated.locator('#assistant-input-hint').waitFor({state:'hidden'});
+    if (!await paginated.locator('#assistant-chat-menu').isVisible()) await paginated.locator('#assistant-conversations').click();
+    await checkSearchStyle(width);
+    const box = await paginated.locator('#assistant-chat-menu').boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= width + 1, `History fits ${width}×${height} width`);
+    assert.ok(box.y >= 0 && box.y + box.height <= height + 1, `History fits ${width}×${height} height`);
+    assert.equal(await paginated.evaluate(() => document.documentElement.scrollWidth > innerWidth), false,
+      `History does not overflow at ${width}×${height}`);
+    await paginated.screenshot({path:join(artifacts,filename)});
+    await paginated.locator('#assistant-chat-close').focus();
+    await paginated.keyboard.press('Shift+Tab');
+    assert.equal(await paginated.locator('#assistant-chat-menu').isVisible(), false,
+      'Returning keyboard focus to the history trigger dismisses the overlay');
+    assert.equal(await paginated.locator('#assistant-conversations').evaluate(node => node === document.activeElement), true);
+    await paginated.keyboard.press('Enter');
+  }
+  await paginated.close();
+  await formPage.setViewportSize({width:1440,height:1000});
+  await formPage.locator('#assistant-new').click();
+  await formPage.locator('#assistant-conversations').click();
+  await formPage.locator('#lab-assistant').screenshot({path:join(artifacts,'history-preview.png')});
   assert.deepEqual(errors, []);
-  console.log('Assistant browser checks passed: saved chats, reload, tab closure, cancellation, rendering, resizing, mobile, and form context.');
+  console.log('Assistant browser checks passed: history search, keyboard, polling, pagination, short viewports, saved chats, reload, tab closure, cancellation, rendering, resizing, mobile, and form context.');
 } finally {
   await browser?.close();
   if (server && server.exitCode === null) { server.kill('SIGTERM'); await stopped; }

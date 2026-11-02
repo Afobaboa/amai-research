@@ -28,7 +28,10 @@
     sources: Source[];
     error_code: string;
   }
-  interface Conversation { jobs: Job[]; next_before?: string | null }
+  interface Conversation extends ChatSummary {
+    jobs: Job[];
+    next_before?: string | null;
+  }
   interface FieldSnapshot {
     name: string;
     label: string;
@@ -72,7 +75,18 @@
     cancel: HTMLButtonElement;
     send: HTMLButtonElement;
     form: HTMLFormElement;
-    conversations: HTMLSelectElement;
+    conversations: HTMLButtonElement;
+    'current-chat': HTMLSpanElement;
+    'chat-menu': HTMLDivElement;
+    'chat-close': HTMLButtonElement;
+    'chat-search': HTMLInputElement;
+    'chat-search-note': HTMLParagraphElement;
+    'chat-new': HTMLButtonElement;
+    'chat-list': HTMLDivElement;
+    'chat-count': HTMLSpanElement;
+    'chat-empty': HTMLDivElement;
+    'chat-empty-title': HTMLElement;
+    'chat-empty-text': HTMLParagraphElement;
     'more-chats': HTMLButtonElement;
     'older-messages': HTMLButtonElement;
     new: HTMLButtonElement;
@@ -488,7 +502,9 @@
       .forEach(node => { node.inert = modal; });
   };
   const setOpen = (value: boolean, focus = false, remember = true) => {
-    if (!value) { stopResize(); setInputHint(false); }
+    if (!value) {
+      stopResize(); setInputHint(false); setChatPicker(false);
+    }
     open = value;
     panel.hidden = !value;
     launcher.setAttribute('aria-expanded', String(value));
@@ -512,14 +528,15 @@
     if (!open) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (!inputHint.hidden) setInputHint(false);
+      if (!$('chat-menu').hidden) setChatPicker(false, true);
+      else if (!inputHint.hidden) setInputHint(false);
       else if (controller) void cancelCurrent();
       else if (drag) stopResize();
       else setOpen(false, true);
     }
     if (event.key !== 'Tab' || desktop.matches) return;
     const nodes = [...panel.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), textarea, a[href], [tabindex="0"]',
+      'button:not(:disabled), input:not(:disabled), textarea, a[href], [tabindex="0"]',
     )].filter(node => node.getClientRects().length);
     const first = nodes[0], last = nodes.at(-1);
     if (event.shiftKey && document.activeElement === first) {
@@ -724,6 +741,7 @@
   let pollTimer: number | undefined, lastTranscript = '';
   let nextBefore: number | null = null, pendingSubmission: Submission | null = null;
   let listInitialized = false;
+  let loadingChats = false;
   let lastQuestion = '', retainedJobs: Job[] = [], olderCursor: string | null = null;
   let historyLoaded = false;
   let hasSavedSelection = false;
@@ -767,37 +785,194 @@
     try { sessionStorage.setItem(activeKey, String(chatId || '')); } catch {}
   };
   const chatSummaries = new Map<string, ChatSummary>();
-  const renderChatOptions = () => {
-    const select = $('conversations');
-    // Native menus can jump or close if their options change while open.
-    // Focus also covers keyboard interaction; apply the latest data on blur.
-    if (document.activeElement === select) return;
-    const options = new Map([...select.options].map(option => [option.value, option]));
-    const desired = [{value:'', text:'Новый диалог'},
-      ...[...chatSummaries.values()].sort((a, b) => b.id - a.id).map(chat => ({
-        value:String(chat.id), text:`${chat.active ? '◌ ' : ''}${chat.title}`,
-      }))];
-    desired.forEach(({value, text}, index) => {
-      const option = options.get(value) || element('option');
-      if (!option.hasAttribute('value') || option.value !== value) option.value = value;
-      if (option.textContent !== text) option.textContent = text;
-      if (select.options[index] !== option) {
-        select.insertBefore(option, select.options[index] || null);
+  const chatRows = new Map<string, HTMLButtonElement>();
+  const chatGroups = new Map<string, HTMLElement>();
+  const chatMenu = $('chat-menu'), chatSearch = $('chat-search');
+  const chatList = $('chat-list'), chatTrigger = $('conversations');
+  const setText = (node: Element, text: string) => {
+    if (node.textContent !== text) node.textContent = text;
+  };
+  const chatDate = (chat: ChatSummary) => {
+    const date = new Date(chat.updated_at);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+  const chatGroup = (chat: ChatSummary) => {
+    const date = chatDate(chat);
+    if (!date) return 'Ранее';
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const week = new Date(today); week.setDate(today.getDate() - 6);
+    if (date >= today) return 'Сегодня';
+    if (date >= yesterday) return 'Вчера';
+    return date >= week ? 'Последние 7 дней' : 'Ранее';
+  };
+  const chatMeta = (chat: ChatSummary) => {
+    if (chat.active) return 'Готовит ответ…';
+    const date = chatDate(chat);
+    if (!date) return 'Сохранённый диалог';
+    return date.toLocaleString('ru-RU', {
+      day:'numeric', month:'short', hour:'2-digit', minute:'2-digit',
+      ...(date.getFullYear() !== new Date().getFullYear() ? {year:'numeric'} : {}),
+    });
+  };
+  const chatIcon = (path: string, className = '') => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', `assistant-button-icon ${className}`.trim());
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const shape = document.createElementNS(svg.namespaceURI, 'path');
+    shape.setAttribute('d', path); svg.append(shape);
+    return svg;
+  };
+  const createChatRow = (id: string) => {
+    const row = element('button', 'assistant-chat-option');
+    row.type = 'button'; row.dataset.chatId = id;
+    const copy = element('span', 'assistant-chat-copy');
+    copy.append(element('span', 'assistant-chat-title'),
+      element('span', 'assistant-chat-meta'));
+    row.append(chatIcon('M21 15a3 3 0 0 1-3 3H8l-5 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3Z'),
+      copy, chatIcon('m5 12 4 4L19 6', 'assistant-chat-check'));
+    row.addEventListener('click', () => {
+      if (submitting) return;
+      setChatPicker(false);
+      if (chatId !== Number(id)) void chooseChat(Number(id));
+      input.focus();
+    });
+    chatRows.set(id, row);
+    return row;
+  };
+  const updateChatRow = (chat: ChatSummary) => {
+    const id = String(chat.id), row = chatRows.get(id) || createChatRow(id);
+    setText(row.querySelector('.assistant-chat-title')!, chat.title);
+    setText(row.querySelector('.assistant-chat-meta')!, chatMeta(chat));
+    if (row.title !== chat.title) row.title = chat.title;
+    row.classList.toggle('is-running', chat.active);
+    const selected = chat.id === chatId;
+    if (selected && !row.hasAttribute('aria-current')) {
+      row.setAttribute('aria-current', 'true');
+    } else if (!selected) row.removeAttribute('aria-current');
+    const check = row.querySelector('.assistant-chat-check')!;
+    if (selected) check.removeAttribute('hidden');
+    else if (!check.hasAttribute('hidden')) check.setAttribute('hidden', '');
+    return row;
+  };
+  const placeChatRows = (label: string, rows: HTMLButtonElement[]) => {
+    let group = chatGroups.get(label);
+    if (!group) {
+      group = element('section', 'assistant-chat-group');
+      group.setAttribute('aria-label', label);
+      group.append(element('h4', '', label));
+      chatGroups.set(label, group);
+    }
+    rows.forEach((row, index) => {
+      if (group.children[index + 1] !== row) {
+        group.insertBefore(row, group.children[index + 1] || null);
       }
     });
-    const selected = chatId ? String(chatId) : '';
-    if (select.value !== selected) select.value = selected;
+    [...group.querySelectorAll('button')].forEach(row => {
+      if (!rows.includes(row)) row.remove();
+    });
+    return group;
+  };
+  const renderChatList = (chats: ChatSummary[]) => {
+    const groups = new Map<string, HTMLButtonElement[]>();
+    for (const chat of chats) {
+      const label = chatGroup(chat), rows = groups.get(label) || [];
+      rows.push(updateChatRow(chat)); groups.set(label, rows);
+    }
+    const sections = [...groups].map(([label, rows]) => placeChatRows(label, rows));
+    sections.forEach((section, index) => {
+      if (chatList.children[index] !== section) {
+        chatList.insertBefore(section, chatList.children[index] || null);
+      }
+    });
+    [...chatList.children].forEach(section => {
+      if (!sections.includes(section as HTMLElement)) section.remove();
+    });
+  };
+  const renderChatPicker = (force = false) => {
+    // Polling must not change a menu under the pointer or keyboard focus.
+    if (!chatMenu.hidden && !force) return;
+    const selected = chatSummaries.get(String(chatId));
+    const title = selected?.title || (chatId ? 'Сохранённый диалог' : 'Новый диалог');
+    setText($('current-chat'), title);
+    if (chatTrigger.title !== title) chatTrigger.title = title;
+    const id = chatId ? String(chatId) : '';
+    if (chatTrigger.dataset.chatId !== id) chatTrigger.dataset.chatId = id;
+    const query = chatSearch.value.trim().toLocaleLowerCase('ru-RU');
+    const chats = [...chatSummaries.values()].sort((a, b) =>
+      (chatDate(b)?.getTime() || 0) - (chatDate(a)?.getTime() || 0) || b.id - a.id);
+    renderChatList(chats.filter(chat =>
+      chat.title.toLocaleLowerCase('ru-RU').includes(query)));
+    $('chat-empty').hidden = Boolean(chatList.children.length);
+    setText($('chat-empty-title'), query ? 'Ничего не найдено' : 'Пока нет диалогов');
+    setText($('chat-empty-text'), query ? 'Попробуйте другое название.'
+      : 'Начните разговор — он появится здесь.');
+    setText($('chat-count'), String(chatSummaries.size));
+    $('chat-search-note').hidden = !query || !nextBefore;
     $('more-chats').hidden = !nextBefore;
   };
-  $('conversations').addEventListener('blur',
-    () => requestAnimationFrame(renderChatOptions));
+  const setChatPicker = (visible: boolean, focus = false) => {
+    if (visible && submitting) return;
+    if (visible) {
+      chatSearch.value = ''; renderChatPicker(true);
+      chatList.scrollTop = 0; setInputHint(false);
+    }
+    chatMenu.hidden = !visible;
+    chatTrigger.setAttribute('aria-expanded', String(visible));
+    if (!visible) renderChatPicker();
+    if (visible) chatSearch.focus();
+    else if (focus) chatTrigger.focus();
+  };
+  const moveChatFocus = (event: KeyboardEvent) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
+      || event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
+    const inSearch = event.target === chatSearch;
+    if (inSearch && ['Home', 'End'].includes(event.key)) return;
+    const rows = [...chatList.querySelectorAll<HTMLButtonElement>('button')];
+    if (!rows.length) {
+      if (inSearch) { event.preventDefault(); $('chat-new').focus(); }
+      return;
+    }
+    const index = rows.indexOf(document.activeElement as HTMLButtonElement);
+    let target = index + (event.key === 'ArrowUp' ? -1 : 1);
+    if (event.key === 'Home') target = 0;
+    if (event.key === 'End' || (inSearch && event.key === 'ArrowUp')) {
+      target = rows.length - 1;
+    }
+    event.preventDefault();
+    if (!inSearch && index === 0 && event.key === 'ArrowUp') chatSearch.focus();
+    else rows[(target + rows.length) % rows.length].focus();
+  };
+  chatTrigger.addEventListener('click', () => setChatPicker(Boolean(chatMenu.hidden)));
+  $('chat-close').addEventListener('click', () => setChatPicker(false, true));
+  chatSearch.addEventListener('input', () => renderChatPicker(true));
+  chatMenu.addEventListener('keydown', moveChatFocus);
+  chatMenu.addEventListener('focusout', event => {
+    if (event.relatedTarget === chatTrigger && !chatMenu.hidden) {
+      setChatPicker(false);
+    }
+  });
+  document.addEventListener('pointerdown', event => {
+    if (event.target instanceof Node
+      && !chatTrigger.parentElement?.contains(event.target) && !chatMenu.hidden) {
+      setChatPicker(false);
+    }
+  });
+  chatTrigger.parentElement?.addEventListener('focusout', event => {
+    if (event.relatedTarget instanceof Node
+      && !chatTrigger.parentElement?.contains(event.relatedTarget)) {
+      setChatPicker(false);
+    }
+  });
   const refreshChats = async (append = false) => {
     const data = await api<ChatList>(chatsUrl
       + (append && nextBefore ? `?before=${nextBefore}` : ''));
     for (const chat of data.conversations) chatSummaries.set(String(chat.id), chat);
     if (append || !listInitialized) nextBefore = data.next_before;
     listInitialized = true;
-    renderChatOptions();
+    renderChatPicker(append === true);
     return data.conversations;
   };
   const schedulePoll = () => {
@@ -829,7 +1004,7 @@
     if (!following) scroll.scrollTop = oldTop;
     lastTranscript = signature;
   };
-  const syncConversation = (data: Conversation) => {
+  const syncConversation = (data: Pick<Conversation, 'jobs' | 'next_before'>) => {
     if (!historyLoaded) {
       olderCursor = data.next_before ?? null; historyLoaded = true;
     }
@@ -860,6 +1035,7 @@
       if (id) {
         const data = await api<Conversation>(`${chatsUrl}${id}/`);
         if (ownTurn !== turn || id !== chatId) return;
+        chatSummaries.set(String(id), data);
         syncConversation(data);
       }
       await refreshChats();
@@ -878,6 +1054,7 @@
     turn++;
     clearTimeout(pollTimer);
     chatId = id; saveSelection();
+    renderChatPicker();
     ready = false; activeJob = null; controller = null;
     pendingSubmission = null; lastQuestion = ''; lastTranscript = '';
     retainedJobs = []; olderCursor = null; historyLoaded = false;
@@ -898,6 +1075,7 @@
   };
   const setSubmitting = (value: boolean) => {
     submitting = value;
+    if (value) setChatPicker(false);
     $('new').disabled = value;
     $('conversations').disabled = value;
     $('send').disabled = value || Boolean(controller) || configured === false;
@@ -952,11 +1130,24 @@
       error(asFailure(caught).message, false);
     }
   });
-  $('conversations').addEventListener('change', () => {
-    void chooseChat(Number($('conversations').value));
-  });
-  $('more-chats').addEventListener('click', () => {
-    void refreshChats(true).catch(failure => error(asFailure(failure).message, false));
+  $('more-chats').addEventListener('click', async () => {
+    if (loadingChats) return;
+    loadingChats = true;
+    const more = $('more-chats');
+    const hadFocus = document.activeElement === more;
+    more.setAttribute('aria-disabled', 'true');
+    try {
+      const chats = await refreshChats(true);
+      const lostFocus = hadFocus && document.activeElement === document.body;
+      if (!chatMenu.hidden && more.hidden
+        && (document.activeElement === more || lostFocus)) {
+        const first = chats.map(chat => chatRows.get(String(chat.id)))
+          .find(row => row?.isConnected);
+        (first || chatSearch).focus();
+      }
+    }
+    catch (failure) { error(asFailure(failure).message, false); }
+    finally { loadingChats = false; more.removeAttribute('aria-disabled'); }
   });
   $('form').addEventListener('submit', event => {
     event.preventDefault(); void send();
@@ -987,11 +1178,14 @@
   });
   $('retry').addEventListener('click', () => { void send(true); });
   $('cancel').addEventListener('click', () => void cancelCurrent());
-  $('new').addEventListener('click', () => {
+  const startNewChat = () => {
+    if (submitting) return;
+    setChatPicker(false);
     void chooseChat(null);
-    $('conversations').value = '';
     input.focus();
-  });
+  };
+  $('new').addEventListener('click', startNewChat);
+  $('chat-new').addEventListener('click', startNewChat);
   panel.querySelectorAll<HTMLButtonElement>('[data-assistant-prompt]')
     .forEach(node => node.addEventListener('click', () => {
       input.value = node.dataset.assistantPrompt || '';
