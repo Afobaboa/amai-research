@@ -31,7 +31,6 @@
   <div class="assistant-status" id="assistant-status" role="status" hidden></div>
   <div class="assistant-scroll" id="assistant-scroll">
     <div class="assistant-welcome" id="assistant-welcome">
-      <span class="assistant-welcome-mark" aria-hidden="true">✦</span>
       <p class="assistant-eyebrow">ОТ ВОПРОСА К СЛЕДУЮЩЕМУ ОПЫТУ</p>
       <h3>Разберёмся вместе</h3>
       <p>Помогу сравнить эксперименты, обсудить гипотезу и найти нужный раздел. Проверю данные и покажу источники.</p>
@@ -52,9 +51,28 @@
   <form class="assistant-compose" id="assistant-form">
     {% csrf_token %}
     <label class="assistant-sr-only" for="assistant-input">Вопрос ИИ-ассистенту</label>
-    <textarea id="assistant-input" rows="3" maxlength="6000" placeholder="Спросите об опыте или гипотезе…" aria-describedby="assistant-history-notice assistant-input-hint" required></textarea>
-    <div class="assistant-compose-bottom">
-      <span id="assistant-input-hint">Enter — отправить · Shift + Enter — строка<br>↑/↓ — последние 25 запросов при пустом вводе</span>
+    <textarea id="assistant-input" rows="1" maxlength="6000"
+              placeholder="Ваш вопрос…" aria-describedby="assistant-history-notice"
+              required></textarea>
+    <div class="assistant-compose-actions">
+      <div class="assistant-compose-help">
+        <button id="assistant-input-help" type="button"
+                aria-label="Подсказки по вводу" aria-expanded="false"
+                aria-controls="assistant-input-hint"
+                aria-describedby="assistant-input-hint">
+          <svg class="assistant-button-icon" viewBox="0 0 24 24"
+               aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5M12 16h.01"/>
+          </svg>
+        </button>
+        <div class="assistant-input-hint" id="assistant-input-hint"
+             role="tooltip" hidden>
+          <p><kbd>Enter</kbd> — отправить</p>
+          <p><kbd>Shift</kbd> + <kbd>Enter</kbd> — новая строка</p>
+          <p><kbd>↑</kbd> / <kbd>↓</kbd> — последние 25 запросов при пустом вводе</p>
+        </div>
+      </div>
       <button id="assistant-cancel" type="button" aria-label="Остановить ответ"
               title="Остановить ответ (Esc)" hidden>
         <svg class="assistant-button-icon" viewBox="0 0 24 24"

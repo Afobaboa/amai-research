@@ -136,19 +136,53 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.getByRole('button',{name:/Открыть лабораторию/}).click();
   await page.waitForLoadState('networkidle');
   await page.locator('#lab-assistant').waitFor({state:'visible'});
-  assert.equal(await page.title(),'Обзор лаборатории · AMAI LAB');
+  assert.equal(await page.title(),'АМАИ ИССЛЕДОВАНИЯ · Обзор лаборатории');
+  assert.equal(await page.locator('.topbar-meta').count(), 0);
+  assert.doesNotMatch(await page.locator('body').innerText(), /AMAI LAB/);
   assert.equal(await page.locator('#assistant-title').textContent(),'ИИ-ассистент');
+  assert.equal(await page.locator('.assistant-welcome-mark').count(), 0);
   assert.equal(await page.locator('#assistant-model,.assistant-context,.assistant-disclosure,.workspace-label').count(),0);
   assert.doesNotMatch(await page.locator('body').innerText(),/deepseek-test|KUDO|Помощник лаборатории/);
   for (const selector of ['#assistant-new','#assistant-send']) {
     assert.equal(await page.locator(`${selector} svg[aria-hidden="true"]`).count(),1);
   }
-  assert.match(await page.locator('link[rel="icon"]').getAttribute('href'),/favicon\.svg\?v=amai-2$/);
+  assert.match(await page.locator('link[rel="icon"]').getAttribute('href'),/favicon\.svg\?v=amai-3$/);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   for (const selector of ['.assistant-header','#assistant-form']) {
     const box = await page.locator(selector).boundingBox();
     assert.ok(box.y >= 0 && box.y + box.height <= 1000, `${selector} must remain in the viewport`);
   }
+  const input = page.locator('#assistant-input');
+  const hint = page.locator('#assistant-input-hint');
+  const inputHelp = page.getByRole('button', {name:'Подсказки по вводу'});
+  const emptyInputHeight = (await input.boundingBox()).height;
+  assert.ok((await page.locator('#assistant-form').boundingBox()).height < 90,
+    'An empty composer leaves room for the conversation');
+  assert.equal(await hint.isVisible(), false);
+  await inputHelp.hover();
+  await hint.waitFor({state:'visible'});
+  await page.mouse.move(0, 0);
+  await hint.waitFor({state:'hidden'});
+  await inputHelp.focus();
+  await hint.waitFor({state:'visible'});
+  await page.keyboard.press('Escape');
+  assert.equal(await hint.isVisible(), false);
+  assert.equal(await page.locator('#lab-assistant').isVisible(), true,
+    'Escape dismisses the hint before closing the assistant');
+  await inputHelp.click();
+  await hint.waitFor({state:'visible'});
+  await inputHelp.click();
+  await hint.waitFor({state:'hidden'});
+  await input.fill('Первая строка');
+  await input.press('Shift+Enter');
+  assert.equal(await input.inputValue(), 'Первая строка\n');
+  assert.equal(captured.length, 0, 'A newline does not submit a question');
+  await input.fill(Array(12).fill('Длинный вопрос об исследовании').join('\n'));
+  assert.ok((await input.boundingBox()).height > emptyInputHeight);
+  assert.equal(await input.evaluate(node => node.scrollHeight > node.clientHeight), true,
+    'A long draft scrolls inside the composer');
+  await input.fill('');
+  assert.equal((await input.boundingBox()).height, emptyInputHeight);
   await page.screenshot({path:join(artifacts,'desktop.png'),fullPage:true});
   await page.locator('[data-assistant-prompt]').first().click();
   await page.locator('.assistant-message.is-assistant').waitFor();
@@ -357,6 +391,13 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await returned.waitForTimeout(100);
   if (!await returned.locator('#lab-assistant').isVisible()) await returned.locator('#assistant-launcher').click();
   await returned.waitForFunction(() => document.getElementById('lab-assistant').getAttribute('aria-modal') === 'true');
+  await returned.locator('#assistant-input-help').click();
+  await returned.locator('#assistant-input-hint').waitFor({state:'visible'});
+  const hintBox = await returned.locator('#assistant-input-hint').boundingBox();
+  assert.ok(hintBox.x >= 0 && hintBox.x + hintBox.width <= 390,
+    'The input hint fits on mobile');
+  await returned.locator('#assistant-input').click();
+  assert.equal(await returned.locator('#assistant-input-hint').isVisible(), false);
   assert.equal(await returned.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   const wide = returned.locator('.assistant-table-scroll').last();
   assert.ok(await wide.evaluate(node => node.scrollWidth > node.clientWidth));

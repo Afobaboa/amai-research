@@ -9,6 +9,7 @@
     const launcher = $('launcher'), backdrop = $('backdrop'), input = $('input');
     const messagesNode = $('messages'), scroll = $('scroll'), statusNode = $('status');
     const resize = $('resize');
+    const inputHelp = $('input-help'), inputHint = $('input-hint');
     const desktop = window.matchMedia('(min-width: 1400px)');
     const storageKey = `kudo-assistant-v1:${panel.dataset.employee}`;
     const preferenceKey = `${storageKey}:open`;
@@ -23,6 +24,42 @@
     let drag = null;
     let following = true, activityTimer, activityStarted = 0;
     let activitySteps = [];
+    let hintPinned = false, hintTimer;
+    const setInputHint = (visible) => {
+        clearTimeout(hintTimer);
+        inputHint.hidden = !visible;
+        inputHelp.setAttribute('aria-expanded', String(visible));
+        if (!visible)
+            hintPinned = false;
+    };
+    const fitInput = () => {
+        if (panel.hidden)
+            return;
+        input.style.height = 'auto';
+        const maximum = parseFloat(getComputedStyle(input).maxHeight);
+        input.style.height = `${Math.min(input.scrollHeight, maximum)}px`;
+        input.style.overflowY = input.scrollHeight > maximum ? 'auto' : 'hidden';
+    };
+    inputHelp.parentElement?.addEventListener('pointerenter', event => {
+        if (event.pointerType !== 'touch')
+            setInputHint(true);
+    });
+    inputHelp.parentElement?.addEventListener('pointerleave', () => {
+        if (!hintPinned && document.activeElement !== inputHelp) {
+            hintTimer = setTimeout(() => setInputHint(false), 150);
+        }
+    });
+    inputHelp.addEventListener('focus', () => setInputHint(true));
+    inputHelp.addEventListener('blur', () => setInputHint(false));
+    inputHelp.addEventListener('click', () => {
+        hintPinned = !hintPinned;
+        setInputHint(hintPinned);
+    });
+    document.addEventListener('click', event => {
+        if (event.target instanceof Node
+            && !inputHelp.parentElement?.contains(event.target))
+            setInputHint(false);
+    });
     scroll.addEventListener('scroll', () => {
         following = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
     }, { passive: true });
@@ -366,6 +403,7 @@
             }
             catch { /* Resizing also works without storage. */ }
         }
+        fitInput();
     };
     const stopResize = () => {
         if (!drag)
@@ -420,13 +458,17 @@
             .forEach(node => { node.inert = modal; });
     };
     const setOpen = (value, focus = false, remember = true) => {
-        if (!value)
+        if (!value) {
             stopResize();
+            setInputHint(false);
+        }
         open = value;
         panel.hidden = !value;
         launcher.setAttribute('aria-expanded', String(value));
         document.body.classList.toggle('assistant-open', value);
         syncModal();
+        if (value)
+            fitInput();
         if (remember) {
             savedOpen = String(value);
             try {
@@ -451,7 +493,9 @@
             return;
         if (event.key === 'Escape') {
             event.preventDefault();
-            if (controller)
+            if (!inputHint.hidden)
+                setInputHint(false);
+            else if (controller)
                 void cancelCurrent();
             else if (drag)
                 stopResize();
@@ -862,6 +906,8 @@
         $('error').hidden = true;
         input.value = '';
         promptIndex = null;
+        fitInput();
+        setInputHint(false);
         if (id)
             await poll();
         else {
@@ -903,6 +949,7 @@
         await api(`${chatsUrl}${chatId}/send/`, pendingSubmission);
         rememberPrompt(text);
         input.value = '';
+        fitInput();
         pendingSubmission = null;
         await poll();
     };
@@ -955,7 +1002,7 @@
         event.preventDefault();
         void send();
     });
-    input.addEventListener('input', () => { promptIndex = null; });
+    input.addEventListener('input', () => { promptIndex = null; fitInput(); });
     input.addEventListener('keydown', event => {
         if (event.isComposing)
             return;
@@ -981,6 +1028,7 @@
         event.preventDefault();
         promptIndex = Math.max(0, Math.min(prompts.length, promptIndex + (event.key === 'ArrowUp' ? -1 : 1)));
         input.value = prompts[promptIndex] || '';
+        fitInput();
         if (promptIndex === prompts.length)
             promptIndex = null;
         input.setSelectionRange(input.value.length, input.value.length);
@@ -995,6 +1043,7 @@
     panel.querySelectorAll('[data-assistant-prompt]')
         .forEach(node => node.addEventListener('click', () => {
         input.value = node.dataset.assistantPrompt || '';
+        fitInput();
         input.focus();
         void send();
     }));
