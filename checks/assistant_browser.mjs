@@ -332,10 +332,21 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.ok(historyBox.x >= assistantBox.x && historyBox.x + historyBox.width <= assistantBox.x + assistantBox.width + 1, 'History fits within the desktop panel');
   assert.ok(historyBox.y >= 0 && historyBox.y + historyBox.height <= 1000, 'History fits within the desktop viewport');
   await page.screenshot({path:join(artifacts,'desktop-history.png'),fullPage:true});
-  await search.press('Escape');
+  await search.focus();
+  await page.keyboard.press('Escape');
   await history.waitFor({state:'hidden'});
-  await page.waitForFunction(() => document.activeElement?.id ===
-    'assistant-conversations');
+  try {
+    await page.waitForFunction(() => document.activeElement?.id ===
+      'assistant-conversations');
+  } catch (error) {
+    console.error('History Escape focus:', await page.evaluate(() => ({
+      active: document.activeElement?.outerHTML,
+      trigger: document.getElementById('assistant-conversations')?.outerHTML,
+      historyHidden: document.getElementById('assistant-chat-menu')?.hidden,
+      panelHidden: document.getElementById('lab-assistant')?.hidden,
+    })));
+    throw error;
+  }
   assert.equal(await picker.evaluate(node => node === document.activeElement), true, 'Escape restores history trigger focus');
   assert.equal(await page.locator('#lab-assistant').isVisible(), true);
 
@@ -491,7 +502,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await formPage.goto(base + '/recipes/new/', {waitUntil:'networkidle'});
   await formPage.locator('#assistant-new').click();
   await formPage.locator('#id_title').fill('Несохранённый черновик');
-  await formPage.locator('#id_components-0-quantity_value').fill('0');
+  await formPage.locator('#id_polyol-0-quantity').fill('0');
   await formPage.evaluate(() => {
     const node = document.createElement('input');
     node.type = 'password'; node.name = 'qa_password'; node.value = 'DO-NOT-SEND';
@@ -504,7 +515,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   const draft = captured.at(-1);
   const fields = draft.form_state.forms.flatMap(form => form.fields);
   assert.equal(fields.find(field => field.name === 'title').value, 'Несохранённый черновик');
-  assert.equal(fields.find(field => field.name === 'components-0-quantity_value').value, '0');
+  assert.equal(fields.find(field => field.name === 'polyol-0-quantity').value, '0');
   assert.equal(JSON.stringify(draft).includes('DO-NOT-SEND'), false);
   assert.equal(fields.some(field => field.name === 'csrfmiddlewaretoken'), false);
   assert.equal(await formPage.locator('#id_title').inputValue(), 'Несохранённый черновик');

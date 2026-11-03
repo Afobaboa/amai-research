@@ -59,8 +59,9 @@ class RecipeForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["status"].choices = [("draft", "Черновик"), ("published", "Опубликована")]
-        self.fields['source_sheet'].label = 'Лист первичного источника'
-        self.fields['source_sheet'].queryset = SourceSheet.objects.select_related('file')
+        if 'source_sheet' in self.fields:
+            self.fields['source_sheet'].label = 'Лист первичного источника'
+            self.fields['source_sheet'].queryset = SourceSheet.objects.select_related('file')
 
     def clean_batch_mass_g(self):
         value = self.cleaned_data.get('batch_mass_g')

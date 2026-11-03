@@ -15,7 +15,8 @@
     "test:frontend:headed": "npm run build && node checks/browser.mjs --headed && node checks/assistant_browser.mjs --headed",
     "test:forms": "npm run build && node checks/browser.mjs --forms-only",
     "test:forms:firefox": "npm run build && node checks/browser.mjs --forms-only --firefox",
-    "test:assistant": "npm run build && node checks/assistant_browser.mjs"
+    "test:assistant": "npm run build && node checks/assistant_browser.mjs",
+    "test:recipe-editor": "npm run build && node checks/recipe_editor.mjs"
   },
   "devDependencies": {
     "playwright": "1.64.1",

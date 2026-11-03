@@ -13,7 +13,7 @@ from .assistant_tools import execute_tool
 from .models import (
     ChangeEvent, EmployeeProfile, Material,
     MaterialCategory, MaterialLot, Metric, MixtureType, RecipeMatch,
-    RecipeTemplate, RecipeVersion, SourceFile, TestSession,
+    RecipeVersion, SourceFile, TestSession,
 )
 from .search import (
     NormalizedText, SEPARATOR_PATTERN, filter_search, normalize_search,
@@ -42,7 +42,6 @@ class NormalizedSearchTests(TestCase):
         cls.card = TestSession.objects.create(identifier=cls.key)
         cls.source = SourceFile.objects.create(title=cls.key)
         cls.metric = Metric.objects.create(code=cls.key, label=cls.key)
-        cls.recipe_template = RecipeTemplate.objects.create(name=cls.key)
         cls.event = ChangeEvent.objects.create(
             entity_type='material', entity_id=cls.material.pk,
             action='created', summary=cls.key, employee=cls.employee,
@@ -60,7 +59,6 @@ class NormalizedSearchTests(TestCase):
             ('lot_list', self.lot), ('mixture_list', self.mixture),
             ('recipe_list', self.recipe), ('test_list', self.card),
             ('source_list', self.source), ('metric_list', self.metric),
-            ('recipe_template_list', self.recipe_template),
             ('history', self.event),
         )
 
@@ -81,7 +79,7 @@ class NormalizedSearchTests(TestCase):
 
     def test_assistant_uses_the_same_search_rules(self):
         entities = ('materials', 'lots', 'mixtures', 'recipes', 'tests',
-                    'metrics', 'sources', 'recipe_templates')
+                    'metrics', 'sources')
         for entity in entities:
             for query in self.queries:
                 with self.subTest(entity=entity, query=query):

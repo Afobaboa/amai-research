@@ -1,0 +1,21 @@
+{% load lab_tags %}
+<section class="panel" id="recipe-calculation">
+  <div class="panel-heading"><div><h2>Заправка одного баллона</h2><p>Результаты рассчитаны из состава, соотношения A:B, долей газов и объёма заполнения.</p></div></div>
+  <div class="table-scroll"><table>
+    <thead><tr><th>СМЕСЬ / МАТЕРИАЛ</th><th>МАССА, Г</th><th>ОБЪЁМ, МЛ</th><th>ЦЕНА ЗА КГ</th><th>СТОИМОСТЬ</th></tr></thead>
+    <tbody>{% for row in result.filling.rows %}<tr>
+      <td>{{ row.name|default:'Материал не установлен' }}</td>
+      <td>{% include 'lab/includes/recipe_cell.html' with cell=row.mass_g %}</td>
+      <td>{% include 'lab/includes/recipe_cell.html' with cell=row.volume_ml %}</td>
+      <td>{% include 'lab/includes/recipe_cell.html' with cell=row.price_per_kg %} {{ row.price_currency }}</td>
+      <td>{% include 'lab/includes/recipe_cell.html' with cell=row.cost %} {{ row.price_currency }}</td>
+    </tr>{% endfor %}</tbody>
+    <tfoot><tr><th>Итого</th><th>{% include 'lab/includes/recipe_cell.html' with cell=result.filling.mass_g %}</th><th>{% include 'lab/includes/recipe_cell.html' with cell=result.filling.volume_ml %}</th><th></th><th>{% include 'lab/includes/recipe_cell.html' with cell=result.filling.cost %} {{ result.filling.price_currency }}</th></tr></tfoot>
+  </table></div>
+  <div class="panel-body">{% if result.issues %}<div class="info-note"><ul>{% for issue in result.issues %}<li>{{ issue }}</li>{% endfor %}</ul></div>{% endif %}<div class="results-strip">
+    <div class="result-item"><small>Плотность смеси A, г/мл</small><strong>{% include 'lab/includes/recipe_cell.html' with cell=result.polyol.density_g_ml %}</strong></div>
+    <div class="result-item"><small>OHV смеси A</small><strong>{% include 'lab/includes/recipe_cell.html' with cell=result.polyol.ohv %}</strong></div>
+    <div class="result-item"><small>ISO index</small><strong>{% include 'lab/includes/recipe_cell.html' with cell=result.isocyanate.iso_index %}</strong></div>
+    <div class="result-item"><small>Расчётное давление газовой смеси</small><strong>{% include 'lab/includes/recipe_cell.html' with cell=result.gases.pressure_bar %}</strong></div>
+  </div><p class="muted">Плотности и давление — расчётные оценки по исходным параметрам, не результаты измерения готовой пены.</p></div>
+</section>

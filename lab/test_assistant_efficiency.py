@@ -83,12 +83,13 @@ class CompactContextTests(TestCase):
             '/recipes/', '/recipes/new/', '/recipes/1/fork/',
             '/recipes/1/calculate/', '/experiments/1/measurement-groups/new/',
             '/experiments/1/observations/new/', '/experiments/1/conditioning/new/',
-            '/lots/new/', '/recipe-templates/',
+            '/lots/new/',
             '/calculations/1/', '/history/',
         ):
             self.assertIsNotNone(resolve(path).url_name)
         self.assertIn('Краткая справка по интерфейсу', assistant.SYSTEM_PROMPT)
         self.assertIn('только если справки', assistant.SYSTEM_PROMPT)
+        self.assertNotIn('[Шаблоны рецептур]', assistant.SYSTEM_PROMPT)
 
     def test_navigation_uses_current_card_and_author_permissions(self):
         context = initial_context('/recipes/8/', 'author')

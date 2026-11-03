@@ -154,6 +154,9 @@ def recipe_list(request):
 def recipe_detail(request, pk):
     from .calculations import calculate_recipe
     recipe = get_object_or_404(RecipeVersion.objects.select_related("mixture_type", "created_by", "source_sheet__file"), pk=pk)
+    if recipe.formulation:
+        from .recipe_editor_views import formulation_detail
+        return formulation_detail(request, recipe)
     records = recipe.calculations.select_related('created_by')
     saved_calculation = None
     if recipe.status != 'draft':
@@ -328,80 +331,15 @@ def _save_properties(recipe, rows, groups, components, fills):
 
 @author_required
 def recipe_create(request, source_pk=None, pk=None):
-    editing = get_object_or_404(RecipeVersion, pk=pk) if pk else None
-    if editing and (editing.status != 'draft' or editing.session_matches.exists()):
-        return HttpResponseForbidden('Изменять можно только черновик без связанных карточек. Создайте новую версию.')
-    source = get_object_or_404(RecipeVersion, pk=source_pk) if source_pk else None
-    selected = (request.POST.get('recipe_template') if request.method == 'POST' else request.GET.get('template'))
-    selected_template = get_object_or_404(RecipeTemplate, pk=selected) if selected else None
-    initial = {'status': 'draft', 'batch_mass_g': 1000}
-    if selected_template and not editing and not source:
-        initial.update({'recipe_template': selected_template.pk, 'mixture_type': selected_template.mixture_type_id, 'title': selected_template.name, 'batch_mass_g': selected_template.batch_mass_g})
-        initial_components = selected_template.definition.get('components', [])
-        initial_filling = selected_template.definition.get('filling', [])
-    else:
-        initial_components, initial_filling = _initial_recipe(editing or source)
-    if source:
-        initial.update({'mixture_type': source.mixture_type_id, 'title': source.title, 'notes': source.notes, 'version_label': source.version_label + '-новая', 'recipe_template': source.recipe_template_id, 'batch_mass_g': source.batch_mass_g, 'source_sheet': source.source_sheet_id})
-    initial_properties = _initial_properties(editing or source)
-    form = RecipeForm(request.POST or None, initial=initial if not editing else None, instance=editing)
-    component_formset = ComponentFormSet(request.POST or None, prefix='components', initial=initial_components)
-    filling_formset = FillingFormSet(request.POST or None, prefix='filling', initial=initial_filling)
-    has_properties = request.method == 'POST' and 'properties-TOTAL_FORMS' in request.POST
-    property_formset = RecipePropertyFormSet(request.POST if has_properties else None, prefix='properties', initial=initial_properties)
-    if request.method == 'POST':
-        valid = form.is_valid() & component_formset.is_valid() & filling_formset.is_valid()
-        if has_properties:
-            valid = property_formset.is_valid() & valid
-        if valid:
-            rows = [f.cleaned_data for f in component_formset if f.cleaned_data and not f.cleaned_data.get('unused') and not f.cleaned_data.get('DELETE')]
-            fills = [f.cleaned_data for f in filling_formset if f.cleaned_data and not f.cleaned_data.get('unused') and not f.cleaned_data.get('DELETE')]
-            properties = [f.cleaned_data for f in property_formset if f.cleaned_data and not f.cleaned_data.get('unused') and not f.cleaned_data.get('DELETE')] if has_properties else initial_properties
-            groups = _validate_plan(form, rows, fills, properties)
-            if not form.errors:
-                with transaction.atomic():
-                    lot_ids = {row['specified_lot'].pk for row in [*rows, *fills] if row.get('specified_lot')}
-                    locked_lots = list(MaterialLot.objects.select_for_update().filter(pk__in=lot_ids))
-                    if form.cleaned_data['status'] == 'published' and any(lot.status != 'active' or (lot.expires_on and lot.expires_on < timezone.localdate()) for lot in locked_lots):
-                        return HttpResponse('Статус или срок годности партии изменился. Обновите форму и проверьте выбранные партии.', status=409)
-                    before = {}
-                    if editing:
-                        locked = RecipeVersion.objects.select_for_update().get(pk=editing.pk)
-                        if locked.status != 'draft' or locked.session_matches.exists():
-                            return HttpResponseForbidden('Черновик уже опубликован или связан с карточкой. Создайте новую версию.')
-                        before = _recipe_snapshot(locked)
-                        _recipe_properties(locked).delete()
-                        locked.filling_plan.all().delete()
-                        RecipeComponent.objects.filter(group__recipe_version=locked).delete()
-                        locked.groups.all().delete()
-                    recipe = form.save(commit=False)
-                    if not editing:
-                        recipe.created_by = request.employee
-                    template = form.cleaned_data.get('recipe_template')
-                    recipe.template_snapshot = _template_snapshot(template)
-                    recipe.full_clean()
-                    recipe.save()
-                    saved_groups = {label: RecipeGroup.objects.create(recipe_version=recipe, label=label, quantity_basis=description[0], completeness=description[1]) for label, description in groups.items()}
-                    positions, saved_components = {}, {}
-                    for row in rows:
-                        label = row['group_label']
-                        positions[label] = positions.get(label, 0) + 1
-                        component = RecipeComponent.objects.create(group=saved_groups[label], position=positions[label], unbatched_material=row.get('material'), specified_lot=row.get('specified_lot'), quantity_value=row.get('quantity_value'), name_cell=row.get('name_cell'), quantity_cell=row.get('quantity_cell'))
-                        saved_components[(label, positions[label])] = component
-                    saved_fills = []
-                    for row in fills:
-                        saved_fills.append(FillingPlanLine.objects.create(recipe_version=recipe, input_group=saved_groups.get(row.get('group_label')), unbatched_material=row.get('material'), specified_lot=row.get('specified_lot'), mass_g=row.get('mass_g'), mass_status=row['mass_status'], label_cell=row.get('label_cell'), mass_cell=row.get('mass_cell')))
-                    _save_properties(recipe, properties, saved_groups, saved_components, saved_fills)
-                    if recipe.status == 'published':
-                        from .calculations import save_calculation
-                        save_calculation(recipe, request.employee, purpose='publication')
-                    summary = f"{'Обновлён черновик' if editing else 'Создана версия'} {recipe.version_label}"
-                    if source:
-                        summary += f' на основе {source.version_label} (запись #{source.pk})'
-                    _audit(request, recipe, 'updated' if editing else 'created', summary, before=before, after=_recipe_snapshot(recipe))
-                messages.success(request, 'Рецептура сохранена.', extra_tags='form-draft-saved')
-                return redirect('recipe_detail', pk=recipe.pk)
-    return render(request, 'lab/recipe_form.html', {'form': form, 'component_formset': component_formset, 'filling_formset': filling_formset, 'property_formset': property_formset, 'source': source, 'recipe': editing, 'selected_template': selected_template or (editing.recipe_template if editing else source.recipe_template if source else None), 'recipe_templates': RecipeTemplate.objects.all(), 'title': 'Редактирование черновика' if editing else 'Новая версия рецептуры' if source else 'Новая рецептура'})
+    from .recipe_editor_views import recipe_editor
+    return recipe_editor(request, source_pk=source_pk, pk=pk)
+
+
+@author_required
+@require_POST
+def recipe_preview(request):
+    from .recipe_editor_views import recipe_preview as preview
+    return preview(request)
 
 
 @author_required

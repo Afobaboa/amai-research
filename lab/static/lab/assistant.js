@@ -933,6 +933,12 @@
             chatTrigger.focus();
     };
     const moveChatFocus = (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            setChatPicker(false, true);
+            return;
+        }
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
             || event.altKey || event.ctrlKey || event.metaKey || event.isComposing)
             return;

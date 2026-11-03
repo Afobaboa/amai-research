@@ -1,4 +1,5 @@
-"""Cross-feature checks for templates, batch traceability and historical evidence."""
+"""Cross-feature checks for recipe versions, lots and historical evidence."""
+from copy import deepcopy
 from datetime import timedelta
 from decimal import Decimal
 
@@ -12,6 +13,8 @@ from .models import (
     RecipeTemplate, RecipeVersion, SourceCell, SourceFile, SourceSheet, Result,
     TestRun, TestSession,
 )
+
+from .test_recipe_editor import editor_payload, simple_recipe_payload
 
 
 class ExpandedWorkflowTests(TestCase):
@@ -67,64 +70,47 @@ class ExpandedWorkflowTests(TestCase):
         session.save()
 
     def payload(self, **changes):
-        result = {
-            'version_label': 'WINTER.1', 'title': 'Зимняя пена', 'status': 'published',
-            'batch_mass_g': '1000',
-            'components-TOTAL_FORMS': '1', 'components-INITIAL_FORMS': '0',
-            'components-MIN_NUM_FORMS': '0', 'components-MAX_NUM_FORMS': '100',
-            'components-0-group_label': 'A',
-            'components-0-quantity_basis': 'mass_percent',
-            'components-0-completeness': 'complete', 'components-0-material': '',
-            'components-0-specified_lot': str(self.lot.pk),
-            'components-0-quantity_value': '100',
-            'filling-TOTAL_FORMS': '1', 'filling-INITIAL_FORMS': '0',
-            'filling-MIN_NUM_FORMS': '0', 'filling-MAX_NUM_FORMS': '50',
-            'filling-0-group_label': 'A', 'filling-0-mass_g': '220',
-            'filling-0-mass_status': 'recorded',
-        }
-        result.update(changes)
-        return result
+        lot_id = changes.get('polyol-0-specified_lot', self.lot.pk)
+        lot = MaterialLot.objects.get(pk=lot_id) if lot_id else None
+        material = lot.material if lot else self.material
+        data = simple_recipe_payload(material, lot)
+        data.update(version_label='WINTER.1', title='Зимняя пена')
+        data.update(changes)
+        return data
 
     def assert_saved(self, response, version='WINTER.1'):
         if response.status_code != 302:
-            errors = [str(response.context[name].errors) for name in ('form', 'component_formset', 'filling_formset', 'property_formset') if response.context and name in response.context]
+            errors = [str(response.context[name].errors) for name in ('form', 'settings_form', 'polyol_formset', 'gas_formset', 'isocyanate_form') if response.context and name in response.context]
             self.fail(f'Expected saved recipe, got HTTP {response.status_code}: {errors}')
         return RecipeVersion.objects.get(version_label=version)
 
     @staticmethod
     def displayed_payload(response):
-        """Submit the values a browser received, including provenance and formsets."""
-        data = {}
-        forms = [response.context['form']]
-        for key in ('component_formset', 'filling_formset', 'property_formset'):
-            formset = response.context[key]
-            forms.append(formset.management_form)
-            forms.extend(formset.forms)
-        for form in forms:
-            for field in form:
-                value = field.value()
-                if isinstance(value, bool):
-                    if value:
-                        data[field.html_name] = 'on'
-                elif isinstance(value, (list, tuple)):
-                    data[field.html_name] = [str(item) for item in value]
-                else:
-                    data[field.html_name] = '' if value is None else str(value)
-        return data
+        return editor_payload(response)
 
-    def test_recipe_from_template_freezes_definition_and_publication_calculation(self):
-        url = reverse('recipe_create') + f'?template={self.recipe_template.pk}'
-        page = self.client.get(url)
-        self.assertEqual(page.context['component_formset'].forms[0]['quantity_value'].value(), '100')
+    def test_recipe_fork_freezes_own_inputs_and_publication_calculation(self):
+        source = self.assert_saved(self.client.post(reverse('recipe_create'),
+                                   self.payload(version_label='WINTER.BASE')),
+                                   'WINTER.BASE')
+        page = self.client.get(reverse('recipe_fork', args=[source.pk]))
+        self.assertEqual(page.context['polyol_formset'].forms[0]['quantity'].value(),
+                         '100')
         payload = self.displayed_payload(page)
-        payload.update(version_label='WINTER.1', status='published')
-        recipe = self.assert_saved(self.client.post(reverse('recipe_create'), payload))
-        self.assertEqual(recipe.recipe_template_id, self.recipe_template.pk)
-        self.assertEqual(recipe.template_snapshot['definition'], self.recipe_template.definition)
-        self.assertEqual(recipe.template_snapshot['version'], 1)
+        payload.update(version_label='WINTER.1', status='published', **{
+            'settings-batch_mass_g': '700',
+        })
+        recipe = self.assert_saved(self.client.post(
+            reverse('recipe_fork', args=[source.pk]), payload))
+        self.assertIsNone(recipe.recipe_template_id)
+        self.assertEqual(recipe.template_snapshot, {})
         record = recipe.calculations.get()
-        self.assertEqual(record.inputs['groups'][0]['components'][0]['price_per_kg'], '100')
-        self.assertEqual(record.outputs['groups'][0]['total_cost'], '100')
+        self.assertEqual(Decimal(record.inputs['groups'][0]['components'][0][
+            'price_per_kg']), Decimal('100'))
+        self.assertEqual(record.outputs['groups'][0]['total_cost'], '70')
+        source.refresh_from_db()
+        self.assertEqual(source.batch_mass_g, Decimal(1000))
+        self.assertEqual(source.calculations.get().outputs['groups'][0]['total_cost'],
+                         '100')
         event = ChangeEvent.objects.get(entity_type='recipe', entity_id=recipe.pk)
         self.assertEqual(event.after['calculation_ids'], [record.pk])
 
@@ -136,7 +122,7 @@ class ExpandedWorkflowTests(TestCase):
             with self.subTest(values=values):
                 lot = MaterialLot.objects.create(material=self.material, lot_code=f'WINTER-LOT-{number}', **values)
                 payload = self.payload(**{'version_label': f'WINTER.BAD.{number}',
-                    'components-0-material': '', 'components-0-specified_lot': str(lot.pk)})
+                    'polyol-0-material': '', 'polyol-0-specified_lot': str(lot.pk)})
                 response = self.client.post(reverse('recipe_create'), payload)
                 self.assertEqual(response.status_code, 200)
                 self.assertFalse(RecipeVersion.objects.filter(version_label=payload['version_label']).exists())
@@ -146,7 +132,7 @@ class ExpandedWorkflowTests(TestCase):
                 self.assertEqual(recipe.groups.get().components.get().specified_lot_id, lot.pk)
 
     def test_recipe_saves_selected_component_with_its_lot(self):
-        payload = self.payload(**{'components-0-material': str(self.material.pk)})
+        payload = self.payload(**{'polyol-0-material': str(self.material.pk)})
         recipe = self.assert_saved(
             self.client.post(reverse('recipe_create'), payload),
         )
@@ -157,56 +143,60 @@ class ExpandedWorkflowTests(TestCase):
 
     def test_recipe_rejects_a_lot_from_another_component(self):
         other = Material.objects.create(name='Чужой компонент')
-        payload = self.payload(**{'components-0-material': str(other.pk)})
+        payload = self.payload(**{'polyol-0-material': str(other.pk)})
         response = self.client.post(reverse('recipe_create'), payload)
         self.assertEqual(response.status_code, 200)
         self.assertIn('specified_lot',
-                      response.context['component_formset'].forms[0].errors)
+                      response.context['polyol_formset'].forms[0].errors)
         self.assertFalse(RecipeVersion.objects.exists())
         self.assertFalse(ChangeEvent.objects.exists())
 
     def test_properties_and_source_cells_survive_edit_and_fork(self):
-        payload = self.payload(status='draft', source_sheet=str(self.sheet.pk), **{
-            'components-0-name_cell': str(self.name_cell.pk), 'components-0-quantity_cell': str(self.qty_cell.pk),
-            'filling-0-label_cell': str(self.name_cell.pk), 'filling-0-mass_cell': str(self.qty_cell.pk),
-            'properties-TOTAL_FORMS': '4', 'properties-INITIAL_FORMS': '0',
-            'properties-MIN_NUM_FORMS': '0', 'properties-MAX_NUM_FORMS': '100',
-        })
-        targets = [('recipe', '', ''), ('group', 'A', ''), ('component', 'A', '1'), ('filling', '', '1')]
-        for index, (target, label, position) in enumerate(targets):
-            payload.update({f'properties-{index}-target': target, f'properties-{index}-group_label': label,
-                f'properties-{index}-position': position, f'properties-{index}-property_code': f'PROPERTY_{target}',
-                f'properties-{index}-value': str(index), f'properties-{index}-unit_code': 'ед.',
-                f'properties-{index}-source_cell': str(self.qty_cell.pk)})
-        recipe = self.assert_saved(self.client.post(reverse('recipe_create'), payload))
-        self.assertEqual(RecipeProperty.objects.count(), 4)
+        from .initial_data import seed_initial
+        seed_initial()
+        source = RecipeVersion.objects.get(version_label='316.26',
+                                           mixture_type__code='316')
+        original = deepcopy(source.formulation)
+        page = self.client.get(reverse('recipe_fork', args=[source.pk]))
+        payload = self.displayed_payload(page)
+        payload.update(version_label='WINTER.1', status='draft')
+        recipe = self.assert_saved(self.client.post(
+            reverse('recipe_fork', args=[source.pk]), payload))
+        self.assertEqual(recipe.source_sheet_id, source.source_sheet_id)
+        self.check_component_provenance(recipe, source)
         page = self.client.get(reverse('recipe_edit', args=[recipe.pk]))
-        edit = self.displayed_payload(page)
-        edit['title'] = 'Зимняя пена — уточнение'
-        self.assert_saved(self.client.post(reverse('recipe_edit', args=[recipe.pk]), edit))
-        component = recipe.groups.get().components.get()
-        self.assertEqual(component.name_cell_id, self.name_cell.pk)
-        self.assertEqual(component.quantity_cell_id, self.qty_cell.pk)
-        self.assertEqual(recipe.filling_plan.get().mass_cell_id, self.qty_cell.pk)
-        self.assertEqual(RecipeProperty.objects.count(), 4)
-        self.assertEqual(set(RecipeProperty.objects.values_list('source_cell_id', flat=True)), {self.qty_cell.pk})
-        page = self.client.get(reverse('recipe_fork', args=[recipe.pk]))
-        fork_payload = self.displayed_payload(page)
-        fork_payload['version_label'] = 'WINTER.2'
-        fork = self.assert_saved(self.client.post(reverse('recipe_fork', args=[recipe.pk]), fork_payload), 'WINTER.2')
-        self.assertEqual(fork.groups.get().components.get().quantity_cell_id, self.qty_cell.pk)
-        self.assertEqual(RecipeProperty.objects.count(), 8)
-        copied = RecipeProperty.objects.filter(property_code='PROPERTY_component', component__group__recipe_version=fork).get()
-        self.assertEqual(copied.value, Decimal(2))
-        self.assertEqual(copied.source_cell_id, self.qty_cell.pk)
-        self.assertNotEqual(fork.groups.get().pk, recipe.groups.get().pk)
+        payload = self.displayed_payload(page)
+        payload['title'] = 'Зимняя пена — уточнение'
+        self.assert_saved(self.client.post(
+            reverse('recipe_edit', args=[recipe.pk]), payload))
+        self.check_component_provenance(recipe, source)
+        source.refresh_from_db()
+        self.assertEqual(source.formulation, original)
 
-    def test_wrong_source_sheet_rejects_plan_atomically(self):
-        payload = self.payload(source_sheet=str(self.sheet.pk), **{'components-0-quantity_cell': str(self.other_cell.pk)})
-        response = self.client.post(reverse('recipe_create'), payload)
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(RecipeVersion.objects.exists())
-        self.assertFalse(ChangeEvent.objects.exists())
+    def check_component_provenance(self, recipe, source):
+        component = recipe.groups.get().components.first()
+        original = source.groups.get().components.first()
+        self.assertEqual(component.name_cell_id, original.name_cell_id)
+        self.assertEqual(component.quantity_cell_id, original.quantity_cell_id)
+        for code in ('ohv', 'density_g_ml', 'source_price_per_kg'):
+            copied = component.properties.get(property_code=code)
+            expected = original.properties.get(property_code=code)
+            self.assertEqual(copied.source_cell_id, expected.source_cell_id)
+            self.assertEqual(copied.value, expected.value)
+            self.assertNotEqual(copied.pk, expected.pk)
+
+    def test_submitted_source_fields_cannot_forge_manual_recipe_evidence(self):
+        payload = self.payload(source_sheet=str(self.sheet.pk), **{
+            'polyol-0-quantity_cell': str(self.other_cell.pk),
+            'properties-0-source_cell': str(self.other_cell.pk),
+            'properties-0-value': '999',
+        })
+        recipe = self.assert_saved(self.client.post(reverse('recipe_create'), payload))
+        self.assertIsNone(recipe.source_sheet_id)
+        component = recipe.groups.get().components.get()
+        self.assertIsNone(component.quantity_cell_id)
+        self.assertFalse(component.properties.exclude(source_cell=None).exists())
+        self.assertFalse(component.properties.filter(value=999).exists())
 
     def test_published_price_snapshot_remains_default_after_new_calculation(self):
         recipe = self.assert_saved(self.client.post(
@@ -217,23 +207,24 @@ class ExpandedWorkflowTests(TestCase):
         response = self.client.post(reverse('recipe_calculate', args=[recipe.pk]))
         self.assertEqual(response.status_code, 302)
         newer = recipe.calculations.order_by('-pk').first()
-        self.assertEqual(newer.outputs['groups'][0]['total_cost'], '900')
+        self.assertEqual(newer.outputs['groups'][0]['total_cost'], '100')
+        self.assertNotEqual(newer.pk, original.pk)
         original.refresh_from_db()
         self.assertEqual(original.outputs['groups'][0]['total_cost'], '100')
         page = self.client.get(reverse('recipe_detail', args=[recipe.pk]))
-        self.assertEqual(page.context['calculation']['groups'][0]['total_cost'], '100')
+        self.assertEqual(page.context['saved_calculation'].outputs['groups'][0]['total_cost'], '100')
 
-    def test_reader_cannot_calculate_or_create_template_versions(self):
-        recipe = RecipeVersion.objects.create(version_label='WINTER.READONLY', status='published')
+    def test_reader_cannot_calculate_and_retired_template_routes_cannot_mutate(self):
+        recipe = RecipeVersion.objects.create(version_label='WINTER.READONLY',
+                                               status='published')
         self.sign_in(self.reader)
-        routes = [
-            ('recipe_calculate', [recipe.pk]), ('recipe_template_create', []),
-            ('recipe_template_fork', [self.recipe_template.pk]),
-            ('recipe_template_from_recipe', [recipe.pk]),
-        ]
-        for name, args in routes:
-            with self.subTest(route=name):
-                self.assertEqual(self.client.post(reverse(name, args=args), {}).status_code, 403)
+        self.assertEqual(self.client.post(reverse('recipe_calculate',
+                                                  args=[recipe.pk]), {}).status_code,
+                         403)
+        for path in ('/recipe-templates/new/',
+                     f'/recipe-templates/{self.recipe_template.pk}/fork/',
+                     f'/recipe-templates/from-recipe/{recipe.pk}/'):
+            self.assertEqual(self.client.post(path, {}).status_code, 404)
         self.assertFalse(CalculationRecord.objects.exists())
         self.assertEqual(RecipeTemplate.objects.count(), 1)
 
@@ -290,20 +281,20 @@ class ExpandedWorkflowTests(TestCase):
         lot = MaterialLot.objects.create(
             material=self.material, lot_code='WINTER.FREE', price_per_kg=0)
         payload = self.payload(version_label='WINTER.FREE', **{
-            'components-0-material': '', 'components-0-specified_lot': str(lot.pk)})
+            'polyol-0-material': '', 'polyol-0-specified_lot': str(lot.pk)})
         free = self.assert_saved(self.client.post(
             reverse('recipe_create'), payload), 'WINTER.FREE')
         output = free.calculations.get().outputs['groups'][0]
         self.assertEqual(output['total_cost'], '0')
         self.assertEqual(output['cost_per_kg'], '0')
-        self.assertEqual(output['rows'][0]['price_per_kg'], '0')
+        self.assertEqual(Decimal(output['rows'][0]['price_per_kg']), Decimal('0'))
 
     def test_manual_draft_calculation_is_not_the_published_composition_baseline(self):
         free = Material.objects.create(name='Первоначальный бесплатный компонент')
         free_lot = MaterialLot.objects.create(
             material=free, lot_code='FREE', density_g_ml=1, price_per_kg=0)
         payload = self.payload(status='draft', **{
-            'components-0-specified_lot': str(free_lot.pk)})
+            'polyol-0-specified_lot': str(free_lot.pk)})
         draft = self.assert_saved(self.client.post(reverse('recipe_create'), payload))
         self.assertFalse(draft.calculations.exists())
         response = self.client.post(reverse('recipe_calculate', args=[draft.pk]))
@@ -314,8 +305,8 @@ class ExpandedWorkflowTests(TestCase):
         page = self.client.get(reverse('recipe_edit', args=[draft.pk]))
         payload = self.displayed_payload(page)
         payload.update(status='published', **{
-            'components-0-material': '',
-            'components-0-specified_lot': str(self.lot.pk)})
+            'polyol-0-material': '',
+            'polyol-0-specified_lot': str(self.lot.pk)})
         self.assert_saved(self.client.post(
             reverse('recipe_edit', args=[draft.pk]), payload))
         self.check_publication_baseline(draft, manual)
@@ -327,8 +318,8 @@ class ExpandedWorkflowTests(TestCase):
                          self.material.pk)
         self.assertNotEqual(publication.pk, manual.pk)
         page = self.client.get(reverse('recipe_detail', args=[draft.pk]))
-        self.assertEqual(page.context['calculation']['purpose'], 'publication')
-        self.assertEqual(page.context['calculation']['groups'][0]['total_cost'], '100')
+        self.assertEqual(page.context['saved_calculation'].outputs['purpose'], 'publication')
+        self.assertEqual(page.context['saved_calculation'].outputs['groups'][0]['total_cost'], '100')
         manual.refresh_from_db()
         self.assertEqual(manual.outputs['groups'][0]['total_cost'], '0')
 

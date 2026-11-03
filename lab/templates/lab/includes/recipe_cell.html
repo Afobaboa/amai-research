@@ -1,0 +1,1 @@
+{% load lab_tags %}{% if cell.value != None %}<span class="mono">{{ cell.value|decimal_display }}</span>{% else %}<span class="muted">—</span>{% if cell.reason %}<small class="cell-subtitle">{{ cell.reason }}</small>{% endif %}{% endif %}

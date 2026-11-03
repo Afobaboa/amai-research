@@ -31,8 +31,6 @@ UI_TEXT = {
     'metric_edit': 'Редактировать показатель',
     'source_list': 'Источники', 'source_create': 'Новый источник',
     'source_detail': 'Карточка источника', 'source_edit': 'Редактировать источник',
-    'recipe_template_list': 'Шаблоны рецептур', 'recipe_template_create': 'Новый шаблон рецептуры',
-    'recipe_template_detail': 'Шаблон рецептуры', 'recipe_template_fork': 'Новая версия шаблона',
     'calculation_detail': 'Сохранённый расчёт', 'history': 'История изменений',
 }
 NAVIGATION_ROUTES = tuple(key for key in UI_TEXT if key not in ('density_g_ml', 'price_per_kg'))
@@ -166,7 +164,6 @@ ASSISTANT_LABELS = {
     'measurement_groups': UI_TEXT['measurement_group_list'],
     'metrics': UI_TEXT['metric_list'], 'sources': UI_TEXT['source_list'],
     'source_cells': 'Ячейки источников',
-    'recipe_templates': UI_TEXT['recipe_template_list'],
     'calculations': SECTION_LABELS['calculations'],
     'summary': 'Краткая сводка', 'all': 'Все сведения карточки',
     'search_lab_data': 'Поиск лабораторных данных',

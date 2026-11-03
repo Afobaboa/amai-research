@@ -227,6 +227,9 @@ def _filling_snapshot(recipe):
 
 def calculate_recipe(recipe, batch_mass_g=None):
     """Calculate each group independently, keeping filling plans separate."""
+    if recipe.formulation:
+        from .recipe_calculations import calculate_plan_recipe
+        return calculate_plan_recipe(recipe, batch_mass_g)
     batch = _decimal(recipe.batch_mass_g if batch_mass_g is None else batch_mass_g)
     if batch is None or batch <= 0:
         raise ValidationError("Масса смеси должна быть конечной и больше нуля.")

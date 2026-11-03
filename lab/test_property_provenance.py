@@ -1,4 +1,4 @@
-"""Recipe writes preserve explicitly documented cross-sheet property evidence."""
+"""Protected archive evidence survives the three-part recipe editor."""
 
 from decimal import Decimal
 
@@ -6,125 +6,119 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .calculations import calculate_recipe
-from .models import (
-    ChangeEvent, EmployeeProfile, Material, MaterialLot, RecipeVersion,
-    SourceCell, SourceFile, SourceSheet,
-)
+from .initial_data import seed_initial
+from .models import EmployeeProfile, RecipeVersion, SourceCell, SourceFile, SourceSheet
+from .test_recipe_editor import editor_payload
 
 
 class PropertyProvenanceTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.author = EmployeeProfile.objects.create(full_name='Автор', role='author')
-        material = Material.objects.create(name='Сырьё')
-        cls.lot = MaterialLot.objects.create(
-            material=material, lot_code='LOT-01', price_per_kg=100,
-            density_g_ml=1, price_currency='EUR')
-        source = SourceFile.objects.create(original_path='archive.xlsx')
-        cls.target = SourceSheet.objects.create(file=source, name='302.84')
-        donor = SourceSheet.objects.create(file=source, name='302.83')
-        cls.name_cell = SourceCell.objects.create(
-            sheet=cls.target, address='A11', cell_kind='s', raw_value='Сырьё')
-        cls.donor_cell = SourceCell.objects.create(
-            sheet=donor, address='C12', cell_kind='n', raw_value='64.69')
-        cls.note = 'По указанию пользователя перенесено из предыдущего листа.'
+        seed_initial()
+        cls.author = EmployeeProfile.objects.get(role='author')
+        cls.original = RecipeVersion.objects.get(
+            mixture_type__code='302', version_label='302.84',
+        )
+        cls.target = cls.original.source_sheet
+        cls.donor_cell = SourceCell.objects.get(
+            sheet__file=cls.target.file, sheet__name='302.83', address='C12',
+        )
+        prop = cls.original.groups.get().components.get(
+            specified_lot__material__name='TEP-Z',
+        ).properties.get(property_code='source_price_per_kg')
+        cls.note = prop.provenance_note
 
     def setUp(self):
         session = self.client.session
         session.update({'site_authenticated': True, 'employee_id': self.author.pk})
         session.save()
 
-    def payload(self, origin='carried_forward', note=None):
-        return {
-            'version_label': 'PROVENANCE.1', 'status': 'draft',
-            'source_sheet': str(self.target.pk), 'batch_mass_g': '1000',
-            'components-TOTAL_FORMS': '1', 'components-INITIAL_FORMS': '0',
-            'components-0-group_label': 'A',
-            'components-0-quantity_basis': 'mass_percent',
-            'components-0-completeness': 'complete',
-            'components-0-specified_lot': str(self.lot.pk),
-            'components-0-quantity_value': '100',
-            'components-0-name_cell': str(self.name_cell.pk),
-            'filling-TOTAL_FORMS': '0', 'filling-INITIAL_FORMS': '0',
-            'properties-TOTAL_FORMS': '1', 'properties-INITIAL_FORMS': '0',
-            'properties-0-target': 'component', 'properties-0-group_label': 'A',
-            'properties-0-position': '1',
-            'properties-0-property_code': 'source_price_per_kg',
-            'properties-0-value': '64.69', 'properties-0-unit_code': 'EUR/kg',
-            'properties-0-source_cell': str(self.donor_cell.pk),
-            'properties-0-origin': origin,
-            'properties-0-provenance_note': self.note if note is None else note,
-        }
+    def payload(self):
+        page = self.client.get(reverse('recipe_fork', args=[self.original.pk]))
+        self.assertEqual(page.status_code, 200)
+        data = editor_payload(page)
+        data.update(version_label='PROVENANCE.1', status='draft')
+        return data
 
-    def test_cross_sheet_recorded_property_is_rejected_atomically(self):
-        response = self.client.post(reverse('recipe_create'),
-                                    self.payload(origin='recorded'))
-        self.assertContains(response, 'относится к другому листу')
-        self.assertFalse(RecipeVersion.objects.exists())
-        self.assertFalse(ChangeEvent.objects.exists())
-
-    def test_carried_forward_property_requires_an_explanation(self):
-        response = self.client.post(reverse('recipe_create'), self.payload(note=''))
-        self.assertContains(response, 'Для переноса нужны исходная ячейка и основание')
-        self.assertFalse(RecipeVersion.objects.exists())
-
-    def test_explicit_carried_forward_property_keeps_actual_donor(self):
-        response = self.client.post(reverse('recipe_create'), self.payload())
+    def save(self, payload):
+        response = self.client.post(
+            reverse('recipe_fork', args=[self.original.pk]), payload,
+        )
         self.assertEqual(response.status_code, 302)
-        recipe = RecipeVersion.objects.get()
-        prop = recipe.groups.get().components.get().properties.get()
+        return RecipeVersion.objects.get(version_label=payload['version_label'])
+
+    def property(self, recipe):
+        return recipe.groups.get().components.get(
+            specified_lot__material__name='TEP-Z',
+        ).properties.get(property_code='source_price_per_kg')
+
+    def assert_donor(self, recipe):
+        prop = self.property(recipe)
         self.assertEqual(prop.origin, 'carried_forward')
         self.assertEqual(prop.provenance_note, self.note)
         self.assertEqual(prop.source_cell_id, self.donor_cell.pk)
         self.assertEqual(prop.value, Decimal('64.69'))
-        row = calculate_recipe(recipe)['groups'][0]['rows'][0]
+        self.assertEqual(recipe.source_sheet_id, self.target.pk)
+
+    def test_forged_recorded_property_cannot_replace_cross_sheet_evidence(self):
+        payload = self.payload()
+        payload.update({
+            'properties-0-target': 'component', 'properties-0-position': '1',
+            'properties-0-property_code': 'source_price_per_kg',
+            'properties-0-value': '999', 'properties-0-origin': 'recorded',
+            'properties-0-source_cell': str(self.donor_cell.pk),
+        })
+        recipe = self.save(payload)
+        self.assert_donor(recipe)
+        self.assertFalse(recipe.groups.get().components.filter(
+            properties__value=999,
+        ).exists())
+
+    def test_submitted_empty_explanation_cannot_erase_carried_forward_origin(self):
+        payload = self.payload()
+        payload['properties-0-provenance_note'] = ''
+        payload['polyol-0-provenance_note'] = ''
+        recipe = self.save(payload)
+        self.assertTrue(self.note)
+        self.assert_donor(recipe)
+        original = self.property(self.original)
+        self.assertEqual(original.provenance_note, self.note)
+
+    def test_explicit_carried_forward_property_keeps_actual_donor_in_calculation(self):
+        recipe = self.save(self.payload())
+        self.assert_donor(recipe)
+        row = next(row for row in calculate_recipe(recipe)['groups'][0]['rows']
+                   if row['name'] == 'TEP-Z')
         self.assertEqual(row['price_source_cell_id'], self.donor_cell.pk)
         self.assertEqual(row['price_source_origin'], 'carried_forward')
         self.assertEqual(Decimal(row['price_per_kg']), Decimal('64.69'))
 
-    def test_carried_forward_cannot_link_a_different_file(self):
+    def test_submitted_source_from_another_file_cannot_change_protected_donor(self):
         other = SourceFile.objects.create(original_path='unrelated.xlsx')
         sheet = SourceSheet.objects.create(file=other, name='302.83')
         cell = SourceCell.objects.create(
-            sheet=sheet, address='C12', cell_kind='n', raw_value='64.69')
+            sheet=sheet, address='C12', cell_kind='n', raw_value='64.69',
+        )
         payload = self.payload()
-        payload['properties-0-source_cell'] = str(cell.pk)
-        response = self.client.post(reverse('recipe_create'), payload)
-        self.assertContains(response, 'относится к другому листу')
-        self.assertFalse(RecipeVersion.objects.exists())
+        payload.update({'source_sheet': str(sheet.pk),
+                        'properties-0-source_cell': str(cell.pk),
+                        'polyol-0-price_source_cell': str(cell.pk)})
+        recipe = self.save(payload)
+        self.assert_donor(recipe)
+        self.assertNotEqual(self.property(recipe).source_cell_id, cell.pk)
 
     def test_fork_form_and_saved_copy_keep_origin_explanation_and_donor(self):
-        self.client.post(reverse('recipe_create'), self.payload())
-        original = RecipeVersion.objects.get()
-        url = reverse('recipe_fork', args=[original.pk])
+        url = reverse('recipe_fork', args=[self.original.pk])
         page = self.client.get(url)
-        prop_form = page.context['property_formset'].forms[0]
-        self.assertEqual(prop_form['origin'].value(), 'carried_forward')
-        self.assertEqual(prop_form['provenance_note'].value(), self.note)
-        payload = self.displayed_payload(page)
-        payload['version_label'] = 'PROVENANCE.2'
-        self.assertEqual(self.client.post(url, payload).status_code, 302)
-        fork = RecipeVersion.objects.get(version_label='PROVENANCE.2')
-        prop = fork.groups.get().components.get().properties.get()
-        self.assertEqual(prop.origin, 'carried_forward')
-        self.assertEqual(prop.provenance_note, self.note)
-        self.assertEqual(prop.source_cell_id, self.donor_cell.pk)
-        self.assertEqual(fork.source_sheet_id, self.target.pk)
-        self.assertNotEqual(fork.pk, original.pk)
-
-    @staticmethod
-    def displayed_payload(response):
-        forms = [response.context['form']]
-        for key in ('component_formset', 'filling_formset', 'property_formset'):
-            formset = response.context[key]
-            forms.extend([formset.management_form, *formset.forms])
-        payload = {}
-        for form in forms:
-            for field in form:
-                value = field.value()
-                if isinstance(value, bool):
-                    if value:
-                        payload[field.html_name] = 'on'
-                else:
-                    payload[field.html_name] = '' if value is None else str(value)
-        return payload
+        form = next(form for form in page.context['polyol_formset'].forms
+                    if form.initial.get('name') == 'TEP-Z')
+        row = form.original_rows[form.initial['id']]
+        self.assertEqual(row['price_per_kg']['origin'], 'carried_forward')
+        self.assertEqual(row['price_per_kg']['provenance_note'], self.note)
+        self.assertEqual(row['price_per_kg']['source_sheet'], '302.83')
+        self.assertNotIn('source_cell', form.fields)
+        payload = editor_payload(page)
+        payload.update(version_label='PROVENANCE.2', status='draft')
+        recipe = self.save(payload)
+        self.assert_donor(recipe)
+        self.assertNotEqual(recipe.pk, self.original.pk)

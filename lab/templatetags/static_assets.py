@@ -19,6 +19,7 @@ PUBLIC_ASSETS = frozenset({
     'lab/search-select.css', 'lab/search-select.js',
     'lab/assistant.css', 'lab/assistant.js',
 })
+PAGE_ASSETS = frozenset({'lab/recipe-editor.css', 'lab/recipe-editor.js'})
 
 
 @lru_cache(maxsize=128)
@@ -43,7 +44,7 @@ def _asset_version(name):
 
 @register.simple_tag
 def versioned_static(name):
-    if name not in PUBLIC_ASSETS:
+    if name not in PUBLIC_ASSETS | PAGE_ASSETS:
         raise ValueError('Only public application assets can be versioned.')
     url = static(name)
     try:

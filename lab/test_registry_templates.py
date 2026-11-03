@@ -17,7 +17,6 @@ REGISTRY_FILTERS = (
     ('catalog/source_list.html', {'kind': 'file'}),
     ('catalog/metric_list.html', {}),
     ('catalog/mixture_list.html', {}),
-    ('templates/recipe_list.html', {}),
 )
 
 

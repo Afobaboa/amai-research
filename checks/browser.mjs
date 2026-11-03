@@ -7,6 +7,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { checkComponentLots } from './component_lots.mjs';
+import { completeRecipeInputs } from './recipe_form_helpers.mjs';
+import { checkModernRecipeRemoval, checkModernRecipeDrafts } from './recipe_browser_forms.mjs';
 
 // Both Django and the browser run locally. Only this run's temporary DB is used.
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -50,25 +52,19 @@ async function checkArchiveDownload(page) {
 }
 
 function carriedProperty(page) {
-  const origin = 'input[name$="-origin"][value="carried_forward"]';
-  return page.locator('#properties-formset .formset-row').filter({
-    has: page.locator(origin),
+  return page.locator('#polyol-formset .formset-rows > .formset-row').filter({
+    has: page.locator('select[name$="-material"] option:checked', {hasText: 'TEP-Z'}),
   });
 }
 
-async function assertCarriedProperty(page, donorId, note) {
+async function assertCarriedProperty(page) {
   const row = carriedProperty(page);
-  assert.equal(await row.count(), 1, 'One explicitly carried-forward property');
-  const selected = row.locator('input[name$="-source_cell"]');
-  assert.equal(await selected.inputValue(), donorId,
-    'Hidden evidence must retain the donor from another sheet');
-  assert.equal(await selected.getAttribute('type'), 'hidden');
-  assert.equal(await row.locator('[name$="-origin"]').getAttribute('type'), 'hidden');
-  assert.equal(await row.locator('[name$="-provenance_note"]').getAttribute('type'), 'hidden');
-  assert.equal(await row.locator('[name$="-property_code"]').inputValue(),
-    'source_price_per_kg');
-  assert.equal(Number(await row.locator('[name$="-value"]').inputValue()), 64.69);
-  assert.equal(await row.locator('[name$="-provenance_note"]').inputValue(), note);
+  assert.equal(await row.count(), 1, 'One TEP-Z component retains its historical price');
+  const price = row.locator('input[name$="-price_per_kg"]');
+  assert.equal(Number(await price.inputValue()), 64.69);
+  assert.equal(await price.evaluate(input => input.readOnly), true);
+  assert.ok(await row.locator('input[name$="-row_id"]').inputValue());
+  assert.equal(await row.locator('input[name$="-row_id"]').getAttribute('type'), 'hidden');
 }
 
 async function checkCarriedForwardFork(page, go, submit) {
@@ -76,25 +72,24 @@ async function checkCarriedForwardFork(page, go, submit) {
   const path = await page.getByRole('link', {name: '302.84', exact: true})
     .getAttribute('href');
   await go(path);
-  const donorLink = page.getByRole('link', {name: '302.83!C12', exact: true});
-  const donorId = (await donorLink.getAttribute('href')).match(/#cell-(\d+)$/)?.[1];
-  assert.ok(donorId, 'The completed TEP-Z price points to its actual donor cell');
-  const note = await donorLink.locator('..').locator('.cell-subtitle').innerText();
+  const donorLink = () => page.locator('a').filter({hasText: '302.83!C12'}).first();
+  const donorHref = await donorLink().getAttribute('href');
+  const note = await donorLink().locator('..').locator('.cell-subtitle').textContent();
   assert.match(note, /По указанию пользователя/);
   await go(path + 'fork/');
-  await assertCarriedProperty(page, donorId, note);
-  await page.locator('[data-add-form="properties-formset"]').click();
-  await page.waitForLoadState('networkidle');
-  await assertCarriedProperty(page, donorId, note);
+  await assertCarriedProperty(page);
+  await page.locator('[data-add-form="polyol-formset"]').click();
+  await assertCarriedProperty(page);
   await page.locator('#id_version_label').fill('QA-TEP-PROVENANCE');
   await page.locator('#id_status').selectOption('draft');
   await submit('Сохранить рецептуру');
+  assert.equal(await donorLink().getAttribute('href'), donorHref);
+  assert.equal(await donorLink().locator('..').locator('.cell-subtitle').textContent(), note);
   const fork = new URL(page.url()).pathname;
   await go(fork + 'edit/');
-  await assertCarriedProperty(page, donorId, note);
-  assert.equal(await page.locator('#id_source_sheet').getAttribute('type'), 'hidden');
+  await assertCarriedProperty(page);
   assert.equal(await page.locator('.formset-source, select[data-source-cell]').count(), 0);
-  console.log('302.84 fork preserves donor selection and carried-forward provenance.');
+  console.log('302.84 fork preserves historical price, stable row identity and actual donor provenance.');
 }
 
 // Let the OS bind port 0 in the actual server process, avoiding a free-port race.
@@ -221,7 +216,7 @@ async function checkSelectSearch(page, go) {
 }
 
 async function checkMaterialSearch(page) {
-  const material = searchableSelect(page, '#id_components-0-material');
+  const material = searchableSelect(page, '#id_polyol-0-material');
   const trigger = material.locator('.search-select-trigger');
   const input = material.locator('.search-select-input');
   await trigger.click();
@@ -260,8 +255,8 @@ async function clearSelectWithKeyboard(field) {
 }
 
 async function checkAddedSelect(page) {
-  await page.locator('[data-add-form="components-formset"]').click();
-  const material = searchableSelect(page, '#id_components-1-material');
+  await page.locator('[data-add-form="polyol-formset"]').click();
+  const material = searchableSelect(page, '#id_polyol-1-material');
   await material.locator('.search-select-trigger').click();
   await material.locator('.search-select-input').fill('ovol c21');
   const candidate = material.getByRole('option', {name: 'Inovol C210', exact: true});
@@ -303,300 +298,15 @@ async function checkExperimentRecipeSelect(page, go) {
 }
 
 async function checkFormsetRemoval(page, go, submit) {
-  const rows = prefix => page.locator(`#${prefix}-formset .formset-row`);
-  const add = prefix => page.locator(`[data-add-form="${prefix}-formset"]`).click();
-  const remove = (prefix, index) => rows(prefix).nth(index).locator('[data-remove-form]').click();
-  const checkCounts = async (prefix, count, initial) => {
-    assert.equal(await rows(prefix).count(), count, prefix);
-    assert.equal(await page.locator(`#id_${prefix}-TOTAL_FORMS`).inputValue(), String(count));
-    assert.equal(await page.locator(`#id_${prefix}-INITIAL_FORMS`).inputValue(), String(initial));
-  };
-  const clear = async prefix => {
-    while (await rows(prefix).count()) await remove(prefix, 0);
-    await checkCounts(prefix, 0, 0);
-    assert.equal(await page.locator(`[data-add-form="${prefix}-formset"]`)
-      .evaluate(button => button === document.activeElement), true);
-  };
-
-  await go('/recipes/new/');
-  const prefixes = ['components', 'filling', 'properties'];
-  for (const prefix of prefixes) {
-    await checkCounts(prefix, 1, 0);
-    await add(prefix);
-    await add(prefix);
-  }
-  assert.equal(await page.locator('[name$="-DELETE"], .formset-source').count(), 0);
-  assert.doesNotMatch(await page.locator('main').innerText(), /Первичный источник|Первичная ячейка|Лист первичного источника/);
-  const material = await page.locator('#id_components-0-material option')
-    .evaluateAll(options => options.find(option => option.value)?.value);
-  assert.ok(material);
-  await page.locator('#id_version_label').fill('QA-FORMSET-REMOVE');
-  for (let index = 0; index < 3; index++) {
-    await page.locator(`#id_components-${index}-material`).selectOption(material);
-    await page.locator(`#id_components-${index}-quantity_value`).fill(index === 1 ? '-1' : String((index + 1) * 10));
-    await page.locator(`#id_filling-${index}-group_label`).fill('A');
-    await page.locator(`#id_filling-${index}-mass_g`).fill(String((index + 1) * 10));
-    await page.locator(`#id_properties-${index}-property_code`).fill(`qa_property_${index}`);
-    await page.locator(`#id_properties-${index}-value`).fill(String(index + 1));
-  }
-  for (const prefix of prefixes) {
-    await remove(prefix, 1);
-    await checkCounts(prefix, 2, 0);
-  }
-  assert.equal(await page.locator('#id_components-1-quantity_value').inputValue(), '30');
-  const selected = searchableSelect(page, '#id_components-1-material');
-  await selected.locator('.search-select-trigger').click();
-  await selected.locator('.search-select-input').press('Escape');
-  assert.equal(await selected.locator('select').inputValue(), material);
-
-  // Deleted rows stay absent when another field fails server validation.
-  await page.locator('#id_components-0-group_label').fill('');
-  await Promise.all([
-    page.waitForNavigation({waitUntil: 'networkidle'}),
-    page.getByRole('button', {name: 'Сохранить рецептуру', exact: true}).click(),
-  ]);
-  assert.match((await page.locator('.field-error').allTextContents()).join(' '), /Укажите группу/);
-  for (const prefix of prefixes) await checkCounts(prefix, 2, 0);
-  await page.locator('#id_components-0-group_label').fill('A');
-  await submit('Сохранить рецептуру');
-  const recipe = new URL(page.url()).pathname;
-  await go(recipe + 'edit/');
-  for (const prefix of prefixes) {
-    await checkCounts(prefix, 3, 2);
-    await remove(prefix, 0);
-    await remove(prefix, 1); // Remove the default empty row as well.
-    await checkCounts(prefix, 1, 1);
-  }
-  await submit('Сохранить изменения');
-  await go(recipe + 'edit/');
-  for (const prefix of prefixes) await checkCounts(prefix, 2, 1);
-  assert.equal(await page.locator('#id_components-0-quantity_value').inputValue(), '30');
-  assert.equal(await page.locator('#id_filling-0-mass_g').inputValue(), '30');
-  assert.equal(await page.locator('#id_properties-0-property_code').inputValue(), 'qa_property_2');
-  for (const prefix of prefixes) await clear(prefix);
-  await submit('Сохранить изменения');
-  await go(recipe + 'edit/');
-  for (const prefix of prefixes) await checkCounts(prefix, 1, 0);
-
-  await go('/recipe-templates/new/');
-  await page.locator('#id_name').fill('QA удаление строк шаблона');
-  for (const prefix of ['components', 'filling']) {
-    await checkCounts(prefix, 1, 0);
-    await clear(prefix);
-    await add(prefix); // Adding again after deleting the last row works.
-    await add(prefix);
-    await add(prefix);
-  }
-  for (let index = 0; index < 3; index++) {
-    await page.locator(`#id_components-${index}-material`).selectOption(material);
-    await page.locator(`#id_components-${index}-quantity_value`).fill(String(index + 1));
-    await page.locator(`#id_filling-${index}-group_label`).fill('A');
-    await page.locator(`#id_filling-${index}-mass_g`).fill(String(index + 1));
-  }
-  for (const prefix of ['components', 'filling']) await remove(prefix, 1);
-  await submit('Сохранить шаблон рецептуры');
-  const template = new URL(page.url()).pathname;
-  await go(template + 'fork/');
-  for (const prefix of ['components', 'filling']) {
-    await checkCounts(prefix, 3, 2);
-    await remove(prefix, 0);
-    await remove(prefix, 1);
-    await checkCounts(prefix, 1, 1);
-  }
-  await submit('Сохранить шаблон рецептуры');
-  await go(new URL(page.url()).pathname + 'fork/');
-  for (const prefix of ['components', 'filling']) await checkCounts(prefix, 2, 1);
-  assert.equal(await page.locator('#id_components-0-quantity_value').inputValue(), '3');
-  assert.equal(await page.locator('#id_filling-0-mass_g').inputValue(), '3');
-  console.log('Formsets: one default row, physical removal, reindexing, last-row removal, validation retry and saved recipe/template deletion passed.');
+  return checkModernRecipeRemoval(page, {go, submit, base, searchableSelect,
+    completeRecipeInputs});
 }
 
 async function checkFormDrafts(context) {
-  const page = await context.newPage();
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
-  const visit = path => page.goto(base + path, {waitUntil: 'networkidle'});
-  const add = prefix => page.locator(`[data-add-form="${prefix}-formset"]`).click();
-  const remove = (prefix, index) => page.locator(`#${prefix}-formset [data-remove-form]`).nth(index).click();
-  const snapshot = () => page.evaluate(() => {
-    const form = document.querySelector('[data-formset-prefix], form[data-form-draft]').closest('form');
-    return {
-      fields: [...new FormData(form)].filter(([name]) => name !== 'csrfmiddlewaretoken'),
-      dates: [...form.querySelectorAll('.date-picker input[type="text"]')].map(input => input.value),
-      rows: [...form.querySelectorAll('[data-formset-prefix]')].map(group => [
-        group.dataset.formsetPrefix, group.querySelectorAll('.formset-row').length,
-      ]),
-    };
-  });
-  const reload = async () => {
-    const before = await snapshot();
-    await page.reload({waitUntil: 'networkidle'});
-    assert.deepEqual(await snapshot(), before, 'Reload preserves fields, dates and every row');
-  };
-  const submit = async label => {
-    await Promise.all([
-      page.waitForNavigation({waitUntil: 'networkidle'}),
-      page.getByRole('button', {name: label, exact: true}).click(),
-    ]);
-  };
-
-  await visit('/recipes/new/');
-  await page.locator('#id_version_label').fill('QA-REFRESH-DRAFT');
-  await page.locator('#id_title').fill('Черновик перед обновлением');
-  await page.locator('#id_notes').fill('Первая строка\nВторая строка');
-  await page.locator('#id_recorded_on').fill('03.11.2026');
-  const material = await page.locator('#id_components-0-material option')
-    .evaluateAll(options => options.find(option => option.value)?.value);
-  for (const prefix of ['components', 'filling', 'properties']) {
-    await add(prefix);
-    await add(prefix);
-  }
-  for (let index = 0; index < 3; index++) {
-    await page.locator(`#id_components-${index}-material`).selectOption(material);
-    await page.locator(`#id_components-${index}-quantity_value`).fill(String(index * 10));
-    await page.locator(`#id_filling-${index}-group_label`).fill('A');
-    await page.locator(`#id_filling-${index}-mass_g`).fill(String(index * 20));
-    await page.locator(`#id_properties-${index}-property_code`).fill(`refresh_${index}`);
-    await page.locator(`#id_properties-${index}-value`).fill(String(index));
-  }
-  await reload();
-  for (const prefix of ['components', 'filling', 'properties']) await remove(prefix, 1);
-  await reload();
-  assert.equal(await page.locator('#id_components-1-quantity_value').inputValue(), '20');
-  assert.match(await searchableSelect(page, '#id_components-1-material')
-    .locator('.search-select-trigger').innerText(), /\S/);
-  await page.locator('#id_recorded_on').fill('03.11.20__');
-  await reload();
-  await page.locator('#id_recorded_on').fill('03.11.2026');
-
-  // Leaving the editor and opening it again in this tab also retains the draft.
-  await visit('/recipes/');
-  await visit('/recipes/new/');
-  assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(), '2');
-  assert.equal(await page.locator('#id_title').inputValue(), 'Черновик перед обновлением');
-  const independent = await context.newPage();
-  await independent.goto(base + '/recipes/new/', {waitUntil: 'networkidle'});
-  assert.equal(await independent.locator('#id_components-TOTAL_FORMS').inputValue(), '1');
-  assert.equal(await independent.locator('#id_title').inputValue(), '');
-  await independent.close();
-
-  await page.locator('#id_components-0-group_label').fill('');
-  await submit('Сохранить рецептуру');
-  assert.match((await page.locator('.field-error').allTextContents()).join(' '), /Укажите группу/);
-  await page.locator('#id_title').fill('Исправление после ошибки');
-  await reload();
-  await page.locator('#id_components-0-group_label').fill('A');
-  await submit('Сохранить рецептуру');
-  assert.equal(await page.locator('.errorlist,.field-error').count(), 0);
-  const recipe = new URL(page.url()).pathname;
-  assert.match(recipe, /^\/recipes\/\d+\/$/);
-  await visit('/recipes/new/');
-  assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(), '1');
-  assert.equal(await page.locator('#id_version_label').inputValue(), '');
-
-  await visit(recipe + 'edit/');
-  await remove('components', 0);
-  await remove('filling', 0);
-  await remove('properties', 0);
-  await reload();
-  await submit('Сохранить изменения');
-  await visit(recipe + 'edit/');
-  assert.equal(await page.locator('#id_components-INITIAL_FORMS').inputValue(), '1');
-  assert.equal(await page.locator('#id_components-0-quantity_value').inputValue(), '20');
-
-  // A newer server record wins over an older browser draft.
-  await page.locator('#id_title').fill('Старое локальное изменение');
-  const payload = await page.evaluate(() => Object.fromEntries(new FormData(
-    document.querySelector('[data-formset-prefix], form[data-form-draft]').closest('form'),
-  )));
-  payload.title = 'Сохранено другим запросом';
-  const response = await page.request.post(base + recipe + 'edit/', {
-    form: payload, headers: {Referer: page.url()},
-  });
-  assert.equal(response.status(), 200);
-  await page.reload({waitUntil: 'networkidle'});
-  assert.equal(await page.locator('#id_title').inputValue(), payload.title);
-
-  for (const [path, prefixes, field, value] of [
-    ['/recipe-templates/new/', ['components', 'filling'], '#id_name', 'Черновик шаблона'],
-    ['/experiments/new/', [], '#id_title', 'Черновик эксперимента'],
-  ]) {
-    await visit(path);
-    await page.locator(field).fill(value);
-    for (const prefix of prefixes) {
-      await add(prefix);
-      await add(prefix);
-      await remove(prefix, 0);
-    }
-    if (path.startsWith('/experiments/')) {
-      await page.locator('#id_recorded_tested_on').fill('04.11.2026');
-    } else {
-      await page.locator('#id_components-1-material').selectOption(material);
-      await page.locator('#id_components-1-quantity_value').fill('0');
-    }
-    await reload();
-    for (const prefix of prefixes) {
-      while (await page.locator(`#${prefix}-formset .formset-row`).count()) await remove(prefix, 0);
-    }
-    await reload();
-    for (const prefix of prefixes) await add(prefix);
-    await reload();
-    await page.locator('.form-actions a').click();
-    await page.waitForLoadState('networkidle');
-    await visit(path);
-    assert.equal(await page.locator(field).inputValue(), '');
-    for (const prefix of prefixes) {
-      assert.equal(await page.locator(`#id_${prefix}-TOTAL_FORMS`).inputValue(), '1');
-    }
-  }
-
-  // Match the reported Ctrl+R case on an existing card in both engines.
-  await visit('/experiments/new/');
-  const publishedRecipe = await page.locator('#id_recipe option')
-    .evaluateAll(options => options.find(option => option.value)?.value);
-  await page.locator('#id_recipe').selectOption(publishedRecipe);
-  await page.locator('#id_title').fill('QA Ctrl+R существующей карточки');
-  await submit('Сохранить эксперимент');
-  assert.equal(await page.locator('.errorlist,.field-error').count(), 0);
-  const card = new URL(page.url()).pathname;
-  await visit(card + 'edit/');
-  await reload();
-  await page.locator('#id_notes').fill('Введено до Ctrl+R\nНе сохранено в карточку');
-  const beforeShortcut = await snapshot();
-  await page.reload({waitUntil: 'networkidle'});
-  assert.deepEqual(await snapshot(), beforeShortcut,
-    'Ctrl+R on an existing card retains filled rows and notes');
-  await reload();
-
-  await visit(card + 'measurement-groups/new/');
-  const availableGroup = await page.locator('#id_measurement_group option')
-    .evaluateAll(options => options.find(option => option.value)?.value);
-  await page.locator('#id_measurement_group').selectOption(availableGroup);
-  await submit('Продолжить');
-  const groupMetric = page.locator('input[name^="metric_"]').first();
-  await groupMetric.fill('0');
-  for (const reason of await page.locator('input[name$="_reason"]').all()) {
-    const name = (await reason.getAttribute('name')).replace(/_reason$/, '');
-    if (await page.locator(`[name="${name}"]`).inputValue() === '') {
-      await reason.fill('Не было оборудования');
-    }
-  }
-  await reload();
-  assert.equal(await groupMetric.inputValue(), '0');
-  await submit('Сохранить группу измерений');
-  assert.match(await page.locator('main').innerText(), /Группа измерений сохранена/);
-
-  // Hidden source links can also be restored by Firefox after row deletion.
-  await visit('/recipes/?q=302.84');
-  const archive = await page.getByRole('link', {name: '302.84', exact: true}).getAttribute('href');
-  await visit(archive + 'fork/');
-  await remove('components', 0);
-  await remove('properties', 0);
-  await reload();
-  assert.deepEqual(errors, []);
-  await page.close();
-  console.log('Drafts: refresh, fields/dates, added/deleted/empty rows, validation retries, tab isolation, server changes, success and cancel passed.');
+  return checkModernRecipeDrafts(context, {base, searchableSelect,
+    completeRecipeInputs});
 }
+
 
 async function checkRequiredSelect(page, go) {
   await go('/lots/new/');
@@ -749,20 +459,12 @@ async function checkLiveRecipes(page, go) {
   console.log('Live recipe filters, pagination reset, reset link, Enter and Back/Forward passed.');
 }
 
-async function checkLiveTemplatesAndHistory(page, go) {
-  for (const [path, query, title] of [
-    ['/recipe-templates/', 'qa_шаблон.зимней-пены', 'QA шаблон зимней пены'],
-  ]) {
-    await go(path);
-    await typeLiveQuery(page, query);
-    assert.equal(await page.locator('tbody tr').count(), 2);
-    assert.match(await page.locator('tbody').innerText(), new RegExp(title));
-  }
+async function checkLiveHistory(page, go) {
   await go('/history/?entity=test');
   await typeLiveQuery(page, 'qa 316 1');
   assert.equal(new URL(page.url()).searchParams.get('entity'), 'test');
   assert.match(await page.locator('.timeline').innerText(), /QA-316.1/);
-  console.log('Template registries and filtered history update without Enter.');
+  console.log('Filtered history updates without Enter.');
 }
 
 async function checkDirtyLivePagination(page, go) {
@@ -983,24 +685,24 @@ async function assertStyledPopup(page, field, height) {
     height, 'Opening a dropdown does not move the form fields');
 }
 
-async function captureRecipeTemplate(page, state) {
+async function captureRecipePicker(page, state) {
   await page.screenshot({
-    path: join(artifacts, `recipe-template-form-${state}.png`),
+    path: join(artifacts, `recipe-form-${state}.png`),
     animations: 'disabled',
   });
 }
 
-async function checkRecipeTemplatePicker(page, go) {
-  await go('/recipe-templates/new/');
+async function checkRecipePicker(page, go) {
+  await go('/recipes/new/');
   await checkPickerAssetURLs(page);
   const mixture = searchableSelect(page, '#id_mixture_type');
   await assertPickerFieldStyles(mixture);
-  await captureRecipeTemplate(page, 'closed');
+  await captureRecipePicker(page, 'closed');
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   await mixture.locator('.search-select-trigger').click();
   await assertStyledPopup(page, mixture, height);
-  await captureRecipeTemplate(page, 'open');
-  const material = searchableSelect(page, '#id_components-0-material');
+  await captureRecipePicker(page, 'open');
+  const material = searchableSelect(page, '#id_polyol-0-material');
   await material.locator('.search-select-trigger').click();
   await assertStyledPopup(page, material, height);
   assert.equal(await mixture.locator('.search-select-trigger')
@@ -1008,14 +710,14 @@ async function checkRecipeTemplatePicker(page, go) {
   await mixture.locator('.search-select-trigger').click();
   await mixture.locator('.search-select-input').fill('УЛУЧШЕН');
   assert.equal(await mixture.getByRole('option').count(), 1);
-  await captureRecipeTemplate(page, 'filtered');
+  await captureRecipePicker(page, 'filtered');
   await mixture.locator('.search-select-input').press('Enter');
   assert.match(await mixture.locator('select option:checked').innerText(), /улучшенная/);
   await assertPickerFieldStyles(material);
   await material.locator('.search-select-trigger').click();
   await assertStyledPopup(page, material, height);
   await material.locator('.search-select-input').press('Escape');
-  console.log('Recipe-template pickers have versioned styles, one floating popup and stable layout.');
+  console.log('Recipe pickers have versioned styles, one floating popup and stable layout.');
 }
 
 async function checkPickerCSSFallback(browser, storageState) {
@@ -1026,7 +728,7 @@ async function checkPickerCSSFallback(browser, storageState) {
   try {
     await page.route(/\/static\/lab\/search-select\.css(?:\?|$)/,
       route => route.fulfill({contentType: 'text/css', body: ''}));
-    await page.goto(base + '/recipe-templates/new/', {waitUntil: 'networkidle'});
+    await page.goto(base + '/recipes/new/', {waitUntil: 'networkidle'});
     assert.equal(await page.locator('.search-select').count(), 0,
       'A missing picker stylesheet leaves a single native control');
     assert.equal(await page.locator('#id_mixture_type').evaluate(select => (
@@ -1153,17 +855,21 @@ try {
   await checkFeedback(page, 'Гущин Даниил');
   await checkSidebarFirstPaint(browser, await context.storageState());
   assert.equal(await page.locator('.demo-banner,.demo-label').count(),0);
+  assert.equal(await page.locator('a[href^="/recipe-templates/"]').count(),0);
+  for (const path of ['/recipe-templates/','/recipe-templates/new/']) {
+    assert.equal((await page.request.get(base+path)).status(),404);
+  }
   assert.doesNotMatch(await page.locator('main').innerText(),/DEMO-/);
   await page.screenshot({path:join(artifacts, 'overview.png'),fullPage:true});
   const desktopPaths = ['/recipes/','/experiments/','/history/','/sources/','/materials/','/material-categories/','/material-categories/new/','/lots/','/metrics/','/mixtures/','/measurement-groups/','/measurement-groups/new/',
-    '/recipe-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
-    '/mixtures/new/','/recipe-templates/new/','/recipes/new/','/experiments/new/',
+    '/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
+    '/mixtures/new/','/recipes/new/','/experiments/new/',
     '/recipes/1/','/experiments/1/','/sources/1/','/sources/4/','/feedback/'];
   for (const path of desktopPaths) {
     await go(path);
     await assertLiveSearchMarkers(page);
   }
-  for (const [path, filename] of [['/lots/','lots.png'],['/material-categories/','categories.png'],['/recipe-templates/','recipe-templates.png'],
+  for (const [path, filename] of [['/lots/','lots.png'],['/material-categories/','categories.png'],
     ['/sources/1/','source.png']]) {
     await go(path); await page.screenshot({path:join(artifacts,filename),fullPage:true});
   }
@@ -1188,14 +894,14 @@ try {
   }).getAttribute('href');
   await go(archiveRecipe);
   const archiveComponent = page.locator('.panel').filter({
-    has: page.getByRole('heading', {name: 'Состав · группа Смесь A'}),
+    has: page.getByRole('heading', {name: /Состав полиольной смеси/}),
   }).locator('tbody tr').first();
   assert.equal(await archiveComponent.locator('a[href^="/materials/"]').innerText(), 'Inovol C210');
   const importedLot = archiveComponent.locator('a[href^="/lots/"]');
   assert.equal(await importedLot.innerText(), '260613G');
   const importedLotPath = await importedLot.getAttribute('href');
-  const archiveSource = await page.locator('.detail-grid > aside a[href^="/sources/"]').first().getAttribute('href');
-  assert.match(await page.locator('#recipe-calculation').innerText(), /€/);
+  const archiveSource = await page.locator('main > p a[href^="/sources/"]').first().getAttribute('href');
+  assert.match(await page.locator('#recipe-calculation').innerText(), /€|EUR/);
   await go(importedLotPath);
   assert.match(await page.locator('main').innerText(), /Inovol C210/);
   assert.match(await page.locator('main').innerText(), /€/);
@@ -1214,7 +920,7 @@ try {
   await checkDirtyLivePagination(page, go);
   await checkStaleLiveResponse(page);
   await checkPendingPageRestore(page);
-  await checkRecipeTemplatePicker(page, go);
+  await checkRecipePicker(page, go);
   await checkPickerCSSFallback(browser, await context.storageState());
 
   const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,storageState:await context.storageState()});
@@ -1286,33 +992,32 @@ try {
   };
 
   await go('/recipes/new/');
-  await page.locator('[data-add-form="components-formset"]').click();
-  await page.locator('[data-add-form="components-formset"]').click();
-  assert.equal(await page.locator('#id_components-TOTAL_FORMS').inputValue(),'3');
-  const addedTrigger = searchableSelect(page, '#id_components-2-material')
+  await page.locator('[data-add-form="polyol-formset"]').click();
+  await page.locator('[data-add-form="polyol-formset"]').click();
+  assert.equal(await page.locator('#id_polyol-TOTAL_FORMS').inputValue(),'3');
+  const addedTrigger = searchableSelect(page, '#id_polyol-2-material')
     .locator('.search-select-trigger');
   const triggerId = await addedTrigger.getAttribute('id');
   assert.equal(await page.locator(`label[for="${triggerId}"]`).count(), 1);
-  assert.equal(await page.locator('#components-formset .formset-rows').evaluate(el=>el.innerHTML.includes('__prefix__')),false);
+  assert.equal(await page.locator('#polyol-formset .formset-rows').evaluate(el=>el.innerHTML.includes('__prefix__')),false);
   await option(page,'#id_mixture_type','Зимняя пена');
   await page.locator('#id_version_label').fill('QA-316.0');
   await page.locator('#id_title').fill('QA нулевой компонент и полный состав');
   await page.locator('#id_status').selectOption('published');
-  const materials = await page.locator('#id_components-0-material option').evaluateAll(items => items.filter(item=>item.value).slice(0,3).map(item=>item.value));
+  const materials = await page.locator('#id_polyol-0-material option').evaluateAll(items => items.filter(item=>item.value).slice(0,3).map(item=>item.value));
   assert.equal(materials.length,3,'Imported material catalogue has at least three entries');
-  await page.locator('#id_components-0-material').selectOption(materials[0]);
-  await page.locator('#id_components-0-quantity_value').fill('0');
-  await page.locator('#id_components-1-material').selectOption(materials[1]);
-  await page.locator('#id_components-1-quantity_value').fill('100');
-  await page.locator('#id_components-2-material').selectOption(materials[2]);
-  await page.locator('#id_filling-0-group_label').fill('A');
-  await page.locator('#id_filling-0-mass_g').fill('0');
+  await page.locator('#id_polyol-0-material').selectOption(materials[0]);
+  await page.locator('#id_polyol-0-quantity').fill('0');
+  await page.locator('#id_polyol-1-material').selectOption(materials[1]);
+  await page.locator('#id_polyol-1-quantity').fill('100');
+  await page.locator('#id_polyol-2-material').selectOption(materials[2]);
+  await completeRecipeInputs(page);
   await submit('Сохранить рецептуру');
   const original = new URL(page.url()).pathname;
   assert.match(original,/^\/recipes\/\d+\/$/);
   assert.equal(await page.locator('h1').innerText(),'QA-316.0');
-  assert.match(await page.locator('.panel').filter({has:page.getByRole('heading',{name:'Состав · группа A'})}).locator('tbody tr').first().locator('td').last().innerText(),/^0(?:[,.]0+)?$/);
-  assert.equal(await page.locator('.panel').filter({has:page.getByRole('heading',{name:'Состав · группа A'})}).locator('tbody tr').last().locator('td').last().innerText(),'—');
+  assert.match(await page.locator('.panel').filter({has:page.getByRole('heading',{name:/Состав полиольной смеси/})}).locator('tbody tr').first().locator('td').nth(2).innerText(),/^0(?:[,.]0+)?$/);
+  assert.match(await page.locator('.panel').filter({has:page.getByRole('heading',{name:/Состав полиольной смеси/})}).locator('tbody tr').last().locator('td').nth(2).innerText(),/—/);
   assert.equal((await page.request.get(base+original+'edit/')).status(),403);
   await page.reload({waitUntil:'networkidle'});
   assert.equal(await page.locator('h1').innerText(),'QA-316.0');
@@ -1491,32 +1196,18 @@ try {
   assert.ok((await page.locator('main').innerText()).includes('Закрыта'));
   assert.equal(await page.locator(`a[href="${uploadedSource}"]`).count(),1);
 
-  // Fixed template versions can be composed and instantiated through forms.
-  await go('/recipe-templates/new/');
-  await page.locator('#id_name').fill('QA шаблон зимней пены');
+  // New plans use catalogued lots and preserve their input snapshots.
+  await go('/recipes/new/');
   await option(page,'#id_mixture_type','Зимняя пена');
-  assert.equal(await page.locator('#id_calculation_template').count(), 0);
-  await page.locator('#id_batch_mass_g').fill('1000');
-  await page.locator('#id_components-0-material').selectOption(materialId);
-  await page.locator('#id_components-0-specified_lot').selectOption(lotId);
-  await page.locator('#id_components-0-quantity_value').fill('100');
-  await page.locator('#id_components-0-completeness').selectOption('complete');
-  await submit('Сохранить шаблон рецептуры');
-  const recipeTemplatePath=new URL(page.url()).pathname;
-  const recipeTemplateId=recipeTemplatePath.split('/')[2];
-  await go(recipeTemplatePath+'fork/');
-  assert.equal(await page.locator('#id_version').inputValue(),'2');
-  await page.locator('#id_description').fill('QA вторая версия шаблона рецептуры');
-  await submit('Сохранить шаблон рецептуры');
-  assert.notEqual(new URL(page.url()).pathname,recipeTemplatePath);
-  await go('/recipes/new/?template='+recipeTemplateId);
-  assert.equal(await page.locator('#id_components-0-specified_lot').inputValue(),lotId);
-  assert.equal(await page.locator('#id_components-0-quantity_value').inputValue(),'100');
+  await page.locator('#id_polyol-0-material').selectOption(materialId);
+  await page.locator('#id_polyol-0-specified_lot').selectOption(lotId);
+  await page.locator('#id_polyol-0-quantity').fill('100');
   await page.locator('#id_version_label').fill('QA-WINTER-CALC.1');
   await page.locator('#id_title').fill('QA зимняя пена с расчётом');
+  await completeRecipeInputs(page);
   await page.locator('#id_status').selectOption('published');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:'Сохранить рецептуру',exact:true}).click()]);
-  assert.match((await page.locator('.errorlist,.field-error').allTextContents()).join(' '),/Партия.*недоступна/);
+  assert.match((await page.locator('.errorlist,.field-error').allTextContents()).join(' '),/Партия.*(?:недоступна|закрыта|просрочена)/);
   await page.locator('#id_status').selectOption('draft');
   await submit('Сохранить рецептуру');
   const calculatedRecipePath=new URL(page.url()).pathname;
@@ -1525,9 +1216,9 @@ try {
   await go(calculatedRecipePath+'edit/');
   await page.locator('#id_status').selectOption('published');
   await submit('Сохранить изменения');
-  const cost=async()=>page.locator('.calculation-group').first().locator('.result-item').filter({hasText:'Стоимость группы'}).locator('strong').innerText();
-  assert.match(await cost(),/^200\s*₽$/);
-  const baselineCost=await cost();
+  const unitPrice=async()=>page.locator('#recipe-calculation tbody tr').first().locator('td').nth(3).innerText();
+  assert.match(await unitPrice(),/^200\s*(?:₽|RUB)$/);
+  const baselinePrice=await unitPrice();
   const baselineCalculation=await page.locator('a[href^="/calculations/"]').first().getAttribute('href');
   assert.ok(baselineCalculation);
   await go(lotPath);
@@ -1536,31 +1227,31 @@ try {
   await page.locator('#id_price_per_kg').fill('400');
   await submit('Сохранить');
   await go(calculatedRecipePath);
-  assert.equal(await cost(),baselineCost,'published baseline calculation changed after catalogue edit');
+  assert.equal(await unitPrice(),baselinePrice,'published baseline calculation changed after catalogue edit');
   await go(baselineCalculation);
-  assert.equal(await cost(),baselineCost,'saved record changed after catalogue edit');
+  assert.equal(await unitPrice(),baselinePrice,'saved record changed after catalogue edit');
   await go(calculatedRecipePath);
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.locator(`form[action="${calculatedRecipePath}calculate/"] button`).click()]);
-  assert.equal(await cost(),baselineCost,'explicit recalculation replaced original baseline');
+  assert.equal(await unitPrice(),baselinePrice,'explicit recalculation replaced original baseline');
   const calculationLinks=await page.locator('a[href^="/calculations/"]').evaluateAll(items=>[...new Set(items.map(item=>new URL(item.href).pathname))]);
   const newCalculation=calculationLinks.find(path=>path!==baselineCalculation);
   assert.ok(newCalculation,'new recalculation record not linked');
   await go(newCalculation);
-  assert.match(await cost(),/^400\s*₽$/);
+  assert.equal(await unitPrice(),baselinePrice,'new saved calculation uses the recipe input snapshot');
   await go(baselineCalculation);
-  assert.equal(await cost(),baselineCost);
-  await checkAdditionalMobile([categoryPath,categoryPath+'edit/',lotPath,recipeTemplatePath,baselineCalculation]);
+  assert.equal(await unitPrice(),baselinePrice);
+  await checkAdditionalMobile([categoryPath,categoryPath+'edit/',lotPath,calculatedRecipePath,baselineCalculation]);
   for (const [path,filename] of [[baselineCalculation,'calculation.png']]) {
     await go(path);
     await page.screenshot({path:join(artifacts,filename),fullPage:true});
   }
-  await checkLiveTemplatesAndHistory(page, go);
+  await checkLiveHistory(page, go);
   await go('/history/?entity=source&q=QA');
   const historyTarget=page.locator('.event-meta a').first();
   assert.ok((await historyTarget.getAttribute('href')).startsWith('/sources/'));
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),historyTarget.click()]);
   assert.ok(new URL(page.url()).pathname.startsWith('/sources/'));
-  console.log('Sources, uploads/SHA, provenance, material categories/rename/filter, materials/lots, lot statuses, recipe templates and automatic calculations and immutable recalculation all passed.');
+  console.log('Sources, uploads/SHA, provenance, material categories/rename/filter, materials/lots, lot statuses, recipe inputs and automatic calculations and immutable recalculation all passed.');
 
   await go('/employees/');
   await option(page,'#id_employee','Иван Иванов');
@@ -1571,8 +1262,8 @@ try {
   await go(card);
   for(const word of ['Редактировать','Изменить статус','Добавить группу измерений','Добавить наблюдение','Записать обработку']) assert.equal(await page.getByRole('link',{name:new RegExp(word)}).count(),0,`Reader controls: ${word}`);
   const csrf=await page.locator('[name="csrfmiddlewaretoken"]').first().inputValue();
-  for(const path of ['/recipes/new/','/experiments/new/',card+'measurement-groups/new/',card+'observations/new/',card+'conditioning/new/',
-    '/sources/new/','/materials/new/','/material-categories/new/',categoryPath+'edit/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/','/measurement-groups/new/',
+  for(const path of ['/recipes/new/','/recipes/preview/','/experiments/new/',card+'measurement-groups/new/',card+'observations/new/',card+'conditioning/new/',
+    '/sources/new/','/materials/new/','/material-categories/new/',categoryPath+'edit/','/lots/new/','/metrics/new/','/mixtures/new/','/measurement-groups/new/',
     calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/',
     card+'status/',fork+'status/',lotPath+'status/']){
     const response=await page.request.post(base+path,{form:{csrfmiddlewaretoken:csrf},headers:{Referer:base+card}});
@@ -1586,7 +1277,7 @@ try {
   assert.match(await page.locator('.profile').innerText(),/Иван Иванов/);
   assert.deepEqual(errors,[]);
   assert.deepEqual(overflows,[],`Mobile overflow: ${overflows.join(', ')}`);
-  console.log(`PASS: isolated real initial dataset; login, author/reader roles, direct POST denial, desktop/mobile routes, documentary sources and lots, fixed recipe templates and automatic calculations, immutable saved calculations, immutable recipes, fork/edit/publish, zero and missing values, card/result/observation/treatment creation, completion locking, reload persistence, audit search. Screenshots: ${artifacts}`);
+  console.log(`PASS: isolated real initial dataset; login, author/reader roles, direct POST denial, desktop/mobile routes, documentary sources and lots, fixed recipe inputs and automatic calculations, immutable saved calculations, immutable recipes, fork/edit/publish, zero and missing values, card/result/observation/treatment creation, completion locking, reload persistence, audit search. Screenshots: ${artifacts}`);
   }
 } catch(error) {
   if (!interrupted) {

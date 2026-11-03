@@ -443,7 +443,6 @@ def _tool_activity(name, arguments):
               'tests': 'Смотрю эксперименты…', 'results': 'Изучаю результаты и статистику…',
               'metrics': 'Проверяю показатели измерений…', 'sources': 'Изучаю источники…',
               'source_cells': 'Проверяю первичные данные…',
-              'recipe_templates': 'Смотрю шаблоны рецептур…',
               'calculations': 'Проверяю сохранённые расчёты…'}
     return labels.get(entity, 'Проверяю данные…')
 

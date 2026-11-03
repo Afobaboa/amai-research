@@ -29,6 +29,7 @@ from pena_matching import match_identifier
 
 from winter_test_extract import extract_test
 from winter_material_extract import apply_price_completions, material_identity
+from winter_formulation_extract import add_formulations
 
 
 NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
@@ -309,6 +310,7 @@ def build_dataset():
             code, title, "test"))
     add_recipe_matches(files)
     price_completions = apply_price_completions(files)
+    add_formulations(files)
     return {
         "schema_version": 2,
         "price_currency": "EUR",

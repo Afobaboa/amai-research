@@ -37,7 +37,7 @@ class AutomaticCalculationTests(TestCase):
         session.save()
 
     def test_all_calculations_work_without_template_selection(self):
-        for route in ('recipe_create', 'recipe_template_create'):
+        for route in ('recipe_create',):
             page = self.client.get(reverse(route))
             self.assertNotIn('calculation_template', page.context['form'].fields)
             self.assertNotContains(page, 'Шаблоны расчётов')

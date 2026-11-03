@@ -12,6 +12,7 @@ from .models import (
     RecipeGroup, RecipeMatch, RecipeVersion, Result, MeasurementGroup,
     TestRun, TestSession,
 )
+from .test_recipe_editor import editor_payload, simple_recipe_payload
 
 
 @override_settings(SITE_PASSWORD_HASH=make_password("test-lims"), DEMO_MODE=True)
@@ -45,13 +46,8 @@ class WorkflowTests(TestCase):
         session.save()
 
     def recipe_payload(self, **extra):
-        payload = {
-            "mixture_type": str(self.mixture.pk), "version_label": "TEST.2", "title": "Новый состав", "status": "published", "notes": "",
-            "components-TOTAL_FORMS": "1", "components-INITIAL_FORMS": "0", "components-MIN_NUM_FORMS": "0", "components-MAX_NUM_FORMS": "100",
-            "components-0-group_label": "A", "components-0-quantity_basis": "mass_percent", "components-0-material": str(self.material.pk), "components-0-quantity_value": "100",
-            "filling-TOTAL_FORMS": "1", "filling-INITIAL_FORMS": "0", "filling-MIN_NUM_FORMS": "0", "filling-MAX_NUM_FORMS": "50",
-            "filling-0-group_label": "A", "filling-0-mass_g": "220",
-        }
+        payload = simple_recipe_payload(self.material)
+        payload.update(mixture_type=str(self.mixture.pk), title='Новый состав')
         payload.update(extra)
         return payload
 
@@ -91,7 +87,7 @@ class WorkflowTests(TestCase):
 
     def test_create_and_fork_recipe_preserves_old_version(self):
         self.sign_in()
-        response = self.client.post(reverse("recipe_fork", args=[self.recipe.pk]), self.recipe_payload(**{"components-INITIAL_FORMS": "1"}))
+        response = self.client.post(reverse("recipe_fork", args=[self.recipe.pk]), self.recipe_payload())
         created = RecipeVersion.objects.get(version_label="TEST.2")
         self.assertRedirects(response, reverse("recipe_detail", args=[created.pk]))
         self.assertEqual(created.groups.get().components.get().quantity_value, Decimal("100"))
@@ -106,11 +102,11 @@ class WorkflowTests(TestCase):
 
     def test_invalid_recipe_is_atomic(self):
         self.sign_in()
-        response = self.client.post(reverse("recipe_create"), self.recipe_payload(**{"components-0-quantity_value": "-1"}))
+        response = self.client.post(reverse("recipe_create"), self.recipe_payload(**{"polyol-0-quantity": "-1"}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(RecipeVersion.objects.count(), 1)
         self.assertEqual(ChangeEvent.objects.count(), 0)
-        response = self.client.post(reverse("recipe_create"), self.recipe_payload(**{"filling-0-group_label": "UNKNOWN"}))
+        response = self.client.post(reverse("recipe_create"), self.recipe_payload(**{"settings-fill_volume_ml": "", "settings-fill_volume_ml_reason": ""}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(RecipeVersion.objects.count(), 1)
 
@@ -130,41 +126,52 @@ class WorkflowTests(TestCase):
         self.assertEqual(event.after["status"], "published")
         self.assertEqual(self.client.post(reverse("recipe_edit", args=[draft.pk]), self.recipe_payload()).status_code, 403)
 
+    def decimal_recipe_payload(self):
+        payload = self.recipe_payload(status='draft', **{
+            'polyol-TOTAL_FORMS': '2', 'polyol-INITIAL_FORMS': '2',
+        })
+        for key, value in list(payload.items()):
+            if key.startswith('polyol-0-'):
+                payload[key.replace('polyol-0-', 'polyol-1-')] = value
+        payload['polyol-0-quantity'] = '0E-8'
+        payload['polyol-1-quantity'] = '100.00000000'
+        payload['filling-polyol-mass_g'] = '0E-8'
+        return payload
+
     def test_fork_and_edit_accept_unchanged_database_decimal_precision(self):
         self.sign_in()
         group = self.recipe.groups.get()
         first = group.components.get()
-        first.quantity_value = Decimal("0")
+        first.quantity_value = Decimal('0')
         first.save()
-        RecipeComponent.objects.create(group=group, position=2, unbatched_material=self.material, quantity_value=Decimal("100"))
-        from .models import FillingPlanLine
-        FillingPlanLine.objects.create(recipe_version=self.recipe, input_group=group, mass_g=Decimal("0"), mass_status="recorded")
-        fork_url = reverse("recipe_fork", args=[self.recipe.pk])
-        page = self.client.get(fork_url)
-        component_forms = page.context["component_formset"].forms
-        self.assertIn('value="0"', component_forms[0]["quantity_value"].as_widget())
-        self.assertIn('value="100"', component_forms[1]["quantity_value"].as_widget())
-        self.assertIn('value="0"', page.context["filling_formset"].forms[0]["mass_g"].as_widget())
-        # Existing eight-place database values must remain valid even if submitted verbatim.
-        payload = self.recipe_payload(status="draft", **{
-            "components-TOTAL_FORMS": "2", "components-INITIAL_FORMS": "2",
-            "components-0-quantity_value": "0E-8",
-            "components-1-group_label": "A", "components-1-quantity_basis": "mass_percent",
-            "components-1-material": str(self.material.pk), "components-1-quantity_value": "100.00000000",
-            "filling-INITIAL_FORMS": "1", "filling-0-mass_g": "0E-8",
-        })
+        RecipeComponent.objects.create(
+            group=group, position=2, unbatched_material=self.material,
+            quantity_value=Decimal('100'),
+        )
+        fork_url = reverse('recipe_fork', args=[self.recipe.pk])
+        forms = self.client.get(fork_url).context['polyol_formset'].forms
+        self.assertIn('value="0"', forms[0]['quantity'].as_widget())
+        self.assertIn('value="100"', forms[1]['quantity'].as_widget())
+        payload = self.decimal_recipe_payload()
         response = self.client.post(fork_url, payload)
-        fork = RecipeVersion.objects.get(version_label="TEST.2")
-        self.assertRedirects(response, reverse("recipe_detail", args=[fork.pk]))
-        self.assertEqual(list(fork.groups.get().components.values_list("quantity_value", flat=True)), [Decimal("0"), Decimal("100")])
-        self.assertEqual(fork.filling_plan.get().mass_g, Decimal("0"))
-        response = self.client.post(reverse("recipe_edit", args=[fork.pk]), {**payload, "title": "Изменение названия", "status": "published"})
-        self.assertRedirects(response, reverse("recipe_detail", args=[fork.pk]))
+        fork = RecipeVersion.objects.get(version_label='TEST.2')
+        self.assertRedirects(response, reverse('recipe_detail', args=[fork.pk]))
+        self.assertEqual(list(fork.groups.get().components.values_list(
+            'quantity_value', flat=True)), [Decimal('0'), Decimal('100')])
+        self.assertEqual(fork.filling_plan.get().mass_g, Decimal('220'))
+        self.publish_decimal_fork(fork)
+
+    def publish_decimal_fork(self, fork):
+        url = reverse('recipe_edit', args=[fork.pk])
+        payload = editor_payload(self.client.get(url))
+        payload.update(title='Изменение названия', status='published')
+        response = self.client.post(url, payload)
+        self.assertRedirects(response, reverse('recipe_detail', args=[fork.pk]))
         fork.refresh_from_db()
-        self.assertEqual(fork.title, "Изменение названия")
-        self.assertEqual(fork.status, "published")
+        self.assertEqual(fork.title, 'Изменение названия')
+        self.assertEqual(fork.status, 'published')
         self.assertEqual(fork.groups.get().components.count(), 2)
-        self.assertEqual(fork.filling_plan.get().mass_g, Decimal("0"))
+        self.assertEqual(fork.filling_plan.get().mass_g, Decimal('220'))
 
     def test_card_form_starts_with_recipe_and_omits_removed_fields(self):
         self.sign_in()

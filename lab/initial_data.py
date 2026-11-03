@@ -12,6 +12,7 @@ from .initial_cleanup import remove_demo
 from .measurement_groups import BALLOON_METRIC_CODES, seed_measurement_groups
 from .initial_materials import ArchiveMaterials, property_source_cell, row_name
 from .categories import seed_material_categories, sync_material_categories
+from .recipe_seed import seed_recipe_formulation
 
 
 DATA_PATH = Path(settings.BASE_DIR) / 'initial_data' / 'winter.json'
@@ -129,6 +130,7 @@ class ArchiveLoader:
             self.counts['recipes'] += 1
         else:
             self.upgrade_recipe(recipe, cells, data)
+        seed_recipe_formulation(recipe, data)
         self.recipes[(sheet.file.original_path, sheet.name)] = recipe
 
     def upgrade_recipe(self, recipe, cells, data):

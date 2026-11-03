@@ -245,6 +245,9 @@ class RecipeVersion(models.Model):
     recipe_template = models.ForeignKey("RecipeTemplate", on_delete=models.PROTECT, null=True, blank=True, related_name="recipes")
     batch_mass_g = models.DecimalField("Масса смеси для расчета, г", max_digits=22, decimal_places=8, default=Decimal("1000"), validators=[MinValueValidator(Decimal("0.00000001"))])
     template_snapshot = models.JSONField(default=dict, blank=True)
+    formulation = models.JSONField(
+        "Исходные параметры состава и заправки", default=dict, blank=True,
+    )
 
     class Meta:
         ordering = ["-created_at", "-pk"]

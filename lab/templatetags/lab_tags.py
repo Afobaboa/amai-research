@@ -135,8 +135,7 @@ ENTITY_ROUTES = {'recipe': ('recipe_detail', 'Рецептура'), 'test': ('te
                  'material_category': ('category_detail', 'Категория материала'),
                  'source': ('source_detail', 'Источник'), 'material': ('material_detail', 'Материал'),
                  'lot': ('lot_detail', 'Партия'), 'metric': ('metric_list', 'Показатель'),
-                 'mixture_type': ('mixture_detail', 'Тип смеси'),
-                 'recipe_template': ('recipe_template_detail', 'Шаблон рецептуры')}
+                 'mixture_type': ('mixture_detail', 'Тип смеси')}
 
 
 @register.filter
@@ -147,6 +146,8 @@ def event_url(event):
 
 @register.filter
 def event_entity_label(event):
+    if event.entity_type == 'recipe_template':
+        return f'Архивная запись шаблона #{event.entity_id}'
     if event.entity_type == 'calculation_template':
         return f'Архивный шаблон расчёта #{event.entity_id}'
     return f'{ENTITY_ROUTES.get(event.entity_type, (None, "Запись"))[1]} #{event.entity_id}'
