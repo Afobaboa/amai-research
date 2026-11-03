@@ -9,6 +9,14 @@
   tabletViewport.addEventListener('change', updateDensity);
   updateDensity();
 
+  document.addEventListener('keydown', event => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'number') return;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+    }
+  });
+
   const menuButton = document.querySelector<HTMLButtonElement>('.mobile-menu');
   const sidebar = document.getElementById('sidebar');
   const mobileViewport = window.matchMedia('(max-width: 800px)');

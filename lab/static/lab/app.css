@@ -522,6 +522,11 @@ input:not([type=checkbox], [type=radio], [type=hidden]), select, textarea {
   border-radius: var(--amai-radius-sm); background: var(--amai-surface);
   color: var(--amai-ink); font-size: 14px;
 }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
 input::placeholder, textarea::placeholder { color: var(--amai-muted); opacity: 1; }
 input:focus, select:focus, textarea:focus { border-color: var(--amai-primary); }
 /* Fields indicate focus with their border instead of the shared outer ring. */
