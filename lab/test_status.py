@@ -96,9 +96,9 @@ class StatusTests(TestCase):
         self.recipe.refresh_from_db()
         self.assertEqual(self.recipe.status, 'draft')
 
-    def test_quarantined_exhausted_and_expired_lots_block_publication(self):
+    def test_exhausted_and_expired_lots_block_publication(self):
         for changes in (
-            {'status': 'quarantine'}, {'status': 'exhausted'},
+            {'status': 'exhausted'},
             {
                 'status': 'active',
                 'expires_on': timezone.localdate() - timedelta(days=1),
@@ -133,14 +133,23 @@ class StatusTests(TestCase):
         self.assertEqual(event.after['status'], 'completed')
 
     def test_lot_status_preserves_properties_and_records_history(self):
-        response = self.change('lot', self.lot, 'quarantine', density_g_ml='99')
+        response = self.change('lot', self.lot, 'exhausted', density_g_ml='99')
         self.assertRedirects(response, reverse('lot_detail', args=[self.lot.pk]))
         self.lot.refresh_from_db()
-        self.assertEqual(self.lot.status, 'quarantine')
+        self.assertEqual(self.lot.status, 'exhausted')
         self.assertEqual(self.lot.density_g_ml, Decimal(1))
         event = ChangeEvent.objects.get(entity_type='lot')
         self.assertEqual(event.before['status'], 'active')
-        self.assertEqual(event.after['status'], 'quarantine')
+        self.assertEqual(event.after['status'], 'exhausted')
+
+    def test_quarantine_cannot_be_selected_or_set(self):
+        url = reverse('lot_status', args=[self.lot.pk])
+        self.assertNotContains(self.client.get(url), 'quarantine')
+        response = self.change('lot', self.lot, 'quarantine')
+        self.assertIn('status', response.context['form'].errors)
+        self.lot.refresh_from_db()
+        self.assertEqual(self.lot.status, 'active')
+        self.assertFalse(ChangeEvent.objects.exists())
 
     def test_terminal_records_and_linked_drafts_cannot_change_status(self):
         for status in ('published', 'archived'):

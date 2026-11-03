@@ -63,7 +63,7 @@ def material_list(request):
     q = request.GET.get('q', '').strip()
     if q:
         materials = filter_search(materials, (
-            'name', 'category', 'supplier',
+            'name', 'category',
         ), q)
     category = request.GET.get('category', '')
     if category == 'unclassified':
@@ -106,8 +106,8 @@ def material_save(request, pk=None):
         return redirect('material_detail', pk=material.pk)
     return form_page(request, form, 'Редактирование материала' if pk else 'Новый материал',
                      reverse('material_detail', args=[pk]) if pk else reverse('material_list'),
-                     'Марка сырья, категория и данные поставщика. '
-                     'Плотность и цена указываются в партиях материала.')
+                     'Марка сырья, категория и примечание. '
+                     'Производитель / поставщик, плотность и цена указываются в партиях материала.')
 
 
 @site_required
@@ -183,7 +183,7 @@ def lot_list(request):
         lots = filter_search(lots, (
             'lot_code', 'material__name', 'supplier',
         ), q)
-    if status in {'active', 'quarantine', 'exhausted'}:
+    if status in MaterialLot.Status.values:
         lots = lots.filter(status=status)
     material = request.GET.get('material', '')
     if material.isdigit():

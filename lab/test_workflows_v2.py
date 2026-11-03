@@ -130,7 +130,7 @@ class ExpandedWorkflowTests(TestCase):
 
     def test_lot_status_and_expiry_block_publication_but_allow_drafts(self):
         for number, values in enumerate([
-            {'status': 'quarantine'}, {'status': 'exhausted'},
+            {'status': 'exhausted'},
             {'status': 'active', 'expires_on': timezone.localdate() - timedelta(days=1)},
         ]):
             with self.subTest(values=values):

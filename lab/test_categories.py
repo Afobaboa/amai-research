@@ -102,7 +102,7 @@ class MaterialCategoryTests(TestCase):
         ]))
         self.assertContains(response, '<select name="category"')
         self.assertEqual(set(response.context['form'].fields), {
-            'name', 'category', 'supplier', 'notes',
+            'name', 'category', 'notes',
         })
         response = self.client.post(reverse('material_edit', args=[
             self.material.pk,
@@ -110,7 +110,8 @@ class MaterialCategoryTests(TestCase):
              'supplier': 'Поставщик QA'})
         self.assertEqual(response.status_code, 302)
         self.material.refresh_from_db()
-        self.assertEqual(self.material.supplier, 'Поставщик QA')
+        self.assertEqual(self.material.category, 'Полиолы')
+        self.assertFalse(hasattr(self.material, 'supplier'))
 
     def test_unknown_category_does_not_create_material(self):
         response = self.client.post(reverse('material_create'), {

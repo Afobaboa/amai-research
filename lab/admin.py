@@ -51,7 +51,7 @@ class FeedbackAdmin(SearchAdmin):
 
 @admin.register(models.Material)
 class MaterialAdmin(SearchAdmin):
-    list_display = ["name", "category", "supplier"]
+    list_display = ["name", "category"]
     search_fields = ["name"]
 
     def has_delete_permission(self, request, obj=None):

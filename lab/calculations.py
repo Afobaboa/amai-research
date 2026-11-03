@@ -48,7 +48,7 @@ def _material_inputs(component):
         "position": component.position,
         "material_id": material.pk if material else None,
         "name": component.display_name,
-        "supplier": lot.supplier or material.supplier if lot else material.supplier if material else "",
+        "supplier": lot.supplier if lot else "",
         "lot_id": lot.pk if lot else None,
         "lot_code": lot.lot_code if lot else None,
         "lot_status": lot.status if lot else None,
@@ -156,8 +156,8 @@ def _calculate_row(source, mass):
             issues.append('Плотность не указана; объем неизвестен.')
         else:
             volume = mass / density
-    if source['lot_status'] in {'quarantine', 'exhausted'}:
-        issues.append('Партия в карантине или закрыта; '
+    if source['lot_status'] == 'exhausted':
+        issues.append('Партия закрыта; '
                       'проверьте допустимость применения.')
     return {**source, 'mass_g': _text(mass), 'cost': _text(cost),
             'volume_ml': _text(volume), 'issues': issues}

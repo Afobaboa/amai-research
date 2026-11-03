@@ -141,6 +141,6 @@ def test_status(request, pk):
 def lot_status(request, pk):
     return _change_status(
         request, MaterialLot, pk, 'lot',
-        'Партии в карантине и израсходованные партии нельзя выбирать '
+        'Израсходованные партии нельзя выбирать '
         'для новых опубликованных планов.',
     )

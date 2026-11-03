@@ -134,7 +134,9 @@ def annotate_choice_values(data, model):
                 return
             lot_status = component.get('lot_status')
             if isinstance(lot_status, str):
-                label = dict(m.MaterialLot.Status.choices).get(lot_status)
+                # Historical calculation snapshots retain retired status codes.
+                labels = {'quarantine': 'Карантин', **dict(m.MaterialLot.Status.choices)}
+                label = labels.get(lot_status)
                 if label:
                     remember(component_path + '.lot_status', lot_status, label)
             from .templatetags.lab_tags import VALUES

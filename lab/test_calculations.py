@@ -93,6 +93,15 @@ class CalculationTests(TestCase):
         self.assertIsNone(output['total_cost'])
         self.assertEqual(output['rows'][1]['cost'], '100')
 
+    def test_supplier_comes_only_from_selected_lot(self):
+        self.first_lot.supplier = 'Поставщик партии'
+        self.first_lot.save()
+        self.assertEqual(self.group_output()['rows'][0]['supplier'], 'Поставщик партии')
+        self.row_a.specified_lot = None
+        self.row_a.unbatched_material = self.first
+        self.row_a.save()
+        self.assertEqual(self.group_output()['rows'][0]['supplier'], '')
+
     def test_missing_quantity_stops_group_calculations(self):
         RecipeComponent.objects.filter(pk=self.row_a.pk).update(quantity_value=None)
         output = self.group_output()

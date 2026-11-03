@@ -1450,7 +1450,7 @@ try {
   assert.equal(createHash('sha256').update(await download.body()).digest('hex'),digest);
   assert.match(download.headers()['content-disposition'],/attachment/);
 
-  // A real lot can be registered, quarantined, released and traced to a plan.
+  // A real lot can be registered, closed, reopened and traced to a plan.
   await go('/material-categories/new/');
   await page.locator('#id_name').fill('QA полиолы');
   await page.locator('#id_description').fill('QA описание категории сырья');
@@ -1459,7 +1459,7 @@ try {
   await go('/materials/new/');
   await page.locator('#id_name').fill('QA зимний полиол');
   await page.locator('#id_category').selectOption('QA полиолы');
-  await page.locator('#id_supplier').fill('QA поставщик');
+  assert.equal(await page.locator('#id_supplier').count(), 0);
   assert.equal(await page.locator('#id_density_g_ml,#id_price_per_kg,#id_price_currency').count(), 0);
   await submit('Сохранить');
   const materialPath=new URL(page.url()).pathname;
@@ -1476,7 +1476,9 @@ try {
   assert.match(await page.locator('main').innerText(), /QA описание категории сырья/);
   await go('/lots/new/?material='+materialId);
   await page.locator('#id_lot_code').fill('QA-WINTER-LOT-001');
-  await page.locator('#id_status').selectOption('quarantine');
+  await page.locator('#id_supplier').fill('QA поставщик');
+  assert.deepEqual(await page.locator('#id_status option').evaluateAll(options => options.map(option => option.value)), ['active', 'exhausted']);
+  await page.locator('#id_status').selectOption('exhausted');
   await page.locator('#id_density_g_ml').fill('1.1');
   await page.locator('#id_price_per_kg').fill('200');
   await page.locator('#id_price_currency').selectOption('RUB');
@@ -1484,7 +1486,7 @@ try {
   await submit('Сохранить');
   const lotPath=new URL(page.url()).pathname;
   const lotId=lotPath.split('/')[2];
-  assert.ok((await page.locator('main').innerText()).includes('Карантин'));
+  assert.ok((await page.locator('main').innerText()).includes('Закрыта'));
   assert.equal(await page.locator(`a[href="${uploadedSource}"]`).count(),1);
 
   // Fixed template versions can be composed and instantiated through forms.
@@ -1555,7 +1557,7 @@ try {
   assert.ok((await historyTarget.getAttribute('href')).startsWith('/sources/'));
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),historyTarget.click()]);
   assert.ok(new URL(page.url()).pathname.startsWith('/sources/'));
-  console.log('Sources, uploads/SHA, provenance, material categories/rename/filter, materials/lots, quarantine, recipe templates and automatic calculations and immutable recalculation all passed.');
+  console.log('Sources, uploads/SHA, provenance, material categories/rename/filter, materials/lots, lot statuses, recipe templates and automatic calculations and immutable recalculation all passed.');
 
   await go('/employees/');
   await option(page,'#id_employee','Иван Иванов');

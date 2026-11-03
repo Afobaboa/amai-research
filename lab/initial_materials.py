@@ -195,7 +195,7 @@ class ArchiveMaterials:
         for material in invalid:
             if self.edits[('material', material.pk)] or any(
                 getattr(material, field) not in (None, '') for field in
-                ('category', 'supplier', 'notes')
+                ('category', 'notes')
             ):
                 continue
             if not self.referenced(material) and not material.lots.exists():
@@ -277,7 +277,7 @@ class ArchiveMaterials:
 
     def retain_details(self, alias, target):
         before, after = {}, {}
-        for field in ('category', 'supplier', 'notes'):
+        for field in ('category', 'notes'):
             old, new = getattr(target, field), getattr(alias, field)
             if new not in (None, '') and old in (None, ''):
                 before[field], after[field] = str(old or ''), str(new)
@@ -291,7 +291,7 @@ class ArchiveMaterials:
                    {'name': target.name, 'preserved_catalog': {
                        field: str(getattr(alias, field))
                        if getattr(alias, field) is not None else '' for field in
-                       ('category', 'supplier', 'notes')
+                       ('category', 'notes')
                    }})
 
     def audit(self, target, kind, before, after):

@@ -61,6 +61,7 @@ VALUES = {'draft': 'Черновик', 'active': 'В работе', 'completed':
           'partial': 'Частичный состав', 'recorded': 'Записано автором', 'present': 'Записано',
           'calculated': 'Рассчитано', 'blend': 'Смесь', 'can': 'Баллон', 'specimen': 'Испытуемый материал',
           'aging': 'Выдержка', 'conditioning': 'Кондиционирование'}
+# Keep retired codes readable in existing history and calculation snapshots.
 VALUES.update({'active': 'Активна / в работе', 'quarantine': 'Карантин', 'exhausted': 'Закрыта / израсходована',
                'file': 'Файл', 'link': 'Ссылка', 'note': 'Запись', 'mass': 'Масса компонентов',
                'cost': 'Стоимость компонентов', 'volume': 'Объём компонентов', 'totalCost': 'Стоимость смеси',

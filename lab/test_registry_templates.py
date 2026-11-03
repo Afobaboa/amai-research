@@ -13,7 +13,7 @@ REGISTRY_FILTERS = (
     ('history.html', {'entity': 'material'}),
     ('catalog/material_list.html', {'category': 'Полиолы'}),
     ('catalog/category_list.html', {}),
-    ('catalog/lot_list.html', {'material': '42', 'status': 'quarantine'}),
+    ('catalog/lot_list.html', {'material': '42', 'status': 'exhausted'}),
     ('catalog/source_list.html', {'kind': 'file'}),
     ('catalog/metric_list.html', {}),
     ('catalog/mixture_list.html', {}),
@@ -106,3 +106,11 @@ class RegistryTemplateTests(SimpleTestCase):
         selected = [option['value'] for option in markup.options
                     if 'selected' in option]
         self.assertEqual(selected, ['published'])
+
+    def test_lot_status_menu_only_has_available_statuses(self):
+        markup = self.registry('catalog/lot_list.html', status='exhausted')
+        self.assertEqual([option['value'] for option in markup.options], [
+            '', 'active', 'exhausted',
+        ])
+        self.assertEqual([option['value'] for option in markup.options
+                          if 'selected' in option], ['exhausted'])

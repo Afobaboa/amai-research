@@ -31,10 +31,10 @@ class MaterialForm(forms.ModelForm):
 
     class Meta:
         model = Material
-        fields = ['name', 'category', 'supplier', 'notes']
+        fields = ['name', 'category', 'notes']
         labels = {
             'name': 'Название материала', 'category': 'Категория',
-            'supplier': 'Производитель / поставщик', 'notes': 'Примечание',
+            'notes': 'Примечание',
         }
         widgets = {'notes': forms.Textarea(attrs={'rows': 4})}
 
@@ -63,7 +63,7 @@ class MaterialLotForm(forms.ModelForm):
         ]
         labels = {
             'material': 'Материал', 'lot_code': 'Номер партии',
-            'supplier': 'Поставщик партии', 'received_on': 'Дата поступления',
+            'supplier': 'Производитель / поставщик партии', 'received_on': 'Дата поступления',
             'expires_on': 'Годен до', 'status': 'Статус партии',
             'density_g_ml': 'Плотность партии, г/мл',
             'price_per_kg': 'Цена партии за кг',
@@ -91,7 +91,7 @@ class MaterialLotForm(forms.ModelForm):
                 'ноль — явно указанная нулевая цена.'
             ),
             'status': (
-                'Карантин и израсходованные партии сохраняются '
+                'Израсходованные партии сохраняются '
                 'в истории использования.'
             ),
         }

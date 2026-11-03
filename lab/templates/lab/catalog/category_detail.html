@@ -12,15 +12,14 @@
   <div class="panel-heading"><h2>Материалы категории</h2><span>{{ page_obj.paginator.count }}</span></div>
   <div class="table-scroll">
     <table>
-      <thead><tr><th>МАТЕРИАЛ</th><th>ПОСТАВЩИК</th><th>ПАРТИИ</th></tr></thead>
+      <thead><tr><th>МАТЕРИАЛ</th><th>ПАРТИИ</th></tr></thead>
       <tbody>
         {% for material in materials %}
         <tr>
           <td><a class="record-link" href="{% url 'material_detail' material.pk %}">{{ material.name }}</a></td>
-          <td>{{ material.supplier|default:'—' }}</td>
           <td><a class="record-link" href="{% url 'lot_list' %}?material={{ material.pk }}">{{ material.lot_count }}</a></td>
         </tr>
-        {% empty %}<tr><td colspan="3" class="muted">Материалы этой категории пока не назначены.</td></tr>{% endfor %}
+        {% empty %}<tr><td colspan="2" class="muted">Материалы этой категории пока не назначены.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>

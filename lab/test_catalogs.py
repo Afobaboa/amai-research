@@ -55,7 +55,7 @@ class CatalogWorkflowTests(TestCase):
 
     def material_payload(self, **extra):
         data = {'name': 'Материал QA', 'category': 'Полиол',
-                'supplier': 'Поставщик QA', 'notes': 'Тестовая запись'}
+                'notes': 'Тестовая запись'}
         data.update(extra)
         return data
 
@@ -81,12 +81,12 @@ class CatalogWorkflowTests(TestCase):
         self.assertEqual(material.category, 'Полиол')
         response = self.client.post(
             reverse('material_edit', args=[material.pk]),
-            self.material_payload(supplier='Новый поставщик'),
+            self.material_payload(notes='Новое примечание'),
         )
         self.assertRedirects(response, reverse('material_detail', args=[material.pk]))
         event = ChangeEvent.objects.filter(entity_type='material', entity_id=material.pk).latest('pk')
-        self.assertEqual(event.before['supplier'], 'Поставщик QA')
-        self.assertEqual(event.after['supplier'], 'Новый поставщик')
+        self.assertEqual(event.before['notes'], 'Тестовая запись')
+        self.assertEqual(event.after['notes'], 'Новое примечание')
 
     def test_invalid_material_does_not_mutate_or_audit(self):
         for name in ['', ' ']:
@@ -102,9 +102,9 @@ class CatalogWorkflowTests(TestCase):
         self.assertRedirects(response, reverse('lot_detail', args=[lot.pk]))
         self.assertIsNone(lot.effective_density_g_ml)
         self.assertEqual(lot.effective_price_per_kg, Decimal('0'))
-        self.client.post(reverse('lot_edit', args=[lot.pk]), self.lot_payload(status='quarantine', density_g_ml='1.07'))
+        self.client.post(reverse('lot_edit', args=[lot.pk]), self.lot_payload(status='exhausted', density_g_ml='1.07'))
         lot.refresh_from_db()
-        self.assertEqual(lot.status, 'quarantine')
+        self.assertEqual(lot.status, 'exhausted')
         self.assertEqual(lot.effective_density_g_ml, Decimal('1.07'))
         self.assertEqual(ChangeEvent.objects.filter(entity_type='lot', entity_id=lot.pk).count(), 2)
 
@@ -116,6 +116,18 @@ class CatalogWorkflowTests(TestCase):
             self.assertEqual(response.status_code, 200)
         self.assertFalse(MaterialLot.objects.filter(lot_code='LOT-002').exists())
         self.assertEqual(ChangeEvent.objects.count(), 0)
+
+    def test_quarantine_is_rejected_on_lot_creation_and_edit(self):
+        for url in (reverse('lot_create'), reverse('lot_edit', args=[self.lot.pk])):
+            with self.subTest(url=url):
+                self.assertNotContains(self.client.get(url), 'Карантин')
+                response = self.client.post(url, self.lot_payload(status='quarantine'))
+                self.assertIn('status', response.context['form'].errors)
+        self.lot.refresh_from_db()
+        self.assertEqual(self.lot.status, 'active')
+        self.assertEqual(self.lot.lot_code, 'LOT-001')
+        self.assertFalse(MaterialLot.objects.filter(lot_code='LOT-002').exists())
+        self.assertFalse(ChangeEvent.objects.exists())
 
     def test_used_lot_identity_is_preserved_and_traceability_does_not_duplicate_cards(self):
         recipe = self.used_recipe()
@@ -280,7 +292,7 @@ class CatalogWorkflowTests(TestCase):
         self.assertRedirects(response, reverse('mixture_detail', args=[mixture.pk]))
 
     def test_catalogue_search_and_filter(self):
-        self.client.post(reverse('lot_create'), self.lot_payload(status='quarantine'))
-        response = self.client.get(reverse('lot_list'), {'status': 'quarantine', 'q': 'LOT-002'})
+        self.client.post(reverse('lot_create'), self.lot_payload(status='exhausted'))
+        response = self.client.get(reverse('lot_list'), {'status': 'exhausted', 'q': 'LOT-002'})
         self.assertEqual([lot.lot_code for lot in response.context['lots']], ['LOT-002'])
         self.assertContains(self.client.get(reverse('source_list'), {'q': 'Паспорт'}), 'Паспорт партии')

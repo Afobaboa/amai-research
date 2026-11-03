@@ -297,7 +297,6 @@ class MaterialCategory(models.Model):
 class Material(models.Model):
     name = models.CharField("Материал", max_length=255)
     category = models.CharField("Категория", max_length=100, blank=True)
-    supplier = models.CharField("Поставщик", max_length=255, blank=True)
     notes = models.TextField("Примечание", blank=True)
 
     class Meta:
@@ -310,12 +309,11 @@ class Material(models.Model):
 class MaterialLot(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "active", "Доступна"
-        QUARANTINE = "quarantine", "Карантин"
         EXHAUSTED = "exhausted", "Закрыта"
 
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name="lots")
     lot_code = models.CharField("Партия", max_length=160)
-    supplier = models.CharField("Поставщик партии", max_length=255, blank=True)
+    supplier = models.CharField("Производитель / поставщик партии", max_length=255, blank=True)
     received_on = models.DateField("Дата поступления", null=True, blank=True)
     expires_on = models.DateField("Годна до", null=True, blank=True)
     status = models.CharField("Статус", max_length=20, choices=Status.choices, default=Status.ACTIVE)
@@ -332,7 +330,7 @@ class MaterialLot(models.Model):
     class Meta:
         ordering = ["material__name", "lot_code", "pk"]
         constraints = [
-            models.CheckConstraint(condition=Q(status__in=["active", "quarantine", "exhausted"]), name="lot_valid_status"),
+            models.CheckConstraint(condition=Q(status__in=["active", "exhausted"]), name="lot_valid_status"),
             models.CheckConstraint(condition=Q(density_g_ml__isnull=True) | Q(density_g_ml__gt=0), name="lot_positive_density"),
             models.CheckConstraint(condition=Q(price_per_kg__isnull=True) | Q(price_per_kg__gte=0), name="lot_nonnegative_price"),
             models.CheckConstraint(condition=Q(price_currency__in=PriceCurrency.values), name="lot_valid_currency"),

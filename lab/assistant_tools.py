@@ -32,8 +32,8 @@ DETAIL_SECTIONS = (
 ENTITIES = {
     'materials': (
         m.Material, 'material_detail',
-        'id name category supplier notes',
-        ['name', 'category', 'supplier', 'notes'],
+        'id name category notes',
+        ['name', 'category', 'notes'],
     ),
     'lots': (
         m.MaterialLot, 'lot_detail',
