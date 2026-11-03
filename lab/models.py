@@ -475,15 +475,17 @@ class TestSession(models.Model):
     source_sheet = models.ForeignKey(SourceSheet, on_delete=models.PROTECT, null=True, blank=True, related_name="test_sessions")
     identifier_cell = source_cell()
     recorded_manufactured_on = models.DateField("Дата изготовления по записи", null=True, blank=True)
-    recorded_tested_on = models.DateField("Дата испытания", null=True, blank=True)
+    recorded_tested_on = models.DateField("Дата эксперимента", null=True, blank=True)
     identifier = models.CharField("Номер карточки", max_length=120, blank=True)
-    title = models.CharField("Название испытания", max_length=255, blank=True)
+    title = models.CharField("Название эксперимента", max_length=255, blank=True)
     status = models.CharField("Статус", max_length=20, choices=Status.choices, default=Status.DRAFT)
     notes = models.TextField("Примечания", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(EmployeeProfile, on_delete=models.PROTECT, null=True, blank=True, related_name="test_sessions")
 
     class Meta:
+        verbose_name = "Эксперимент"
+        verbose_name_plural = "Эксперименты"
         ordering = ["-created_at", "-pk"]
         constraints = [models.CheckConstraint(condition=Q(status__in=["draft", "active", "completed"]), name="test_session_valid_status")]
 
@@ -519,15 +521,43 @@ class RecipeMatch(models.Model):
 
 class TestRun(models.Model):
     session = models.ForeignKey(TestSession, on_delete=models.PROTECT, related_name="runs")
-    scope = models.CharField("Определение / режим", max_length=255)
+    scope = models.CharField("Название группы измерений", max_length=255)
+    measurement_group = models.ForeignKey(
+        'MeasurementGroup', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='experiment_groups', verbose_name='Группа измерений',
+    )
     method_code = models.CharField("Метод", max_length=160, null=True, blank=True)
     scope_cell = source_cell()
 
     class Meta:
+        verbose_name = "Группа измерений эксперимента"
+        verbose_name_plural = "Группы измерений экспериментов"
         ordering = ["pk"]
 
     def __str__(self):
-        return self.scope
+        return self.display_name
+
+    @property
+    def display_name(self):
+        return self.measurement_group.name if self.measurement_group_id else self.scope
+
+
+class MeasurementGroup(models.Model):
+    code = models.SlugField('Код группы', max_length=100, unique=True)
+    name = models.CharField('Название группы', max_length=255, unique=True)
+    description = models.TextField('Описание', blank=True)
+    metrics = models.ManyToManyField(
+        'Metric', related_name='measurement_groups', verbose_name='Показатели',
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ['name', 'pk']
+        verbose_name = 'Группа измерений'
+        verbose_name_plural = 'Группы измерений'
+
+    def __str__(self):
+        return self.name
 
 
 class Metric(models.Model):
@@ -549,29 +579,6 @@ class Metric(models.Model):
         return f"{self.label}, {self.unit_code}" if self.unit_code else self.label
 
 
-class SessionCondition(models.Model):
-    session = models.ForeignKey(TestSession, on_delete=models.PROTECT, related_name="conditions")
-    metric = models.ForeignKey(Metric, on_delete=models.PROTECT, related_name="conditions")
-    numeric_value = number()
-    text_value = models.TextField(null=True, blank=True)
-    source_cell = source_cell()
-
-    class Meta:
-        ordering = ["pk"]
-        constraints = [models.CheckConstraint(condition=exactly_one("numeric_value", "text_value"), name="session_condition_one_value")]
-
-    def clean(self):
-        super().clean()
-        if self.metric_id and self.numeric_value is not None and self.metric.value_kind != Metric.ValueKind.NUMERIC:
-            raise ValidationError({"numeric_value": "Тип значения не соответствует показателю."})
-        if self.metric_id and self.text_value is not None and self.metric.value_kind == Metric.ValueKind.NUMERIC:
-            raise ValidationError({"text_value": "Для числового показателя укажите число."})
-
-    @property
-    def display_value(self):
-        return self.numeric_value if self.numeric_value is not None else self.text_value
-
-
 class Result(models.Model):
     class Origin(models.TextChoices):
         RECORDED = "recorded", "Записан"
@@ -579,6 +586,7 @@ class Result(models.Model):
 
     class ValueState(models.TextChoices):
         PRESENT = "present", "Записано"
+        NOT_MEASURED = "not_measured", "Не измерено"
         UNPARSED = "unparsed", "Не разобрано"
         MISSING_INPUTS = "missing_inputs", "Нет исходных данных"
         FORMULA_UNCHECKED = "formula_unchecked", "Формула не проверена"
@@ -589,6 +597,7 @@ class Result(models.Model):
     text_value = models.TextField(null=True, blank=True)
     origin = models.CharField(max_length=20, choices=Origin.choices, default=Origin.RECORDED)
     value_state = models.CharField(max_length=24, choices=ValueState.choices, default=ValueState.PRESENT)
+    not_measured_reason = models.TextField("Причина, почему не измерено", blank=True)
     source_cell = source_cell()
     calculation_code = models.CharField(max_length=160, null=True, blank=True)
 
@@ -596,7 +605,12 @@ class Result(models.Model):
         ordering = ["pk"]
         constraints = [
             models.CheckConstraint(condition=Q(origin__in=["recorded", "calculated"]), name="result_valid_origin"),
-            models.CheckConstraint(condition=(Q(value_state="present") & exactly_one("numeric_value", "text_value")) | Q(value_state="unparsed", numeric_value__isnull=True, text_value__isnull=False) | Q(value_state__in=["missing_inputs", "formula_unchecked"], numeric_value__isnull=True, text_value__isnull=True), name="result_value_matches_state"),
+            models.CheckConstraint(condition=(Q(value_state="present") & exactly_one("numeric_value", "text_value")) | Q(value_state="unparsed", numeric_value__isnull=True, text_value__isnull=False) | Q(value_state__in=["missing_inputs", "formula_unchecked", "not_measured"], numeric_value__isnull=True, text_value__isnull=True), name="result_value_matches_state"),
+            models.CheckConstraint(
+                condition=(Q(value_state="not_measured") & ~Q(not_measured_reason=""))
+                | (~Q(value_state="not_measured") & Q(not_measured_reason="")),
+                name="result_not_measured_has_reason",
+            ),
             models.CheckConstraint(condition=Q(calculation_code__isnull=True) | Q(origin="calculated"), name="result_formula_only_calculated"),
             models.CheckConstraint(condition=~Q(value_state__in=["missing_inputs", "formula_unchecked"]) | Q(origin="calculated"), name="result_missing_only_calculated"),
             models.CheckConstraint(condition=~Q(origin="calculated", value_state="present") | Q(calculation_code__isnull=False), name="result_calculated_has_formula"),

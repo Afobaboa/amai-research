@@ -1,0 +1,23 @@
+{% extends 'lab/base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block breadcrumb %}Эксперименты<span class="breadcrumb-separator">/</span>{{ card.identifier }}{% endblock %}
+{% block content %}
+<div class="narrow-form">
+  <a class="back-link" href="{% url 'test_detail' card.pk %}">← {{ card.identifier }}</a>
+  <div class="page-heading"><div><h1>{{ title }}</h1><p>{% if group %}{{ group.name }} · {{ card.identifier }}{% else %}Выберите набор показателей для этого эксперимента.{% endif %}</p></div></div>
+  {% if not group %}
+    <form method="get"><section class="panel"><div class="panel-heading"><h2>Группа измерений</h2><a class="text-link" href="{% url 'measurement_group_list' %}">Все группы</a></div><div class="panel-body">{{ selection.non_field_errors }}{% for field in selection %}{% include 'lab/includes/field.html' %}{% endfor %}</div></section>
+      <div class="form-actions"><button class="button primary" type="submit">Продолжить</button><a class="button quiet" href="{% url 'test_detail' card.pk %}">Отмена</a></div>
+    </form>
+  {% else %}
+    <form method="post" data-measurement-values data-form-draft data-draft-owner="{{ employee.pk }}" data-draft-bound="{{ form.is_bound|yesno:'true,false' }}">{% csrf_token %}<input type="hidden" name="measurement_group" value="{{ group.pk }}">
+      <section class="panel"><div class="panel-heading"><div><h2>{{ group.name }}</h2><p>{{ group.description|default:'Для каждого показателя укажите значение или причину, почему измерение не проведено.' }}</p></div>{% if not run %}<a class="text-link" href="{% url 'result_add' card.pk %}">Выбрать другую группу</a>{% endif %}</div>
+        <div class="panel-body">{{ form.non_field_errors }}<div class="form-grid">{% for field in form %}{% include 'lab/includes/field.html' %}{% endfor %}</div>
+          {% if not group.metrics.exists %}<p class="muted">В группе пока нет показателей. <a href="{% url 'measurement_group_edit' group.pk %}">Настроить группу</a></p>{% endif %}
+        </div>
+      </section>
+      <div class="form-actions"><button class="button primary" type="submit">Сохранить группу измерений</button><a class="button quiet" href="{% url 'test_detail' card.pk %}">Отмена</a><small>{{ employee.full_name }}</small></div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

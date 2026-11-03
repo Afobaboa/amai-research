@@ -1,6 +1,6 @@
 <div class="formset-row" data-form-prefix="{{ row.prefix }}">
   <div class="formset-row-heading">
-    <span class="formset-row-title">{% if formset.prefix == 'components' %}Компонент{% elif formset.prefix == 'filling' %}Строка заправки{% elif formset.prefix == 'properties' %}Свойство{% else %}Условие испытания{% endif %}</span>
+    <span class="formset-row-title">{% if formset.prefix == 'components' %}Компонент{% elif formset.prefix == 'filling' %}Строка заправки{% elif formset.prefix == 'properties' %}Свойство{% else %}Условие эксперимента{% endif %}</span>
     {% if row.DELETE %}
       <button type="button" class="button small formset-remove" data-remove-form
               aria-label="Удалить строку" title="Удалить строку">

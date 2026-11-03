@@ -157,7 +157,7 @@ class AssistantReadableReplyTests(SimpleTestCase):
     @patch('lab.assistant._cloud_stream')
     def test_stream_and_final_reply_share_labels_from_tools(self, cloud, tool, context):
         tool.return_value = {
-            'url': '/tests/1/', 'title': 'Испытание',
+            'url': '/experiments/1/', 'title': 'Испытание',
             'field_labels': {'specified_lot_id': 'Партия'},
             'value_labels': {'metric__code': {'foam_yield': 'Выход пены'}},
         }
@@ -170,13 +170,13 @@ class AssistantReadableReplyTests(SimpleTestCase):
                     },
                 }]}, 'finish_reason': 'tool_calls'}]}
             else:
-                for fragment in ('spec', 'ified_lot_', 'id; foam_', 'yield. [Испытание]', '(/tests/1/)'):
+                for fragment in ('spec', 'ified_lot_', 'id; foam_', 'yield. [Испытание]', '(/experiments/1/)'):
                     yield {'choices': [{'delta': {'content': fragment}}]}
                 yield {'choices': [{'delta': {}, 'finish_reason': 'stop'}]}
 
         cloud.side_effect = provider
         events = list(assistant.answer_stream([{'role': 'user', 'content': 'Что известно?'}]))
         reply = events[-1][1]['reply']
-        self.assertEqual(reply, 'Партия; Выход пены. [Испытание](/tests/1/)')
+        self.assertEqual(reply, 'Партия; Выход пены. [Испытание](/experiments/1/)')
         self.assertEqual(''.join(data['text'] for event, data in events if event == 'delta'), reply)
-        self.assertEqual(events[-1][1]['sources'], [{'url': '/tests/1/', 'title': 'Испытание'}])
+        self.assertEqual(events[-1][1]['sources'], [{'url': '/experiments/1/', 'title': 'Испытание'}])

@@ -174,7 +174,7 @@ class TestSessionForm(forms.ModelForm):
     class Meta:
         model = TestSession
         fields = ["recipe", "title", "recorded_manufactured_on", "recorded_tested_on", "status", "notes"]
-        labels = {"title": "Название испытания", "recorded_manufactured_on": "Записанная дата изготовления", "recorded_tested_on": "Дата испытания", "status": "Статус", "notes": "Примечание"}
+        labels = {"title": "Название эксперимента", "recorded_manufactured_on": "Записанная дата изготовления", "recorded_tested_on": "Дата эксперимента", "status": "Статус", "notes": "Примечание"}
         widgets = {"recorded_manufactured_on": ServerDateInput(format="%Y-%m-%d", attrs={"type": "date"}), "recorded_tested_on": ServerDateInput(format="%Y-%m-%d", attrs={"type": "date"}), "notes": forms.Textarea(attrs={"rows": 3})}
 
     def __init__(self, *args, **kwargs):
@@ -193,71 +193,28 @@ class TestSessionForm(forms.ModelForm):
         return card
 
 
-class ConditionForm(forms.Form):
-    metric = forms.ModelChoiceField(label="Условие", queryset=Metric.objects.all(), required=False)
-    numeric_value = LIMSDecimalField(label="Число", required=False)
-    text_value = forms.CharField(label="Текст", required=False)
-    source_cell = SourceCellField(label='Первичная ячейка')
-
-    def clean(self):
-        data = super().clean()
-        metric = data.get("metric")
-        numeric, text = data.get("numeric_value"), data.get("text_value")
-        if not metric and numeric is None and not text and not data.get('source_cell'):
-            data["unused"] = True
-            return data
-        if not metric:
-            self.add_error("metric", "Выберите показатель.")
-        elif metric.value_kind == "numeric":
-            if numeric is None or text:
-                raise forms.ValidationError("Для числового показателя заполните только число.")
-        elif numeric is not None or not text:
-            raise forms.ValidationError("Для текстового показателя заполните только текст.")
-        return data
-
-
-ConditionFormSet = formset_factory(ConditionForm, extra=1, max_num=30, validate_max=True, can_delete=True)
-
-
 class RunFields(forms.Form):
-    run = forms.ModelChoiceField(label="Определение", queryset=TestRun.objects.none(), required=False, empty_label="Создать новое определение")
-    scope = forms.CharField(label="Название нового определения", required=False, initial="Основное испытание", max_length=250)
-    method_code = forms.CharField(label="Метод / редакция методики", required=False, max_length=150)
+    run = forms.ModelChoiceField(
+        label='Группа измерений', queryset=TestRun.objects.none(),
+        empty_label='Выберите группу измерений',
+        help_text='Выберите группу, добавленную в этот эксперимент.',
+    )
     source_cell = SourceCellField(label='Первичная ячейка')
 
     def __init__(self, *args, card, **kwargs):
         super().__init__(*args, **kwargs)
         self.card = card
-        self.fields["run"].queryset = card.runs.all()
+        self.fields['run'].queryset = card.runs.select_related('measurement_group')
         if card.source_sheet_id:
-            self.fields["source_cell"].widget.attrs[
-                "data-source-sheet"
-            ] = str(card.source_sheet_id)
+            self.fields['source_cell'].widget.attrs['data-source-sheet'] = str(
+                card.source_sheet_id,
+            )
 
-    def clean(self):
-        data = super().clean()
-        if not data.get("run") and not data.get("scope"):
-            self.add_error("scope", "Укажите название нового определения.")
-        cell = data.get('source_cell')
+    def clean_source_cell(self):
+        cell = self.cleaned_data.get('source_cell')
         if cell and self.card.source_sheet_id and cell.sheet_id != self.card.source_sheet_id:
-            self.add_error('source_cell', 'Ячейка должна принадлежать листу источника карточки.')
-        return data
-
-
-class ResultForm(RunFields):
-    metric = forms.ModelChoiceField(label="Показатель", queryset=Metric.objects.all())
-    numeric_value = LIMSDecimalField(label="Числовой результат", required=False)
-    text_value = forms.CharField(label="Текстовый результат", required=False, widget=forms.Textarea(attrs={"rows": 3}))
-
-    def clean(self):
-        data = super().clean()
-        metric = data.get("metric")
-        if metric:
-            if metric.value_kind == "numeric" and (data.get("numeric_value") is None or data.get("text_value")):
-                raise forms.ValidationError("Для числового показателя укажите только числовой результат. Единица берётся из справочника показателей.")
-            if metric.value_kind != "numeric" and (data.get("numeric_value") is not None or not data.get("text_value")):
-                raise forms.ValidationError("Для этого показателя укажите только текстовый результат.")
-        return data
+            raise forms.ValidationError('Ячейка должна принадлежать листу источника эксперимента.')
+        return cell
 
 
 class ObservationForm(RunFields):

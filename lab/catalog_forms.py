@@ -188,7 +188,7 @@ class SourceCellForm(forms.ModelForm):
         widgets = {'raw_value': forms.Textarea(attrs={'rows': 3}), 'formula_text': forms.Textarea(attrs={'rows': 2}),
                    'cached_value': forms.Textarea(attrs={'rows': 2})}
         help_texts = {'address': 'Например B12, страница 3 или раздел «Плотность».',
-                      'cached_value': 'Сохранённый кэш не подтверждает правильность формулы и не становится результатом испытания.'}
+                      'cached_value': 'Сохранённый кэш не подтверждает правильность формулы и не становится результатом эксперимента.'}
 
     def __init__(self, *args, sheet, **kwargs):
         super().__init__(*args, **kwargs)
@@ -233,7 +233,7 @@ class MetricForm(forms.ModelForm):
         data = super().clean()
         if self.instance.pk:
             original = Metric.objects.get(pk=self.instance.pk)
-            if original.results.exists() or original.conditions.exists():
+            if original.results.exists():
                 for key in ('code', 'unit_code', 'value_kind'):
                     if data.get(key) != getattr(original, key):
                         self.add_error(key, 'Для использованного показателя код, единицу и тип не меняют. Создайте новый показатель.')

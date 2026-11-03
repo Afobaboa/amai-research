@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from .models import (
     ChangeEvent, EmployeeProfile, Material, Metric, MixtureType, RecipeComponent,
-    RecipeGroup, RecipeMatch, RecipeVersion, Result, SessionCondition,
+    RecipeGroup, RecipeMatch, RecipeVersion, Result, MeasurementGroup,
     TestRun, TestSession,
 )
 
@@ -29,7 +29,14 @@ class WorkflowTests(TestCase):
         RecipeComponent.objects.create(group=group, position=1, unbatched_material=cls.material, quantity_value=Decimal("100"))
         cls.card = TestSession.objects.create(identifier="TEST-001", title="Контроль", status="active", created_by=cls.author)
         RecipeMatch.objects.create(session=cls.card, recipe_version=cls.recipe, status="confirmed")
-        cls.test_run = TestRun.objects.create(session=cls.card, scope="Основное испытание")
+        cls.measurement_group = MeasurementGroup.objects.create(
+            code='workflow', name='Группа для проверки',
+        )
+        cls.measurement_group.metrics.add(cls.metric, cls.text_metric)
+        cls.test_run = TestRun.objects.create(
+            session=cls.card, scope=cls.measurement_group.name,
+            measurement_group=cls.measurement_group,
+        )
 
     def sign_in(self, employee=None):
         session = self.client.session
@@ -49,7 +56,7 @@ class WorkflowTests(TestCase):
         return payload
 
     def card_payload(self, **extra):
-        payload = {"title": "Новое испытание", "status": "active", "notes": "Наблюдение", "recipe": str(self.recipe.pk), "conditions-TOTAL_FORMS": "1", "conditions-INITIAL_FORMS": "0", "conditions-MIN_NUM_FORMS": "0", "conditions-MAX_NUM_FORMS": "30", "conditions-0-metric": str(self.metric.pk), "conditions-0-numeric_value": "-10"}
+        payload = {"title": "Новый эксперимент", "status": "active", "notes": "Наблюдение", "recipe": str(self.recipe.pk), "conditions-TOTAL_FORMS": "1", "conditions-INITIAL_FORMS": "0", "conditions-MIN_NUM_FORMS": "0", "conditions-MAX_NUM_FORMS": "30", "conditions-0-metric": str(self.metric.pk), "conditions-0-numeric_value": "-10"}
         payload.update(extra)
         return payload
 
@@ -212,29 +219,28 @@ class WorkflowTests(TestCase):
         response = self.client.post(reverse("test_create"), self.card_payload())
         card = TestSession.objects.get(identifier=self.recipe.version_label)
         self.assertRedirects(response, reverse("test_detail", args=[card.pk]))
-        self.assertEqual(card.conditions.get().numeric_value, Decimal("-10"))
+        self.assertFalse(card.runs.exists())
         self.assertEqual(card.recipe_matches.get(status="confirmed").recipe_version_id, self.recipe.pk)
         self.client.post(reverse("test_edit", args=[card.pk]), self.card_payload(title="Исправленное название", **{"conditions-0-numeric_value": "-18"}))
         card.refresh_from_db()
         self.assertEqual(card.title, "Исправленное название")
         event = ChangeEvent.objects.filter(entity_type="test", entity_id=card.pk).latest("pk")
-        self.assertEqual(event.before["title"], "Новое испытание")
+        self.assertEqual(event.before["title"], "Новый эксперимент")
         self.assertEqual(event.after["title"], "Исправленное название")
-        self.assertEqual(event.before["conditions"][0]["numeric_value"], "-10.00000000")
-        self.assertEqual(card.conditions.get().numeric_value, Decimal("-18"))
+        self.assertEqual(event.before["runs"], [])
+        self.assertFalse(card.runs.exists())
 
-    def test_record_result_and_reject_wrong_type_and_cross_card_run(self):
+    def test_record_group_values_and_reject_wrong_type(self):
         self.sign_in()
-        url = reverse("result_add", args=[self.card.pk])
-        valid = {"run": self.test_run.pk, "metric": self.metric.pk, "numeric_value": "0", "scope": ""}
-        self.assertRedirects(self.client.post(url, valid), reverse("test_detail", args=[self.card.pk]))
-        self.assertEqual(Result.objects.get().numeric_value, Decimal("0"))
-        invalid = {"run": self.test_run.pk, "metric": self.metric.pk, "text_value": "not a number"}
+        url = reverse('result_add', args=[self.card.pk])
+        valid = {'measurement_group': self.measurement_group.pk,
+                 f'metric_{self.metric.pk}': '0',
+                 f'metric_{self.text_metric.pk}_reason': 'Не наблюдали'}
+        self.assertRedirects(self.client.post(url, valid), reverse('test_detail', args=[self.card.pk]))
+        self.assertEqual(Result.objects.get(metric=self.metric).numeric_value, Decimal('0'))
+        invalid = {**valid, f'metric_{self.metric.pk}': 'not a number'}
         self.assertEqual(self.client.post(url, invalid).status_code, 200)
-        other = TestSession.objects.create(identifier="OTHER")
-        other_run = TestRun.objects.create(session=other, scope="Другой")
-        self.assertEqual(self.client.post(url, {**valid, "run": other_run.pk}).status_code, 200)
-        self.assertEqual(Result.objects.count(), 1)
+        self.assertEqual(Result.objects.count(), 2)
 
     def test_observation_preserves_text_and_completed_card_is_readonly(self):
         self.sign_in()

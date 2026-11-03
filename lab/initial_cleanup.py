@@ -48,7 +48,6 @@ def remove_tests():
     results.delete()
     lab.Observation.objects.filter(test_run__in=runs).delete()
     runs.delete()
-    lab.SessionCondition.objects.filter(session__in=ids).delete()
     lab.ConditioningEvent.objects.filter(session__in=ids).delete()
     lab.RecipeMatch.objects.filter(session__in=ids).delete()
     cards.delete()

@@ -1,1 +1,4 @@
-{% extends 'lab/entry_form.html' %}{% block form_heading %}Наблюдение{% endblock %}{% block form_description %}Зафиксируйте внешний вид, поведение материала или другие детали испытания.{% endblock %}{% block form_note %}<div class="info-note">Текст будет сохранен дословно вместе с переносами строк. Наблюдение относится к выбранному определению.</div>{% endblock %}
+{% extends 'lab/entry_form.html' %}
+{% block form_heading %}Наблюдение{% endblock %}
+{% block form_description %}Зафиксируйте внешний вид, поведение материала или другие детали эксперимента.{% endblock %}
+{% block form_note %}<div class="info-note">Наблюдение сохранится дословно в выбранной группе измерений. Если список пуст, сначала <a href="{% url 'result_add' card.pk %}">добавьте группу измерений</a>; наблюдение можно записать сразу при её добавлении.</div>{% endblock %}

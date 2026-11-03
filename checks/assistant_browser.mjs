@@ -64,10 +64,10 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
     '',
     'Смотрите **рецептуру** [316.1](/recipes/1/).',
     '',
-    'Создать: [Новое испытание](/tests/new/?recipe=8).',
-    'Старый ответ: `/tests/new/`, /tests/ и **`/tests/1/results/new/`**.',
-    'Шаблон: `/tests/{id}/results/new/`, [Карточка](/tests/{id}/).',
-    'Подпись адресом: [/tests/new/](/tests/new/). Плотность 1 г/мл.',
+    'Создать: [Новый эксперимент](/experiments/new/?recipe=8).',
+    'Старый ответ: `/experiments/new/`, /experiments/ и **`/experiments/1/measurement-groups/new/`**.',
+    'Шаблон: `/experiments/{id}/measurement-groups/new/`, [Карточка](/experiments/{id}/).',
+    'Подпись адресом: [/experiments/new/](/experiments/new/). Плотность 1 г/мл.',
     '',
     '| **Рецептура** | Значение | Комментарий |',
     '| :--- | ---: | :---: |',
@@ -195,10 +195,10 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(await page.evaluate(() => window.injected), undefined);
   assert.equal(await page.locator('.assistant-sources a[href="/recipes/1/"]').count(), 0, 'Sources do not repeat inline links');
   const firstReply = page.locator('.assistant-message.is-assistant').first();
-  assert.equal(await firstReply.getByRole('link', {name:'Новое испытание', exact:true}).count(), 3);
-  assert.equal(await firstReply.locator('a[href="/tests/new/?recipe=8"]').textContent(), 'Новое испытание');
-  assert.equal(await firstReply.locator('a[href="/tests/"]').textContent(), 'Испытания');
-  assert.equal(await firstReply.locator('strong a[href="/tests/1/results/new/"]').textContent(), 'Добавить результат');
+  assert.equal(await firstReply.getByRole('link', {name:'Новый эксперимент', exact:true}).count(), 3);
+  assert.equal(await firstReply.locator('a[href="/experiments/new/?recipe=8"]').textContent(), 'Новый эксперимент');
+  assert.equal(await firstReply.locator('a[href="/experiments/"]').textContent(), 'Эксперименты');
+  assert.equal(await firstReply.locator('strong a[href="/experiments/1/measurement-groups/new/"]').textContent(), 'Добавить группу измерений');
   assert.equal(await firstReply.locator('a[href*="{id}"]').count(), 0);
   assert.equal(await firstReply.locator('a').filter({hasText:/^\//}).count(), 0, 'Route text is replaced with a UI label');
   assert.ok((await firstReply.textContent()).includes('Плотность 1 г/мл.'), 'Units remain intact');
@@ -377,7 +377,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await checkWidth(savedWidth);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Recipe details fit beside the maximum-width panel');
   assert.equal(await page.locator('.assistant-table-scroll > table').count(), 3, 'Tables survive history restoration after navigation');
-  for (const path of ['/recipes/','/tests/','/recipes/new/','/recipes/1/']) {
+  for (const path of ['/recipes/','/experiments/','/recipes/new/','/recipes/1/']) {
     const response = await page.goto(base + path, {waitUntil:'networkidle'});
     assert.ok(response.ok(), `Desktop layout check opens ${path}`);
     await checkWidth(savedWidth);

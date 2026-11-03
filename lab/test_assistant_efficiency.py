@@ -81,8 +81,8 @@ class CompactContextTests(TestCase):
     def test_navigation_help_links_resolve_and_source_reading_is_optional(self):
         for path in (
             '/recipes/', '/recipes/new/', '/recipes/1/fork/',
-            '/recipes/1/calculate/', '/tests/1/results/new/',
-            '/tests/1/observations/new/', '/tests/1/conditioning/new/',
+            '/recipes/1/calculate/', '/experiments/1/measurement-groups/new/',
+            '/experiments/1/observations/new/', '/experiments/1/conditioning/new/',
             '/lots/new/', '/recipe-templates/',
             '/calculations/1/', '/history/',
         ):
@@ -92,14 +92,14 @@ class CompactContextTests(TestCase):
 
     def test_navigation_uses_current_card_and_author_permissions(self):
         context = initial_context('/recipes/8/', 'author')
-        link = next(item for item in context['navigation'] if item['label'] == 'Новое испытание')
-        self.assertEqual(link['url'], '/tests/new/?recipe=8')
-        context = initial_context('/tests/12/', 'author')
+        link = next(item for item in context['navigation'] if item['label'] == 'Новый эксперимент')
+        self.assertEqual(link['url'], '/experiments/new/?recipe=8')
+        context = initial_context('/experiments/12/', 'author')
         for item in context['navigation']:
             self.assertIsNotNone(resolve(item['url']).url_name)
             self.assertNotIn('{id}', item['url'])
-        reader = initial_context('/tests/12/', 'reader')
-        self.assertEqual([item['label'] for item in reader['navigation']], ['Рецептуры', 'Испытания'])
+        reader = initial_context('/experiments/12/', 'reader')
+        self.assertEqual([item['label'] for item in reader['navigation']], ['Рецептуры', 'Эксперименты'])
 
     def test_tools_explain_property_names_using_ui_labels(self):
         lot = MaterialLot.objects.create(material=self.material, lot_code='Партия')
@@ -120,8 +120,8 @@ class CompactContextTests(TestCase):
                 context = workspace(request)
                 html = render_to_string('lab/dashboard.html', context)
                 self.assertIn('Создать опыт</a>', html)
-                self.assertIn('[Создать опыт](/tests/new/)', interface_guide())
-                self.assertIn({'label': 'Создать опыт', 'url': '/tests/new/'},
+                self.assertIn('[Создать опыт](/experiments/new/)', interface_guide())
+                self.assertIn({'label': 'Создать опыт', 'url': '/experiments/new/'},
                               initial_context('/', 'author')['navigation'])
                 self.assertIn('Создать опыт', [item['label'] for item in context['assistant_navigation']])
                 lot = MaterialLot.objects.create(material=self.material, lot_code='Партия')

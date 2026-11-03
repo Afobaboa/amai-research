@@ -77,7 +77,8 @@ def readable(value, key=''):
     if isinstance(value, bool):
         return 'Да' if value else 'Нет'
     if isinstance(value, list):
-        return '\n\n'.join(readable(item) for item in value) or '—'
+        return '\n\n'.join(readable(item, 'metric' if key == 'metrics' else '')
+                            for item in value) or '—'
     if isinstance(value, dict):
         return '\n'.join(f'{LABELS.get(k, k)}: {readable(v, k)}' for k, v in value.items() if k not in SKIP_FIELDS and v is not None and v != '') or '—'
     if isinstance(value, int) and key:
@@ -86,6 +87,7 @@ def readable(value, key=''):
                 'unbatched_material': models.Material, 'specified_lot': models.MaterialLot,
                 'metric': models.Metric, 'recipe_version': models.RecipeVersion,
                 'input_group': models.RecipeGroup, 'source': models.SourceFile, 'source_sheet': models.SourceSheet,
+                'measurement_group': models.MeasurementGroup,
                 'source_cell': models.SourceCell, 'material': models.Material, 'recipe_template': models.RecipeTemplate}
         if key in refs:
             record = refs[key].objects.filter(pk=value).first()
@@ -117,6 +119,8 @@ def event_changes(event):
 def action_label(action):
     return {'imported': 'Перенос из Excel',
             'created': 'Создание', 'updated': 'Изменение', 'result_added': 'Результат',
+            'measurement_group_added': 'Группа измерений',
+            'measurement_group_updated': 'Измерения',
             'observation_added': 'Наблюдение', 'conditioning_added': 'Обработка', 'calculation_saved': 'Расчёт',
             'demo_updated': 'Обновление примеров'}.get(action, 'Запись')
 
@@ -126,7 +130,7 @@ def status_label(value):
     return VALUES.get(value, value)
 
 
-ENTITY_ROUTES = {'recipe': ('recipe_detail', 'Рецептура'), 'test': ('test_detail', 'Испытание'),
+ENTITY_ROUTES = {'recipe': ('recipe_detail', 'Рецептура'), 'test': ('test_detail', 'Эксперимент'),
                  'material_category': ('category_detail', 'Категория материала'),
                  'source': ('source_detail', 'Источник'), 'material': ('material_detail', 'Материал'),
                  'lot': ('lot_detail', 'Партия'), 'metric': ('metric_list', 'Показатель'),

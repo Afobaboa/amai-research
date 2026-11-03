@@ -72,7 +72,7 @@
     {% else %}
     <section class="panel"><div class="empty-state">
       <h3>Добавьте лист или раздел</h3>
-      <p>Раздел позволит связать этот документ с рецептурой, карточкой испытания и конкретными исходными фрагментами.</p>
+      <p>Раздел позволит связать этот документ с рецептурой, карточкой эксперимента и конкретными исходными фрагментами.</p>
       {% if can_write %}<a class="button" href="{% url 'source_sheet_create' source.pk %}">Добавить раздел</a>{% endif %}
     </div></section>
     {% endif %}
@@ -84,7 +84,7 @@
       <div class="panel-heading"><h2>{{ ui_text.test_links }}</h2></div>
       <div class="table-scroll"><table>
         <thead><tr><th>КАРТОЧКА</th><th>НАЗВАНИЕ</th><th>СТАТУС</th></tr></thead>
-        <tbody>{% for card in cards %}<tr><td><a class="record-link" href="{% url 'test_detail' card.pk %}">{{ card.identifier|default:card.pk }}</a></td><td>{{ card.title }}</td><td>{% include 'lab/includes/status.html' with status=card.status %}</td></tr>{% empty %}<tr><td colspan="3" class="muted">Связанных испытаний пока нет</td></tr>{% endfor %}</tbody>
+        <tbody>{% for card in cards %}<tr><td><a class="record-link" href="{% url 'test_detail' card.pk %}">{{ card.identifier|default:card.pk }}</a></td><td>{{ card.title }}</td><td>{% include 'lab/includes/status.html' with status=card.status %}</td></tr>{% empty %}<tr><td colspan="3" class="muted">Связанных экспериментов пока нет</td></tr>{% endfor %}</tbody>
       </table></div>
     </section>
     <section class="panel">

@@ -129,7 +129,7 @@ class ChangeEventAdmin(ReadOnlyRecordAdmin):
 for model in [
     models.SourceFile, models.SourceSheet, models.SourceCell, models.RecipeGroup,
     models.RecipeComponent, models.FillingPlanLine, models.RecipeProperty,
-    models.RecipeMatch, models.TestRun, models.SessionCondition, models.Result,
+    models.RecipeMatch, models.TestRun, models.MeasurementGroup, models.Result,
     models.ResultDependency, models.Observation, models.ConditioningEvent,
     models.RecipeTemplate, models.CalculationRecord,
 ]:

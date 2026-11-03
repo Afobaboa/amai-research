@@ -9,7 +9,7 @@ from django.test import TestCase
 from .models import (
     ChangeEvent, ConditioningEvent, EmployeeProfile, FillingPlanLine, Material,
     MaterialLot, Metric, RecipeComponent, RecipeGroup, RecipeMatch,
-    RecipeProperty, RecipeVersion, Result, ResultDependency, SessionCondition,
+    RecipeProperty, RecipeVersion, Result, ResultDependency, MeasurementGroup,
     SourceCell, SourceFile, SourceSheet, TestRun, TestSession,
 )
 
@@ -90,10 +90,10 @@ class DocumentaryModelTests(TestCase):
         self.assertIsNone(unchecked.numeric_value)
         self.assertIsNone(unchecked.text_value)
 
-    def test_condition_has_one_value_and_matches_metric_kind(self):
-        self.assert_rejected(lambda: SessionCondition.objects.create(session=self.card, metric=self.metric, numeric_value=1, text_value="1"))
+    def test_measurement_has_one_value_and_matches_metric_kind(self):
+        self.assert_rejected(lambda: Result.objects.create(test_run=self.test_run, metric=self.metric, numeric_value=1, text_value="1"))
         with self.assertRaises(ValidationError):
-            SessionCondition(session=self.card, metric=self.text_metric, numeric_value=1).full_clean()
+            Result(test_run=self.test_run, metric=self.text_metric, numeric_value=1).full_clean()
         with self.assertRaises(ValidationError):
             Result(test_run=self.test_run, metric=self.metric, text_value="Не число").full_clean()
 

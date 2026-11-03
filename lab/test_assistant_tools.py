@@ -11,7 +11,7 @@ from django.test.utils import CaptureQueriesContext
 from .assistant_tools import MAX_OUTPUT, execute_tool
 from .models import (
     EmployeeProfile, Material, MaterialLot, Metric, Observation, RecipeComponent,
-    RecipeGroup, RecipeMatch, RecipeVersion, Result, SessionCondition, SourceCell,
+    RecipeGroup, RecipeMatch, RecipeVersion, Result, MeasurementGroup, SourceCell,
     SourceFile, SourceSheet, TestRun, TestSession,
 )
 
@@ -26,7 +26,7 @@ class LaboratoryAssistantToolTests(TestCase):
             density_g_ml=Decimal('1.10'), price_per_kg=0,
         )
         cls.source = SourceFile.objects.create(title='Протокол', original_path='Архив/опыт.xlsx')
-        cls.sheet = SourceSheet.objects.create(file=cls.source, name='Испытания')
+        cls.sheet = SourceSheet.objects.create(file=cls.source, name='Эксперименты')
         cls.cell = SourceCell.objects.create(sheet=cls.sheet, address='C12', cell_kind='number', raw_value='42')
         cls.recipe = RecipeVersion.objects.create(version_label='R.1', status='published', created_by=cls.employee, source_sheet=cls.sheet)
         cls.group = RecipeGroup.objects.create(recipe_version=cls.recipe, label='A', quantity_basis='mass_percent', completeness='complete')
@@ -36,17 +36,19 @@ class LaboratoryAssistantToolTests(TestCase):
         cls.test_run = TestRun.objects.create(session=cls.test, scope='При -10 °C', method_code='M-1')
         cls.metric = Metric.objects.create(code='VOLUME', label='Выход', unit_code='л')
         cls.condition_metric = Metric.objects.create(code='TEMP', label='Температура', unit_code='°C')
-        SessionCondition.objects.create(session=cls.test, metric=cls.condition_metric, numeric_value=-10)
         cls.result = Result.objects.create(test_run=cls.test_run, metric=cls.metric, numeric_value=42, source_cell=cls.cell)
         Result.objects.create(test_run=cls.test_run, metric=cls.metric, numeric_value=0)
         Result.objects.create(test_run=cls.test_run, metric=cls.metric, origin='calculated', value_state='missing_inputs')
         Observation.objects.create(test_run=cls.test_run, sequence_no=1, text_value='Мелкая ровная ячейка')
+        basic = TestRun.objects.create(session=cls.test, scope='Основные параметры',
+                                      measurement_group=MeasurementGroup.objects.get(code='basic_parameters'))
+        Result.objects.create(test_run=basic, metric=cls.condition_metric, numeric_value=-10)
 
     def test_recipe_detail_has_plan_composition_and_provenance_without_employee(self):
         data = execute_tool('get_lab_record', {'entity': 'recipes', 'id': self.recipe.pk, 'section': 'all'})
         self.assertEqual(data['components']['items'][0]['quantity_value'], '100.00000000')
         self.assertEqual(data['components']['items'][0]['specified_lot__material__name'], 'Полиол А')
-        self.assertEqual(data['source']['sheet'], 'Испытания')
+        self.assertEqual(data['source']['sheet'], 'Эксперименты')
         source = execute_tool('get_lab_record', {'entity': 'source_cells', 'id': self.cell.pk, 'section': 'all'})
         self.assertEqual(source['source']['address'], 'C12')
         self.assertEqual(source['url'], f'/sources/{self.source.pk}/')
@@ -57,7 +59,7 @@ class LaboratoryAssistantToolTests(TestCase):
 
     def test_test_card_preserves_missing_zero_units_context_and_link_status(self):
         data = execute_tool('get_lab_record', {'entity': 'tests', 'id': self.test.pk, 'section': 'all'})
-        self.assertEqual(data['conditions']['items'][0]['numeric_value'], '-10.00000000')
+        self.assertEqual(data['basic_parameters']['items'][0]['numeric_value'], '-10.00000000')
         self.assertEqual(data['recipe_links']['items'][0]['status'], 'candidate')
         self.assertEqual(data['observations']['items'][0]['text_value'], 'Мелкая ровная ячейка')
         rows = data['results']['items']
@@ -72,7 +74,7 @@ class LaboratoryAssistantToolTests(TestCase):
             'min_value': '1', 'max_value': '45', 'order': 'value_desc', 'material_id': self.material.pk})
         self.assertEqual(data['total'], 1)
         self.assertEqual(data['items'][0]['id'], self.result.pk)
-        self.assertEqual(data['items'][0]['url'], f'/tests/{self.test.pk}/')
+        self.assertEqual(data['items'][0]['url'], f'/experiments/{self.test.pk}/')
         cards = execute_tool('search_lab_data', {'entity': 'tests', 'metric_code': 'VOLUME', 'min_value': '40', 'recipe_id': self.recipe.pk})
         self.assertEqual(cards['total'], 1)
         recipes = execute_tool('search_lab_data', {'entity': 'recipes', 'material_id': self.material.pk})
@@ -248,7 +250,7 @@ class LaboratoryAssistantToolTests(TestCase):
                 self.assertEqual(wrong_status['total'], 0)
                 matching = execute_tool('search_lab_data', {'entity': entity,
                     'recipe_id': self.recipe.pk, 'material_id': self.material.pk, 'match_status': 'candidate'})
-                self.assertEqual(matching['total'], 1 if entity == 'tests' else 3)
+                self.assertEqual(matching['total'], 1 if entity == 'tests' else 4)
         # The two range comparisons must also match the very same result.
         ranged = execute_tool('search_lab_data', {'entity': 'tests', 'metric_code': 'VOLUME',
             'min_value': '1', 'max_value': '40'})

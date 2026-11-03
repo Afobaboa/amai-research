@@ -348,14 +348,15 @@
         catch { /* Editing also works when browser storage is unavailable. */ }
         document.querySelectorAll('main form').forEach((form, index) => {
             const groups = Array.from(form.querySelectorAll('[data-formset-prefix]'));
-            if (!groups.length)
+            if (!groups.length && !form.hasAttribute('data-form-draft'))
                 return;
             const key = draftPrefix + JSON.stringify([
-                groups[0].dataset.draftOwner, location.pathname, location.search, index,
+                groups[0]?.dataset.draftOwner ?? form.dataset.draftOwner, location.pathname, location.search, index,
             ]);
             const baseline = JSON.stringify(draftFields(form, true));
             const draft = readFormDraft(key);
-            const submitted = pending === key && groups.some(group => group.dataset.draftBound === 'true');
+            const submitted = pending === key && (form.dataset.draftBound === 'true'
+                || groups.some(group => group.dataset.draftBound === 'true'));
             const compatible = draft && (draft.initial === baseline || draft.rendered === baseline);
             if (compatible && !submitted)
                 restoreFormDraft(form, groups, draft);
@@ -421,4 +422,32 @@
         });
     }
     retainFormDrafts();
+    function toggleMeasurementReasons() {
+        document.querySelectorAll('form[data-measurement-values]')
+            .forEach(form => {
+            form.querySelectorAll('[data-measurement-value]')
+                .forEach(value => {
+                const reason = form.elements.namedItem(`${value.name}_reason`);
+                if (!(reason instanceof HTMLInputElement))
+                    return;
+                const field = reason.closest('.field');
+                const update = () => {
+                    const filled = value.value.trim() !== '';
+                    if (field)
+                        field.hidden = filled;
+                    const valueField = value.closest('.field');
+                    if (valueField)
+                        valueField.dataset.measurementFilled = String(filled);
+                };
+                value.addEventListener('input', update);
+                value.addEventListener('change', update);
+                update();
+            });
+            form.addEventListener('formdata', event => {
+                form.querySelectorAll('.field[hidden] input')
+                    .forEach(reason => event.formData.delete(reason.name));
+            });
+        });
+    }
+    toggleMeasurementReasons();
 }

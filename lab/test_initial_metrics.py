@@ -14,7 +14,9 @@ class InitialMetricMigrationTests(TestCase):
             'lab.migrations.0011_distinguish_initial_metric_labels',
         )
         for code, previous, label in migration.RENAMES:
-            metric = Metric.objects.create(code=code, label=previous)
+            metric, _ = Metric.objects.update_or_create(
+                code=code, defaults={'label': previous},
+            )
             migration.rename_initial_metrics(apps, connection.schema_editor())
             metric.refresh_from_db()
             self.assertEqual(metric.label, label)

@@ -214,7 +214,7 @@ async function checkSelectSearch(page, go) {
   await checkMaterialSearch(page);
   await checkAddedSelect(page);
   await page.screenshot({path: join(artifacts, 'searchable-form.png'), fullPage: true});
-  await checkAddedConditionSelect(page, go);
+  await checkExperimentRecipeSelect(page, go);
   await checkRequiredSelect(page, go);
   console.log('Searchable forms: Cyrillic infix, separator aliases, keyboard, clear and dynamic rows passed.');
 }
@@ -289,15 +289,14 @@ async function checkMobileSelect(page, width) {
   )), false, `Open searchable dropdown: ${width}px overflow`);
 }
 
-async function checkAddedConditionSelect(page, go) {
-  await go('/tests/new/');
-  await page.locator('[data-add-form="conditions-formset"]').click();
-  const condition = searchableSelect(page, '#id_conditions-1-metric');
-  const trigger = condition.locator('.search-select-trigger');
-  assert.equal(await trigger.evaluate(el => el === document.activeElement), true,
-    'Adding a condition focuses its visible searchable field');
+async function checkExperimentRecipeSelect(page, go) {
+  await go('/experiments/new/');
+  assert.equal(await page.locator('#conditions-formset').count(), 0);
+  const field = searchableSelect(page, '#id_recipe');
+  const trigger = field.locator('.search-select-trigger');
+  await trigger.focus();
   await trigger.press('ArrowDown');
-  const input = condition.locator('.search-select-input');
+  const input = field.locator('.search-select-input');
   assert.equal(await input.evaluate(el => el === document.activeElement), true);
   await input.press('Escape');
 }
@@ -419,7 +418,7 @@ async function checkFormDrafts(context) {
   const add = prefix => page.locator(`[data-add-form="${prefix}-formset"]`).click();
   const remove = (prefix, index) => page.locator(`#${prefix}-formset [data-remove-form]`).nth(index).click();
   const snapshot = () => page.evaluate(() => {
-    const form = document.querySelector('[data-formset-prefix]').closest('form');
+    const form = document.querySelector('[data-formset-prefix], form[data-form-draft]').closest('form');
     return {
       fields: [...new FormData(form)].filter(([name]) => name !== 'csrfmiddlewaretoken'),
       dates: [...form.querySelectorAll('.date-picker input[type="text"]')].map(input => input.value),
@@ -507,7 +506,7 @@ async function checkFormDrafts(context) {
   // A newer server record wins over an older browser draft.
   await page.locator('#id_title').fill('Старое локальное изменение');
   const payload = await page.evaluate(() => Object.fromEntries(new FormData(
-    document.querySelector('[data-formset-prefix]').closest('form'),
+    document.querySelector('[data-formset-prefix], form[data-form-draft]').closest('form'),
   )));
   payload.title = 'Сохранено другим запросом';
   const response = await page.request.post(base + recipe + 'edit/', {
@@ -519,7 +518,7 @@ async function checkFormDrafts(context) {
 
   for (const [path, prefixes, field, value] of [
     ['/recipe-templates/new/', ['components', 'filling'], '#id_name', 'Черновик шаблона'],
-    ['/tests/new/', ['conditions'], '#id_title', 'Черновик испытания'],
+    ['/experiments/new/', [], '#id_title', 'Черновик эксперимента'],
   ]) {
     await visit(path);
     await page.locator(field).fill(value);
@@ -528,8 +527,7 @@ async function checkFormDrafts(context) {
       await add(prefix);
       await remove(prefix, 0);
     }
-    if (prefixes.includes('conditions')) {
-      await page.locator('#id_conditions-1-text_value').fill('Условие после обновления');
+    if (path.startsWith('/experiments/')) {
       await page.locator('#id_recorded_tested_on').fill('04.11.2026');
     } else {
       await page.locator('#id_components-1-material').selectOption(material);
@@ -552,27 +550,40 @@ async function checkFormDrafts(context) {
   }
 
   // Match the reported Ctrl+R case on an existing card in both engines.
-  await visit('/tests/new/');
+  await visit('/experiments/new/');
   const publishedRecipe = await page.locator('#id_recipe option')
     .evaluateAll(options => options.find(option => option.value)?.value);
   await page.locator('#id_recipe').selectOption(publishedRecipe);
   await page.locator('#id_title').fill('QA Ctrl+R существующей карточки');
-  await submit('Сохранить карточку');
+  await submit('Сохранить эксперимент');
   assert.equal(await page.locator('.errorlist,.field-error').count(), 0);
   const card = new URL(page.url()).pathname;
   await visit(card + 'edit/');
-  await add('conditions');
-  await add('conditions');
   await reload();
   await page.locator('#id_notes').fill('Введено до Ctrl+R\nНе сохранено в карточку');
-  await page.locator('#id_conditions-1-numeric_value').fill('0');
-  await page.locator('#id_conditions-2-text_value').fill('Условие перед Ctrl+R');
   const beforeShortcut = await snapshot();
   await page.reload({waitUntil: 'networkidle'});
   assert.deepEqual(await snapshot(), beforeShortcut,
     'Ctrl+R on an existing card retains filled rows and notes');
-  await remove('conditions', 0);
   await reload();
+
+  await visit(card + 'measurement-groups/new/');
+  const availableGroup = await page.locator('#id_measurement_group option')
+    .evaluateAll(options => options.find(option => option.value)?.value);
+  await page.locator('#id_measurement_group').selectOption(availableGroup);
+  await submit('Продолжить');
+  const groupMetric = page.locator('input[name^="metric_"]').first();
+  await groupMetric.fill('0');
+  for (const reason of await page.locator('input[name$="_reason"]').all()) {
+    const name = (await reason.getAttribute('name')).replace(/_reason$/, '');
+    if (await page.locator(`[name="${name}"]`).inputValue() === '') {
+      await reason.fill('Не было оборудования');
+    }
+  }
+  await reload();
+  assert.equal(await groupMetric.inputValue(), '0');
+  await submit('Сохранить группу измерений');
+  assert.match(await page.locator('main').innerText(), /Группа измерений сохранена/);
 
   // Hidden source links can also be restored by Firefox after row deletion.
   await visit('/recipes/?q=302.84');
@@ -1142,10 +1153,10 @@ try {
   assert.equal(await page.locator('.demo-banner,.demo-label').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/DEMO-/);
   await page.screenshot({path:join(artifacts, 'overview.png'),fullPage:true});
-  const desktopPaths = ['/recipes/','/tests/','/history/','/sources/','/materials/','/material-categories/','/material-categories/new/','/lots/','/metrics/','/mixtures/',
+  const desktopPaths = ['/recipes/','/experiments/','/history/','/sources/','/materials/','/material-categories/','/material-categories/new/','/lots/','/metrics/','/mixtures/','/measurement-groups/','/measurement-groups/new/',
     '/recipe-templates/','/sources/new/','/materials/new/','/lots/new/','/metrics/new/',
-    '/mixtures/new/','/recipe-templates/new/','/recipes/new/','/tests/new/',
-    '/recipes/1/','/tests/1/','/sources/1/','/sources/4/','/feedback/'];
+    '/mixtures/new/','/recipe-templates/new/','/recipes/new/','/experiments/new/',
+    '/recipes/1/','/experiments/1/','/sources/1/','/sources/4/','/feedback/'];
   for (const path of desktopPaths) {
     await go(path);
     await assertLiveSearchMarkers(page);
@@ -1156,7 +1167,7 @@ try {
   }
   await go('/recipes/1/');
   await page.screenshot({path:join(artifacts, 'recipe.png'),fullPage:true});
-  await go('/tests/1/');
+  await go('/experiments/1/');
   await page.screenshot({path:join(artifacts, 'test.png'),fullPage:true});
   console.log('Desktop pages render without overflow; pristine winter UI screenshots saved.');
 
@@ -1320,7 +1331,7 @@ try {
 
   // QA metrics are entered through the catalogue without assuming archive labels.
   for (const [code,label,unit] of [
-    ['QA_TEMP','QA температура испытания','°C'],
+    ['QA_TEMP','QA температура эксперимента','°C'],
     ['QA_RH','QA относительная влажность','%'],
     ['QA_YIELD','QA выход пены','л'],
   ]) {
@@ -1331,44 +1342,45 @@ try {
     await page.locator('#id_value_kind').selectOption('numeric');
     await submit('Сохранить');
   }
-  await go('/tests/new/?recipe='+fork.split('/')[2]);
+  await go('/measurement-groups/new/');
+  await page.locator('#id_name').fill('QA основные параметры');
+  for (const name of ['QA температура эксперимента', 'QA относительная влажность', 'QA выход пены']) {
+    await page.getByRole('checkbox', {name: new RegExp(name)}).check();
+  }
+  await submit('Сохранить');
+  const groupIndicators = page.locator('section.panel').filter({
+    has: page.getByRole('heading', {name: 'Показатели группы', exact: true}),
+  });
+  assert.equal(await groupIndicators.locator('tbody tr').count(), 3);
+  await go('/experiments/new/?recipe='+fork.split('/')[2]);
   for (const name of ['identifier', 'source_sheet', 'match_reason']) {
     assert.equal(await page.locator('#id_'+name).count(), 0);
   }
+  assert.equal(await page.locator('#conditions-formset').count(), 0);
   assert.equal(await page.locator('#id_recipe').getAttribute('required'), '');
   const linkedRecipe = await page.locator('#id_recipe option:checked').textContent();
   await page.locator('#id_title').fill('QA нулевое измерение и история');
   await page.locator('#id_status').selectOption('active');
   await page.locator('#id_recorded_tested_on').fill('01.11.2026');
-  await option(page,'#id_conditions-0-metric','QA температура испытания');
-  await page.locator('#id_conditions-0-numeric_value').fill('0');
-  assert.equal(await page.locator('#id_conditions-TOTAL_FORMS').inputValue(), '1');
-  await page.locator('[data-add-form="conditions-formset"]').click();
-  await page.locator('#id_conditions-1-text_value').fill('Удаляемое условие без показателя');
-  await page.locator('[data-add-form="conditions-formset"]').click();
-  await option(page,'#id_conditions-2-metric','QA относительная влажность');
-  await page.locator('#id_conditions-2-numeric_value').fill('55');
-  await page.locator('#conditions-formset .formset-row').nth(1).locator('[data-remove-form]').click();
-  assert.equal(await page.locator('#id_conditions-TOTAL_FORMS').inputValue(), '2');
-  assert.equal(await page.locator('#id_conditions-1-numeric_value').inputValue(), '55');
-  await submit('Сохранить карточку');
+  await submit('Сохранить эксперимент');
   const card=new URL(page.url()).pathname;
-  assert.match(card,/^\/tests\/\d+\/$/);
+  assert.match(card,/^\/experiments\/\d+\/$/);
   assert.ok(linkedRecipe.includes((await page.locator('h1').innerText()).trim()));
-  assert.match(await page.locator('.results-strip').innerText(),/0 °C/);
-  await checkAdditionalMobile(['results/new/','observations/new/','conditioning/new/'].map(path=>card+path));
-  await go(card+'results/new/');
+  await checkAdditionalMobile(['measurement-groups/new/','observations/new/','conditioning/new/'].map(path=>card+path));
+  await go(card+'measurement-groups/new/');
+  await option(page, '#id_measurement_group', 'QA основные параметры');
+  await submit('Продолжить');
   assert.equal(await page.locator('#id_source_cell').getAttribute('type'), 'hidden');
-  assert.doesNotMatch(await page.locator('main').innerText(), /Первичная ячейка/);
-  await option(page,'#id_metric','QA выход пены');
-  await page.locator('#id_numeric_value').fill('0');
-  await submit('Сохранить');
-  const resultPanel=page.locator('section.panel').filter({has:page.getByRole('heading',{name:'Основное испытание',exact:true})});
+  await page.getByLabel('QA температура эксперимента, °C', {exact:true}).fill('0');
+  await page.getByLabel('QA относительная влажность, %', {exact:true}).fill('55');
+  await page.getByLabel('QA выход пены, л', {exact:true}).fill('0');
+  await submit('Сохранить группу измерений');
+  const resultPanel=page.locator('section.panel').filter({has:page.getByRole('heading',{name:'QA основные параметры',exact:true})});
   const resultRow=resultPanel.locator('tbody tr').filter({hasText:'QA выход пены'});
   assert.match(await resultRow.locator('td').nth(1).innerText(),/^0(?:[,.]0+)?$/);
   await go(card+'observations/new/');
   assert.equal(await page.locator('#id_source_cell').getAttribute('type'), 'hidden');
-  await option(page,'#id_run','Основное испытание');
+  await option(page,'#id_run','QA основные параметры');
   const verbatim='  Первая строка наблюдения\nВторая строка: без изменений  ';
   await page.locator('#id_text_value').fill(verbatim);
   await submit('Сохранить');
@@ -1382,21 +1394,15 @@ try {
   await page.locator('#id_temperature_c').fill('0');
   await submit('Сохранить');
   await go(card+'edit/');
-  assert.equal(await page.locator('#conditions-formset .formset-row').count(), 3);
-  await page.locator('#conditions-formset [data-remove-form]').first().click();
-  await page.locator('#conditions-formset [data-remove-form]').last().click();
-  assert.equal(await page.locator('#id_conditions-INITIAL_FORMS').inputValue(), '1');
-  assert.equal(await page.locator('#id_conditions-0-numeric_value').inputValue(), '55');
+  assert.equal(await page.locator('#conditions-formset').count(), 0);
   await page.locator('#id_notes').fill('QA карточка завершена после нулевого измерения');
-  await submit('Сохранить карточку');
+  await submit('Сохранить эксперимент');
   await go(card+'edit/');
-  assert.equal(await page.locator('#conditions-formset .formset-row').count(), 2);
-  assert.equal(await page.locator('#id_conditions-INITIAL_FORMS').inputValue(), '1');
-  assert.equal(await page.locator('#id_conditions-0-numeric_value').inputValue(), '55');
-  await submit('Сохранить карточку');
+  assert.equal(await page.locator('#conditions-formset').count(), 0);
+  await submit('Сохранить эксперимент');
   await changeStatus(page, submit, 'completed');
-  assert.equal(await page.getByRole('link',{name:'Записать результат',exact:true}).count(),0);
-  assert.equal((await page.request.get(base+card+'results/new/')).status(),403);
+  assert.equal(await page.getByRole('link',{name:'Добавить группу измерений',exact:true}).count(),0);
+  assert.equal((await page.request.get(base+card+'measurement-groups/new/')).status(),403);
   assert.equal((await page.request.get(base+card+'edit/')).status(),403);
   await page.reload({waitUntil:'networkidle'});
   assert.equal(await page.locator('.observation p').textContent(),verbatim);
@@ -1558,10 +1564,10 @@ try {
   await go('/recipes/');
   assert.equal(await page.locator('a[href="/recipes/new/"]').count(),0);
   await go(card);
-  for(const word of ['Редактировать','Изменить статус','Записать результат','Добавить наблюдение','Записать обработку']) assert.equal(await page.getByRole('link',{name:new RegExp(word)}).count(),0,`Reader controls: ${word}`);
+  for(const word of ['Редактировать','Изменить статус','Добавить группу измерений','Добавить наблюдение','Записать обработку']) assert.equal(await page.getByRole('link',{name:new RegExp(word)}).count(),0,`Reader controls: ${word}`);
   const csrf=await page.locator('[name="csrfmiddlewaretoken"]').first().inputValue();
-  for(const path of ['/recipes/new/','/tests/new/',card+'results/new/',card+'observations/new/',card+'conditioning/new/',
-    '/sources/new/','/materials/new/','/material-categories/new/',categoryPath+'edit/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/',
+  for(const path of ['/recipes/new/','/experiments/new/',card+'measurement-groups/new/',card+'observations/new/',card+'conditioning/new/',
+    '/sources/new/','/materials/new/','/material-categories/new/',categoryPath+'edit/','/lots/new/','/metrics/new/','/mixtures/new/','/recipe-templates/new/','/measurement-groups/new/',
     calculatedRecipePath+'calculate/',uploadedSource+'sheets/new/',
     card+'status/',fork+'status/',lotPath+'status/']){
     const response=await page.request.post(base+path,{form:{csrfmiddlewaretoken:csrf},headers:{Referer:base+card}});

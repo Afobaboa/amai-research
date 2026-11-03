@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from .models import (
     ChangeEvent, EmployeeProfile, Material, MaterialLot, Metric, RecipeComponent,
-    RecipeGroup, RecipeMatch, RecipeVersion, SessionCondition, TestSession,
+    RecipeGroup, RecipeMatch, RecipeVersion, MeasurementGroup, Result, TestRun, TestSession,
 )
 
 
@@ -117,9 +117,9 @@ class StatusTests(TestCase):
             session=self.card, recipe_version=self.recipe,
         )
         metric = Metric.objects.create(code='STATUS_TEMP', label='Температура')
-        condition = SessionCondition.objects.create(
-            session=self.card, metric=metric, numeric_value=20,
-        )
+        run = TestRun.objects.create(session=self.card, scope='Основные параметры',
+                                    measurement_group=MeasurementGroup.objects.get(code='basic_parameters'))
+        condition = Result.objects.create(test_run=run, metric=metric, numeric_value=20)
         response = self.change('test', self.card, 'completed', notes='Подмена')
         self.assertRedirects(response, reverse('test_detail', args=[self.card.pk]))
         self.card.refresh_from_db()
@@ -127,7 +127,7 @@ class StatusTests(TestCase):
         self.assertEqual(self.card.title, 'Карточка')
         self.assertEqual(self.card.notes, 'Исходный вывод')
         self.assertEqual(self.card.recipe_matches.get().pk, match.pk)
-        self.assertEqual(self.card.conditions.get().pk, condition.pk)
+        self.assertEqual(run.results.get().pk, condition.pk)
         event = ChangeEvent.objects.get(entity_type='test')
         self.assertEqual(event.before['status'], 'active')
         self.assertEqual(event.after['status'], 'completed')

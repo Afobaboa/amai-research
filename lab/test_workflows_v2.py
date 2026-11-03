@@ -217,16 +217,19 @@ class ExpandedWorkflowTests(TestCase):
         self.assertFalse(CalculationRecord.objects.exists())
         self.assertEqual(RecipeTemplate.objects.count(), 1)
 
-    def test_result_and_observation_keep_provenance_and_reject_other_sheet(self):
+    def test_group_and_observation_keep_provenance_and_reject_other_sheet(self):
+        from .models import MeasurementGroup
         card = TestSession.objects.create(identifier='WINTER.TEST.1', status='active', source_sheet=self.sheet)
-        run = TestRun.objects.create(session=card, scope='Холодный режим')
+        group = MeasurementGroup.objects.create(code='cold', name='Холодный режим')
+        group.metrics.add(self.metric)
         url = reverse('result_add', args=[card.pk])
-        payload = {'run': str(run.pk), 'metric': str(self.metric.pk), 'numeric_value': '0',
+        payload = {'measurement_group': group.pk, f'metric_{self.metric.pk}': '0',
                    'source_cell': str(self.other_cell.pk)}
         self.assertEqual(self.client.post(url, payload).status_code, 200)
         self.assertFalse(Result.objects.exists())
         payload['source_cell'] = str(self.qty_cell.pk)
         self.assertEqual(self.client.post(url, payload).status_code, 302)
+        run = card.runs.get()
         result = run.results.get()
         self.assertEqual(result.numeric_value, Decimal(0))
         self.assertEqual(result.source_cell_id, self.qty_cell.pk)
@@ -241,22 +244,21 @@ class ExpandedWorkflowTests(TestCase):
         self.assertEqual(observation.source_cell_id, self.name_cell.pk)
         self.assertEqual(observation.text_value, text)
 
-    def test_condition_provenance_is_validated_and_saved(self):
+    def test_basic_parameter_provenance_is_validated_and_saved(self):
+        from .models import MeasurementGroup
         card = TestSession.objects.create(identifier='WINTER.CONDITION.1', status='active', source_sheet=self.sheet)
-        payload = {'title': 'Холодный режим', 'status': 'active',
-                   'source_sheet': str(self.sheet.pk),
-                   'conditions-TOTAL_FORMS': '1', 'conditions-INITIAL_FORMS': '0',
-                   'conditions-MIN_NUM_FORMS': '0', 'conditions-MAX_NUM_FORMS': '30',
-                   'conditions-0-metric': str(self.metric.pk), 'conditions-0-numeric_value': '-18',
-                   'conditions-0-source_cell': str(self.other_cell.pk)}
-        url = reverse('test_edit', args=[card.pk])
+        group = MeasurementGroup.objects.get(code='basic_parameters')
+        group.metrics.set([self.metric])
+        payload = {'measurement_group': group.pk, f'metric_{self.metric.pk}': '-18',
+                   'source_cell': str(self.other_cell.pk)}
+        url = reverse('result_add', args=[card.pk])
         self.assertEqual(self.client.post(url, payload).status_code, 200)
-        self.assertFalse(card.conditions.exists())
-        payload['conditions-0-source_cell'] = str(self.qty_cell.pk)
+        self.assertFalse(card.runs.exists())
+        payload['source_cell'] = str(self.qty_cell.pk)
         self.assertEqual(self.client.post(url, payload).status_code, 302)
-        card.refresh_from_db()
-        self.assertEqual(card.conditions.get().source_cell_id, self.qty_cell.pk)
-        self.assertEqual(card.conditions.get().numeric_value, Decimal(-18))
+        result = Result.objects.get(test_run__session=card, metric=self.metric)
+        self.assertEqual(result.source_cell_id, self.qty_cell.pk)
+        self.assertEqual(result.numeric_value, Decimal(-18))
 
     def test_publication_snapshot_distinguishes_unknown_price_from_free_batch(self):
         MaterialLot.objects.filter(pk=self.lot.pk).update(price_per_kg=None)

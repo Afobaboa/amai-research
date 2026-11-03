@@ -379,13 +379,14 @@
 
     document.querySelectorAll<HTMLFormElement>('main form').forEach((form, index) => {
       const groups = Array.from(form.querySelectorAll<HTMLElement>('[data-formset-prefix]'));
-      if (!groups.length) return;
+      if (!groups.length && !form.hasAttribute('data-form-draft')) return;
       const key = draftPrefix + JSON.stringify([
-        groups[0].dataset.draftOwner, location.pathname, location.search, index,
+        groups[0]?.dataset.draftOwner ?? form.dataset.draftOwner, location.pathname, location.search, index,
       ]);
       const baseline = JSON.stringify(draftFields(form, true));
       const draft = readFormDraft(key);
-      const submitted = pending === key && groups.some(group => group.dataset.draftBound === 'true');
+      const submitted = pending === key && (form.dataset.draftBound === 'true'
+        || groups.some(group => group.dataset.draftBound === 'true'));
       const compatible = draft && (draft.initial === baseline || draft.rendered === baseline);
       if (compatible && !submitted) restoreFormDraft(form, groups, draft);
       const initial = draft && (compatible || submitted) ? draft.initial : baseline;
@@ -436,4 +437,30 @@
     });
   }
   retainFormDrafts();
+
+  function toggleMeasurementReasons(): void {
+    document.querySelectorAll<HTMLFormElement>('form[data-measurement-values]')
+      .forEach(form => {
+        form.querySelectorAll<HTMLInputElement>('[data-measurement-value]')
+          .forEach(value => {
+            const reason = form.elements.namedItem(`${value.name}_reason`);
+            if (!(reason instanceof HTMLInputElement)) return;
+            const field = reason.closest<HTMLElement>('.field');
+            const update = (): void => {
+              const filled = value.value.trim() !== '';
+              if (field) field.hidden = filled;
+              const valueField = value.closest<HTMLElement>('.field');
+              if (valueField) valueField.dataset.measurementFilled = String(filled);
+            };
+            value.addEventListener('input', update);
+            value.addEventListener('change', update);
+            update();
+          });
+        form.addEventListener('formdata', event => {
+          form.querySelectorAll<HTMLInputElement>('.field[hidden] input')
+            .forEach(reason => event.formData.delete(reason.name));
+        });
+      });
+  }
+  toggleMeasurementReasons();
 }

@@ -98,7 +98,8 @@ class CalculationTemplateRemovalMigrationTests(TransactionTestCase):
     def test_migration_preserves_recipes_and_saved_calculation_snapshots(self):
         executor = MigrationExecutor(connection)
         executor.migrate(self.migrate_from)
-        self.addCleanup(lambda: MigrationExecutor(connection).migrate(self.migrate_to))
+        latest = executor.loader.graph.leaf_nodes()
+        self.addCleanup(lambda: MigrationExecutor(connection).migrate(latest))
         old = executor.loader.project_state(self.migrate_from).apps
         template = old.get_model('lab', 'CalculationTemplate').objects.create(
             name='Архивный расчёт', operations=['density'],

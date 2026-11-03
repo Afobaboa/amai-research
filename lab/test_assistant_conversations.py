@@ -40,7 +40,7 @@ class ConversationTests(TestCase):
         with patch('lab.assistant_worker.answer_stream', return_value=(e for e in [
             ('status', {'text': 'Смотрю данные…'}), ('delta', {'text': 'Вступление'}),
             ('status', {'text': 'Считаю…', 'reset': True}),
-            ('done', {'reply': 'Готовый ответ', 'sources': [{'title': 'Опыт', 'url': '/tests/1/'}]})
+            ('done', {'reply': 'Готовый ответ', 'sources': [{'title': 'Опыт', 'url': '/experiments/1/'}]})
         ])):
             run_next()
         new_tab = Client()
@@ -49,7 +49,7 @@ class ConversationTests(TestCase):
         self.assertEqual(jobs[0]['status'], 'completed')
         self.assertEqual(jobs[0]['reply'], 'Готовый ответ')
         self.assertEqual(jobs[0]['progress'], ['Вступление'])
-        self.assertEqual(jobs[0]['sources'][0]['url'], '/tests/1/')
+        self.assertEqual(jobs[0]['sources'][0]['url'], '/experiments/1/')
         self.assertFalse(run_next())
 
     def test_idempotency_and_one_active_job_per_chat(self):
@@ -92,12 +92,12 @@ class ConversationTests(TestCase):
 
     def test_saved_metric_codes_use_the_catalogue_without_rewriting_replies(self):
         Metric.objects.create(code='custom_foam_yield', label='Выход пены', unit_code='л')
-        original = 'custom_foam_yield: 42 л; missing_inputs; [Карточка](/tests/1/)'
+        original = 'custom_foam_yield: 42 л; missing_inputs; [Карточка](/experiments/1/)'
         self.finish(reply=original)
         shown = self.client.get(self.url).json()['jobs'][0]['reply']
         self.assertIn('Выход пены: 42 л', shown)
         self.assertIn('Нет исходных данных', shown)
-        self.assertIn('](/tests/1/)', shown)
+        self.assertIn('](/experiments/1/)', shown)
         self.assertEqual(AssistantJob.objects.get().reply, original)
 
     def test_completed_history_from_server_and_failed_answers_excluded(self):

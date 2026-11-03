@@ -1,7 +1,8 @@
-from django.urls import include, path
+from django.urls import include, path, re_path
 
 from . import (
     assistant_conversations, assistant_views, feedback_views, status_views, views,
+    measurement_views,
 )
 
 urlpatterns = [
@@ -27,14 +28,26 @@ urlpatterns = [
     path('recipes/<int:pk>/calculate/', views.recipe_calculate, name='recipe_calculate'),
     path('calculations/<int:pk>/', views.calculation_detail, name='calculation_detail'),
     path("recipes/<int:source_pk>/fork/", views.recipe_create, name="recipe_fork"),
-    path("tests/", views.test_list, name="test_list"),
-    path("tests/new/", views.test_create, name="test_create"),
-    path("tests/<int:pk>/", views.test_detail, name="test_detail"),
-    path("tests/<int:pk>/edit/", views.test_create, name="test_edit"),
-    path("tests/<int:pk>/status/", status_views.test_status, name="test_status"),
-    path("tests/<int:pk>/results/new/", views.result_add, name="result_add"),
-    path("tests/<int:pk>/observations/new/", views.observation_add, name="observation_add"),
-    path("tests/<int:pk>/conditioning/new/", views.conditioning_add, name="conditioning_add"),
+    path("experiments/", views.test_list, name="test_list"),
+    path("experiments/new/", views.test_create, name="test_create"),
+    path("experiments/<int:pk>/", views.test_detail, name="test_detail"),
+    path("experiments/<int:pk>/edit/", views.test_create, name="test_edit"),
+    path("experiments/<int:pk>/status/", status_views.test_status, name="test_status"),
+    path("experiments/<int:pk>/measurement-groups/new/", measurement_views.group_add, name="result_add"),
+    path("experiments/<int:pk>/observations/new/", views.observation_add, name="observation_add"),
+    path("experiments/<int:pk>/conditioning/new/", views.conditioning_add, name="conditioning_add"),
+    path('experiments/<int:pk>/measurement-groups/<int:run_pk>/',
+         measurement_views.group_edit, name='experiment_group_edit'),
+    path('measurement-groups/', measurement_views.group_list,
+         name='measurement_group_list'),
+    path('measurement-groups/new/', measurement_views.group_save,
+         name='measurement_group_create'),
+    path('measurement-groups/<int:pk>/', measurement_views.group_detail,
+         name='measurement_group_detail'),
+    path('measurement-groups/<int:pk>/edit/', measurement_views.group_save,
+         name='measurement_group_edit'),
+    re_path(r'^tests/(?P<tail>.*)$', views.legacy_experiment_url,
+            name='legacy_experiment_url'),
     path("history/", views.history, name="history"),
     path("sources/", views.sources, name="sources"),
 ]

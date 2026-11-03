@@ -22,10 +22,10 @@ MAX_TEXT = 4000
 MAX_OUTPUT = 60000
 DETAIL_SECTIONS = (
     'summary', 'all', 'groups', 'components', 'filling_plan', 'properties',
-    'test_links', 'calculations', 'recipe_links', 'conditions', 'conditioning',
+    'test_links', 'calculations', 'recipe_links', 'basic_parameters', 'conditioning',
     'runs', 'results', 'observations', 'lots', 'recipes', 'sheets', 'cells',
     'dependencies', 'source', 'effective_density_g_ml', 'effective_price_per_kg',
-    'effective_price_currency',
+    'effective_price_currency', 'metrics',
 )
 
 # Fields are deliberately explicit: adding a model field does not publish it.
@@ -43,8 +43,11 @@ ENTITIES = {
     ),
     'mixtures': (m.MixtureType, 'mixture_detail', 'id code title', ['code', 'title']),
     'recipes': (m.RecipeVersion, 'recipe_detail', 'id mixture_type_id mixture_type__code version_label recorded_on title status notes batch_mass_g recipe_template_id source_sheet_id', ['version_label', 'title', 'notes', 'mixture_type__code', 'mixture_type__title', 'groups__components__unbatched_material__name', 'groups__components__specified_lot__material__name']),
-    'tests': (m.TestSession, 'test_detail', 'id identifier title status notes recorded_manufactured_on recorded_tested_on source_sheet_id', ['identifier', 'title', 'notes', 'recipe_matches__recipe_version__version_label', 'runs__scope', 'runs__observations__text_value', 'runs__results__text_value']),
-    'results': (m.Result, None, 'id test_run_id test_run__session_id test_run__session__identifier test_run__scope test_run__method_code metric_id metric__code metric__label metric__unit_code numeric_value text_value origin value_state source_cell_id calculation_code', ['metric__code', 'metric__label', 'text_value', 'test_run__session__identifier', 'test_run__scope']),
+    'tests': (m.TestSession, 'test_detail', 'id identifier title status notes recorded_manufactured_on recorded_tested_on source_sheet_id', ['identifier', 'title', 'notes', 'recipe_matches__recipe_version__version_label', 'runs__scope', 'runs__measurement_group__name', 'runs__observations__text_value', 'runs__results__text_value']),
+    'results': (m.Result, None, 'id test_run_id test_run__session_id test_run__session__identifier test_run__scope test_run__measurement_group__name test_run__method_code metric_id metric__code metric__label metric__unit_code numeric_value text_value origin value_state not_measured_reason source_cell_id calculation_code', ['metric__code', 'metric__label', 'text_value', 'test_run__session__identifier', 'test_run__scope', 'test_run__measurement_group__name']),
+    'measurement_groups': (m.MeasurementGroup, 'measurement_group_detail',
+                           'id code name description',
+                           ['code', 'name', 'description', 'metrics__label']),
     'metrics': (m.Metric, 'metric_list', 'id code label unit_code value_kind', ['code', 'label', 'unit_code']),
     'sources': (m.SourceFile, 'source_detail', 'id title kind original_path notes sha256 date_system', ['title', 'original_path', 'notes']),
     'source_cells': (m.SourceCell, None, 'id sheet_id sheet__file_id sheet__name address cell_kind raw_value formula_text cached_value', ['address', 'sheet__name', 'raw_value', 'formula_text']),
@@ -64,7 +67,7 @@ TOOLS = [
         'до 5 строк, limit до 40. Полные поля читай через get_lab_record '
         'section=all. Для сравнения результатов выбирай results, metric_code, '
         'min_value/max_value и order=value_desc/value_asc. Сохраняются единицы, '
-        'происхождение и состояния пропусков. Состав и условия читай в нужных '
+        'происхождение и состояния пропусков. Состав и группы измерений читай в нужных '
         'section карточек. Связь candidate не подтверждает состав. '
         'Пустой q возвращает весь реестр постранично.'
     ), {
@@ -72,7 +75,7 @@ TOOLS = [
         'q': {'type': 'string', 'maxLength': 160, 'description': 'Подстрока названия, номера, материала, примечания; без SQL или специальных операторов.'},
         'status': {'type': 'string', 'description': 'Точный статус только для recipes/tests/lots.'},
         'recipe_id': {'type': 'integer', 'minimum': 1, 'description': 'Рецептура для tests/results/calculations; для tests/results ищет связи всех статусов, включая candidate. Проверяйте статус в get_lab_record или задайте match_status.'},
-        'match_status': {'type': 'string', 'enum': ['candidate', 'confirmed', 'rejected'], 'description': 'Статус связи испытания с рецептурой (tests/results). Совместно с recipe_id/material_id относится к той же самой связи.'},
+        'match_status': {'type': 'string', 'enum': ['candidate', 'confirmed', 'rejected'], 'description': 'Статус связи эксперимента с рецептурой (tests/results). Совместно с recipe_id/material_id относится к той же самой связи.'},
         'material_id': {'type': 'integer', 'minimum': 1, 'description': 'Материал для lots/recipes/tests/results, учитывает конкретные партии.'},
         'metric_code': {'type': 'string', 'maxLength': 100, 'description': 'Точный код показателя для results; для tests — записанный результат этого показателя.'},
         'min_value': {'type': 'string', 'description': 'Включительная нижняя граница числового результата.'},
@@ -370,10 +373,6 @@ PROPERTY_FIELDS = (
     'id recipe_version_id group_id component_id filling_plan_line_id '
     'property_code value unit_code source_cell_id origin provenance_note'
 )
-CONDITION_FIELDS = (
-    'id metric_id metric__code metric__label metric__unit_code '
-    'numeric_value text_value source_cell_id'
-)
 RECIPE_LINK_FIELDS = 'id recipe_version_id recipe_version__version_label status'
 DEPENDENCY_FIELDS = (
     'id input_result_id role input_result__metric__code '
@@ -416,13 +415,17 @@ def _tests_sections(obj, related, offset, limit):
     return {
         'source': lambda: _provenance(obj),
         'recipe_links': lambda: related(obj.recipe_matches, RECIPE_LINK_FIELDS),
-        'conditions': lambda: related(obj.conditions, CONDITION_FIELDS),
+        'basic_parameters': lambda: _result_rows(
+            m.Result.objects.filter(test_run__session=obj,
+                test_run__measurement_group__code='basic_parameters'),
+            offset=offset, limit=limit,
+        ),
         'conditioning': lambda: related(
             obj.conditioning_events,
             'id target_kind step_no kind duration_value duration_unit '
             'temperature_c source_cell_id',
         ),
-        'runs': lambda: related(obj.runs, 'id scope method_code scope_cell_id'),
+        'runs': lambda: related(obj.runs, 'id measurement_group_id measurement_group__name scope method_code scope_cell_id'),
         'results': lambda: _result_rows(
             m.Result.objects.filter(test_run__session=obj),
             offset=offset, limit=limit,
@@ -438,8 +441,10 @@ def _results_sections(obj, related, offset, limit):
     return {
         'source': lambda: _source_cell(obj.source_cell),
         'dependencies': lambda: related(obj.dependencies, DEPENDENCY_FIELDS),
-        'conditions': lambda: related(
-            obj.test_run.session.conditions, CONDITION_FIELDS,
+        'basic_parameters': lambda: _result_rows(
+            m.Result.objects.filter(test_run__session=obj.test_run.session,
+                test_run__measurement_group__code='basic_parameters'),
+            offset=offset, limit=limit,
         ),
         'recipe_links': lambda: related(
             obj.test_run.session.recipe_matches, RECIPE_LINK_FIELDS,
@@ -516,6 +521,9 @@ SECTION_BUILDERS = {
     'mixtures': _mixtures_sections,
     'sources': _sources_sections,
     'source_cells': _source_cells_sections,
+    'measurement_groups': lambda obj, related, offset, limit: {
+        'metrics': lambda: related(obj.metrics, 'id code label unit_code value_kind'),
+    },
     'metrics': _metrics_sections,
 }
 

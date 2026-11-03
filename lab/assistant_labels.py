@@ -45,9 +45,9 @@ def ui_labels():
 @lru_cache(maxsize=1)
 def form_labels():
     # Use field declarations without instantiating forms or evaluating querysets.
-    from . import catalog_forms, forms, template_forms
+    from . import catalog_forms, forms, template_forms, measurement_forms
     result = {}
-    for module in (forms, catalog_forms, template_forms):
+    for module in (forms, catalog_forms, template_forms, measurement_forms):
         for form in vars(module).values():
             model = getattr(getattr(form, '_meta', None), 'model', None)
             if model is not None and hasattr(form, 'base_fields'):

@@ -380,7 +380,7 @@ def metric_save(request, pk=None):
         messages.success(request, 'Показатель сохранён.')
         return redirect('metric_list')
     return form_page(request, form, 'Редактирование показателя' if pk else 'Новый показатель',
-                     reverse('metric_list'), 'Единица и тип показателя используются в условиях и результатах испытаний.')
+                     reverse('metric_list'), 'Единица и тип показателя используются в группах измерений экспериментов.')
 
 
 @site_required

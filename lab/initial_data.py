@@ -9,6 +9,7 @@ from django.db import transaction
 
 from . import models as lab
 from .initial_cleanup import remove_demo
+from .measurement_groups import seed_measurement_groups
 from .initial_materials import ArchiveMaterials, property_source_cell, row_name
 from .categories import seed_material_categories, sync_material_categories
 
@@ -52,6 +53,7 @@ class ArchiveLoader:
         self.counts = {'recipes': 0, 'tests': 0, 'sources': 0}
 
     def load(self, data):
+        seed_measurement_groups()
         self.catalog = ArchiveMaterials(data, self.author)
         for mixture in data['mixtures']:
             self.mixtures[mixture['code']], _ = lab.MixtureType.objects.get_or_create(
@@ -286,21 +288,36 @@ class ArchiveLoader:
         return metric
 
     def conditions(self, card, cells, rows):
+        if not rows:
+            return
+        group = lab.MeasurementGroup.objects.get(code='basic_parameters')
+        run = lab.TestRun.objects.create(
+            session=card, measurement_group=group, scope=group.name,
+        )
         for row in rows:
             kind = 'numeric' if row.get('value_numeric') is not None else 'text'
             metric = self.metric(row['code'], row['title'], row.get('unit'), kind)
-            lab.SessionCondition.objects.create(
-                session=card, metric=metric,
+            group.metrics.add(metric)
+            lab.Result.objects.create(
+                test_run=run, metric=metric,
                 numeric_value=number(row.get('value_numeric')),
                 text_value=row.get('value_text'),
                 source_cell=cells.get(row.get('cell')),
             )
 
     def run(self, card, cells, data):
-        run = lab.TestRun.objects.create(
-            session=card, scope=data['scope'], method_code=data.get('method_code'),
-            scope_cell=cells.get(data.get('scope_cell')),
-        )
+        aliases = {
+            'Параметры карточки': 'basic_parameters',
+            'Испытание на бумаге': 'paper', 'Испытание в форме': 'mold',
+            'Дополнительные показатели': 'additional',
+        }
+        code = aliases.get(data['scope'])
+        group = lab.MeasurementGroup.objects.filter(code=code).first() if code else None
+        if group is None:
+            group, _ = lab.MeasurementGroup.objects.get_or_create(
+                name=data['scope'], defaults={'code': f'archive-{card.pk}'},
+            )
+        run = self.archive_run(card, group, cells, data)
         results = {}
         for row in data.get('results', []):
             result = self.result(run, cells, row)
@@ -312,6 +329,19 @@ class ArchiveLoader:
             )
         return results
 
+    def archive_run(self, card, group, cells, data):
+        existing = card.runs.filter(measurement_group=group).first()
+        if existing and group.code == 'basic_parameters':
+            existing.scope_cell = cells.get(data.get('scope_cell'))
+            existing.method_code = data.get('method_code')
+            existing.save(update_fields=['scope_cell', 'method_code'])
+            return existing
+        return lab.TestRun.objects.create(
+            session=card, scope=group.name, measurement_group=group,
+            method_code=data.get('method_code'),
+            scope_cell=cells.get(data.get('scope_cell')),
+        )
+
     def result(self, run, cells, row):
         kind = 'text' if row.get('value_text') is not None else 'numeric'
         # Unparsed text still belongs to the original numeric indicator.
@@ -320,6 +350,7 @@ class ArchiveLoader:
         metric = self.metric(
             row['metric_code'], row['metric_title'], row.get('unit'), kind,
         )
+        run.measurement_group.metrics.add(metric)
         return lab.Result.objects.create(
             test_run=run, metric=metric,
             numeric_value=number(row.get('value_numeric')),

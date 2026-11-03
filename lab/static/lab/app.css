@@ -593,10 +593,8 @@ input[type=checkbox], input[type=radio] {
 }
 .formset-controls { margin-top: 16px; }
 .form-actions {
-  position: sticky; bottom: 0; z-index: 3;
   display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
-  margin-top: 24px; padding: 16px 0; border-top: 1px solid var(--amai-line);
-  background: var(--amai-bg);
+  margin-top: 24px; padding: 16px 0;
 }
 .form-actions small { margin-left: auto; color: var(--amai-muted); font-size: 14px; }
 .message {
@@ -742,3 +740,13 @@ input[type=checkbox], input[type=radio] {
   #main-content { padding: 0; }
   .panel { box-shadow: none; break-inside: avoid; }
 }
+
+/* Indicator choices in the reusable measurement group directory. */
+.field:has(#id_metrics) { grid-column: 1 / -1; }
+#id_metrics { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); }
+#id_metrics label { display: flex; gap: 8px; align-items: flex-start; }
+
+.field:has(input[name="method_code"]) { grid-column: 1 / -1; }
+.field:has([data-measurement-value]) { grid-column: 1; }
+.field[data-measurement-filled="true"] { grid-column: 1 / -1; }
+.field[hidden] { display: none; }

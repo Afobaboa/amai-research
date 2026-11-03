@@ -20,14 +20,14 @@ from django.utils import timezone
 
 from .search import filter_search
 from .forms import (
-    ComponentFormSet, ConditionFormSet, ConditioningForm, EmployeeForm,
-    FillingFormSet, ObservationForm, PasswordForm, RecipeForm, ResultForm,
+    ComponentFormSet, ConditioningForm, EmployeeForm,
+    FillingFormSet, ObservationForm, PasswordForm, RecipeForm,
     TestSessionForm, RecipePropertyFormSet,
 )
 from .models import (
     ChangeEvent, ConditioningEvent, EmployeeProfile, FillingPlanLine, Material,
     Metric, Observation, RecipeComponent, RecipeGroup, RecipeMatch, RecipeVersion,
-    Result, SessionCondition, SourceFile, TestRun, TestSession, RecipeProperty,
+    Result, SourceFile, TestRun, TestSession, RecipeProperty,
     RecipeTemplate, CalculationRecord, MaterialLot,
 )
 
@@ -78,7 +78,7 @@ def _recipe_snapshot(recipe):
 
 def _card_snapshot(card):
     data = model_to_dict(card)
-    data["conditions"] = [model_to_dict(row) for row in card.conditions.all()]
+    data["runs"] = [model_to_dict(row) for row in card.runs.all()]
     data["recipe_matches"] = [model_to_dict(row) for row in card.recipe_matches.all()]
     return _json(data)
 
@@ -441,78 +441,82 @@ def test_list(request):
     })
 
 
+def legacy_experiment_url(request, tail):
+    tail = tail.replace('/results/new/', '/measurement-groups/new/')
+    url = '/experiments/' + tail
+    if request.META.get('QUERY_STRING'):
+        url += '?' + request.META['QUERY_STRING']
+    return redirect(url, permanent=True, preserve_request=True)
+
+
+def _measurement_runs(card):
+    runs = list(card.runs.select_related('measurement_group').prefetch_related(
+        'results__metric', 'observations', 'measurement_group__metrics',
+    ))
+    for run in runs:
+        seen = {result.metric_id for result in run.results.all()}
+        run.missing_metrics = [metric for metric in run.measurement_group.metrics.all()
+                               if metric.pk not in seen] if run.measurement_group_id else []
+    return runs
+
+
 @site_required
 def test_detail(request, pk):
     card = get_object_or_404(TestSession.objects.select_related("created_by", "source_sheet__file"), pk=pk)
     return render(request, "lab/test_detail.html", {
-        "card": card, "runs": card.runs.prefetch_related("results__metric", "observations"),
-        "conditions": card.conditions.select_related("metric"),
+        "card": card, "runs": _measurement_runs(card),
         "conditioning_events": card.conditioning_events.all(),
         "can_edit_card": card.status != "completed",
         "matches": card.recipe_matches.select_related("recipe_version__mixture_type"), "events": _events_for("test", pk),
     })
 
 
+def _save_recipe_match(card, recipe):
+    previous = card.recipe_matches.filter(status='confirmed').first()
+    if previous and (not recipe or previous.recipe_version_id != recipe.pk):
+        previous.status = 'rejected'
+        previous.save(update_fields=['status'])
+    if recipe:
+        RecipeMatch.objects.update_or_create(
+            session=card, recipe_version=recipe, defaults={'status': 'confirmed'},
+        )
+
+
+def _save_experiment(request, form, card):
+    with transaction.atomic():
+        locked = TestSession.objects.select_for_update().get(pk=card.pk) if card else None
+        if locked and locked.status == 'completed':
+            return HttpResponseForbidden('Эксперимент уже завершён.')
+        before = _card_snapshot(locked) if locked else {}
+        saved = form.save(commit=False)
+        if not saved.pk:
+            saved.created_by = request.employee
+        saved.full_clean()
+        saved.save()
+        _save_recipe_match(saved, form.cleaned_data.get('recipe'))
+        _audit(request, saved, 'updated' if card else 'created',
+               f"Сохранён эксперимент {saved.identifier or saved.pk}",
+               before=before, after=_card_snapshot(saved))
+    messages.success(request, 'Эксперимент сохранён.', extra_tags='form-draft-saved')
+    return redirect('test_detail', pk=saved.pk)
+
+
 @author_required
 def test_create(request, pk=None):
     card = get_object_or_404(TestSession, pk=pk) if pk else None
     if card and card.status == 'completed':
-        return HttpResponseForbidden('Завершённая карточка доступна только для просмотра.')
-    match = card.recipe_matches.filter(status="confirmed").first() if card else None
-    initial = {"recipe": match.recipe_version_id} if match else {}
-    if not card and request.GET.get("recipe"):
-        initial["recipe"] = request.GET["recipe"]
-    conditions = [model_to_dict(row) for row in card.conditions.all()] if card else []
+        return HttpResponseForbidden('Завершённый эксперимент доступен для просмотра.')
+    match = card.recipe_matches.filter(status='confirmed').first() if card else None
+    initial = {'recipe': match.recipe_version_id} if match else {}
+    if not card and request.GET.get('recipe'):
+        initial['recipe'] = request.GET['recipe']
     form = TestSessionForm(request.POST or None, instance=card, initial=initial)
-    condition_formset = ConditionFormSet(request.POST or None, prefix="conditions", initial=conditions)
-    if request.method == "POST":
-        valid = form.is_valid() & condition_formset.is_valid()
-        if valid:
-            sheet = card.source_sheet if card else None
-            for condition in condition_formset:
-                row = condition.cleaned_data
-                cell = row.get('source_cell') if row and not row.get('DELETE') else None
-                if cell and sheet and cell.sheet_id != sheet.pk:
-                    condition.add_error('source_cell', 'Ячейка должна принадлежать листу источника карточки.')
-                    valid = False
-        if valid:
-            with transaction.atomic():
-                if card:
-                    # Serialize updates to the card and its related conditions/match.
-                    locked = TestSession.objects.select_for_update().get(pk=card.pk)
-                    if locked.status == "completed":
-                        return HttpResponseForbidden("Карточка уже завершена.")
-                    chosen_sheet = card.source_sheet if card else None
-                    if chosen_sheet and _card_has_foreign_sources(locked, chosen_sheet):
-                        return HttpResponse('В карточку добавлен результат из другого источника. Обновите форму и проверьте лист источника.', status=409)
-                    before = _card_snapshot(locked)
-                else:
-                    before = {}
-                saved = form.save(commit=False)
-                if not saved.pk:
-                    saved.created_by = request.employee
-                saved.full_clean()
-                saved.save()
-                saved.conditions.all().delete()
-                for condition in condition_formset:
-                    row = condition.cleaned_data
-                    if row and not row.get("unused") and not row.get("DELETE"):
-                        SessionCondition.objects.create(session=saved, metric=row["metric"], numeric_value=row.get("numeric_value"), text_value=row.get("text_value") or None, source_cell=row.get('source_cell'))
-                chosen = form.cleaned_data.get("recipe")
-                previous = saved.recipe_matches.filter(status="confirmed").first()
-                if previous and (not chosen or previous.recipe_version_id != chosen.pk):
-                    previous.status = "rejected"
-                    previous.save()
-                if chosen:
-                    RecipeMatch.objects.update_or_create(session=saved, recipe_version=chosen, defaults={"status": "confirmed"})
-                _audit(request, saved, "updated" if card else "created", f"{'Обновлена' if card else 'Создана'} карточка {saved.identifier or saved.pk}", before=before, after=_card_snapshot(saved))
-            messages.success(request, "Карточка испытания сохранена.", extra_tags='form-draft-saved')
-            return redirect("test_detail", pk=saved.pk)
-    return render(request, "lab/test_form.html", {"form": form, "condition_formset": condition_formset, "card": card, "title": "Редактирование карточки" if card else "Новая карточка испытания"})
-
-
-def _get_run(card, data):
-    return data.get("run") or TestRun.objects.create(session=card, scope=data["scope"], method_code=data.get("method_code") or None)
+    if request.method == 'POST' and form.is_valid():
+        return _save_experiment(request, form, card)
+    return render(request, 'lab/test_form.html', {
+        'form': form, 'card': card,
+        'title': 'Редактирование эксперимента' if card else 'Новый эксперимент',
+    })
 
 
 def _card_has_foreign_sources(card, sheet):
@@ -526,33 +530,13 @@ def _source_changed(card, cell):
 
 
 @author_required
-def result_add(request, pk):
-    card = get_object_or_404(TestSession, pk=pk)
-    if card.status == "completed":
-        return HttpResponseForbidden("Завершённая карточка доступна только для просмотра.")
-    form = ResultForm(request.POST or None, card=card)
-    if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            card = TestSession.objects.select_for_update().get(pk=pk)
-            if card.status == "completed":
-                return HttpResponseForbidden("Карточка уже завершена.")
-            data = form.cleaned_data
-            if _source_changed(card, data.get('source_cell')):
-                return HttpResponse('Источник карточки изменился. Обновите форму и проверьте первичную ячейку.', status=409)
-            run = _get_run(card, data)
-            result = Result.objects.create(test_run=run, metric=data["metric"], numeric_value=data.get("numeric_value"), text_value=data.get("text_value") or None, origin="recorded", value_state="present", source_cell=data.get('source_cell'))
-            _audit(request, card, "result_added", f"Добавлен результат: {data['metric'].label}", after={"result": model_to_dict(result), "run": model_to_dict(run)})
-        messages.success(request, "Результат записан.")
-        return redirect("test_detail", pk=pk)
-    return render(request, "lab/result_form.html", {"form": form, "card": card, "title": "Записать результат"})
-
-
-@author_required
 def observation_add(request, pk):
     card = get_object_or_404(TestSession, pk=pk)
     if card.status == "completed":
-        return HttpResponseForbidden("Завершённая карточка доступна только для просмотра.")
-    form = ObservationForm(request.POST or None, card=card)
+        return HttpResponseForbidden("Завершённый эксперимент доступен только для просмотра.")
+    form = ObservationForm(
+        request.POST or None, card=card, initial={"run": request.GET.get("run")},
+    )
     if request.method == "POST" and form.is_valid():
         with transaction.atomic():
             card = TestSession.objects.select_for_update().get(pk=pk)
@@ -560,7 +544,7 @@ def observation_add(request, pk):
                 return HttpResponseForbidden("Карточка уже завершена.")
             if _source_changed(card, form.cleaned_data.get('source_cell')):
                 return HttpResponse('Источник карточки изменился. Обновите форму и проверьте первичную ячейку.', status=409)
-            run = _get_run(card, form.cleaned_data)
+            run = form.cleaned_data["run"]
             seq = (run.observations.aggregate(value=Max("sequence_no"))["value"] or 0) + 1
             observation = Observation.objects.create(test_run=run, sequence_no=seq, text_value=form.cleaned_data["text_value"], source_cell=form.cleaned_data.get('source_cell'))
             _audit(request, card, "observation_added", "Добавлено наблюдение", after={"observation": model_to_dict(observation)})
@@ -573,7 +557,7 @@ def observation_add(request, pk):
 def conditioning_add(request, pk):
     card = get_object_or_404(TestSession, pk=pk)
     if card.status == "completed":
-        return HttpResponseForbidden("Завершённая карточка доступна только для просмотра.")
+        return HttpResponseForbidden("Завершённый эксперимент доступен только для просмотра.")
     form = ConditioningForm(request.POST or None)
     if card.source_sheet_id:
         form.fields["source_cell"].widget.attrs[

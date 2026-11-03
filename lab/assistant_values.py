@@ -16,13 +16,13 @@ SECTION_MODELS = {
         'test_links': m.RecipeMatch, 'calculations': m.CalculationRecord,
     },
     m.TestSession: {
-        'recipe_links': m.RecipeMatch, 'conditions': m.SessionCondition,
+        'recipe_links': m.RecipeMatch, 'basic_parameters': m.Result,
         'conditioning': m.ConditioningEvent, 'runs': m.TestRun,
         'results': m.Result, 'observations': m.Observation,
     },
     m.Result: {
         'source': m.SourceCell, 'dependencies': m.ResultDependency,
-        'conditions': m.SessionCondition, 'recipe_links': m.RecipeMatch,
+        'basic_parameters': m.Result, 'recipe_links': m.RecipeMatch,
     },
     m.Material: {'lots': m.MaterialLot, 'recipes': m.RecipeVersion},
     m.MaterialLot: {'recipes': m.RecipeVersion},
@@ -30,6 +30,7 @@ SECTION_MODELS = {
     m.SourceFile: {'sheets': m.SourceSheet, 'cells': m.SourceCell},
     m.SourceCell: {'source': m.SourceCell},
     m.Metric: {'results': m.Result},
+    m.MeasurementGroup: {'metrics': m.Metric},
 }
 
 

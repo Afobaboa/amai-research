@@ -24,7 +24,7 @@ def bundle_data():
     return {
         'mixtures': [{'code': 'W', 'title': 'Зимняя'}],
         'files': [
-            {'path': 'tests.xlsx', 'sha256': 'b' * 64, 'title': 'Испытания',
+            {'path': 'tests.xlsx', 'sha256': 'b' * 64, 'title': 'Эксперименты',
              'sheets': [{'name': 'W.1 (2)', 'cells': {}, 'test': card}]},
             {'path': 'recipes.xlsx', 'sha256': 'a' * 64, 'title': 'Рецептуры',
              'sheets': [recipe_sheet('W.1'), recipe_sheet('W.2')]},

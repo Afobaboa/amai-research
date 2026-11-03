@@ -17,7 +17,7 @@ try {
   await page.route('http://date-picker.test/**', route => route.fulfill({
     contentType: 'text/html', body: fixture.replace('</body>', `${styles}<script>${script}</script></body>`),
   }));
-  await page.goto('http://date-picker.test/tests/new/?recipe=135');
+  await page.goto('http://date-picker.test/experiments/new/?recipe=135');
   const input = page.getByLabel('Дата испытания', {exact: true});
   const trigger = page.getByRole('button', {name: 'Открыть календарь: Дата испытания'});
   const popup = page.getByRole('dialog');
@@ -129,9 +129,9 @@ try {
   assert.equal(await other.inputValue(), '25.12.____');
   assert.equal(await input.evaluate(node => node.checkValidity()), false);
   assert.equal(await page.evaluate(() => new FormData(document.querySelector('form')).get('tested_on')), '');
-  await page.goto('http://date-picker.test/tests/new/?recipe=136');
+  await page.goto('http://date-picker.test/experiments/new/?recipe=136');
   assert.equal(await input.inputValue(), '03.11.2026', 'Another recipe has its own date draft');
-  await page.goto('http://date-picker.test/tests/new/?recipe=135');
+  await page.goto('http://date-picker.test/experiments/new/?recipe=135');
   assert.equal(await input.inputValue(), '12.0_.____');
   // Invalid submission keeps the draft, since no submit event is fired.
   await page.getByRole('button', {name: 'Сохранить', exact: true}).click();
