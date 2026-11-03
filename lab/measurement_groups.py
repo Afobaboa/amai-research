@@ -1,14 +1,6 @@
 """Default measurement groups shared by experiments and the directory."""
 GROUP_SPECS = {'basic_parameters': ('Основные параметры',
-                      ['ambient_temperature',
-                       'can_mass_after',
-                       'can_mass_before',
-                       'can_pressure',
-                       'dispensed_mass',
-                       'recorded_gross_mass',
-                       'recorded_net_mass',
-                       'relative_humidity',
-                       'shakeability']),
+                      ['ambient_temperature', 'relative_humidity']),
  'paper': ('На бумаге',
            ['bead_count_paper',
             'cut_time',
@@ -28,6 +20,8 @@ GROUP_SPECS = {'basic_parameters': ('Основные параметры',
                  'recorded_gross_mass',
                  'recorded_net_mass',
                  'shakeability'])}
+
+BALLOON_METRIC_CODES = frozenset(GROUP_SPECS['can_checks'][1])
 
 METRIC_SPECS = {'ambient_temperature': ('Температура окружающей среды', '°C', 'numeric'),
  'relative_humidity': ('Относительная влажность', '%', 'numeric'),

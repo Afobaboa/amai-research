@@ -435,9 +435,6 @@
                     const filled = value.value.trim() !== '';
                     if (field)
                         field.hidden = filled;
-                    const valueField = value.closest('.field');
-                    if (valueField)
-                        valueField.dataset.measurementFilled = String(filled);
                 };
                 value.addEventListener('input', update);
                 value.addEventListener('change', update);

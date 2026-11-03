@@ -748,5 +748,11 @@ input[type=checkbox], input[type=radio] {
 
 .field:has(input[name="method_code"]) { grid-column: 1 / -1; }
 .field:has([data-measurement-value]) { grid-column: 1; }
-.field[data-measurement-filled="true"] { grid-column: 1 / -1; }
 .field[hidden] { display: none; }
+@media (min-width: 801px) {
+  /* Keep each measurement and its reason in their original grid cells. */
+  form[data-measurement-values] .field[hidden] {
+    display: block !important;
+    visibility: hidden;
+  }
+}

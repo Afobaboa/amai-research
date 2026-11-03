@@ -449,8 +449,6 @@
             const update = (): void => {
               const filled = value.value.trim() !== '';
               if (field) field.hidden = filled;
-              const valueField = value.closest<HTMLElement>('.field');
-              if (valueField) valueField.dataset.measurementFilled = String(filled);
             };
             value.addEventListener('input', update);
             value.addEventListener('change', update);

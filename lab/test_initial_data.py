@@ -41,6 +41,22 @@ class InitialDataTests(TestCase):
             density_g_ml__isnull=False,
         ).exists())
 
+    def test_archive_loading_does_not_reintroduce_group_overlaps(self):
+        from .measurement_groups import BALLOON_METRIC_CODES, GROUP_SPECS
+        used = set()
+        for group in lab.MeasurementGroup.objects.filter(code__in=GROUP_SPECS):
+            ids = set(group.metrics.values_list('pk', flat=True))
+            self.assertFalse(used & ids, group.code)
+            used.update(ids)
+        self.assertFalse(lab.Result.objects.filter(
+            test_run__measurement_group__code='basic_parameters',
+            metric__code__in=BALLOON_METRIC_CODES,
+        ).exists())
+        self.assertTrue(lab.Result.objects.filter(
+            test_run__measurement_group__code='can_checks',
+            metric__code='dispensed_mass', dependencies__isnull=False,
+        ).exists())
+
     def test_snapshot_hashes_and_every_raw_cell_survive_loading(self):
         data = json.loads(DATA_PATH.read_text())
         root = Path(__file__).resolve().parents[1]

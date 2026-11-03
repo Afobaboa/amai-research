@@ -58,6 +58,14 @@ class MeasurementGroupWorkflowTests(TestCase):
         self.assertNotContains(response, 'Создать новое определение')
         self.assertTrue(MeasurementGroup.objects.get(code='paper').metrics.exists())
 
+    def test_initial_groups_have_no_shared_indicators(self):
+        from .measurement_groups import GROUP_SPECS
+        used = set()
+        for code in GROUP_SPECS:
+            ids = set(MeasurementGroup.objects.get(code=code).metrics.values_list('pk', flat=True))
+            self.assertFalse(used & ids, code)
+            used.update(ids)
+
     def test_choose_group_shows_its_indicators_and_units(self):
         response = self.client.get(reverse('result_add', args=[self.card.pk]), {
             'measurement_group': self.group.pk,
@@ -134,6 +142,7 @@ class MeasurementGroupWorkflowTests(TestCase):
         group = MeasurementGroup.objects.get(name='Своя группа')
         self.assertRedirects(response, reverse('measurement_group_detail', args=[group.pk]))
         self.assertSetEqual(set(group.metrics.all()), {self.numeric, self.text})
+        self.assertEqual(self.numeric.measurement_groups.count(), 2)
         event = ChangeEvent.objects.get(entity_type='measurement_group')
         self.assertEqual(set(event.after['metrics']), {self.numeric.pk, self.text.pk})
 

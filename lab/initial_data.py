@@ -9,7 +9,7 @@ from django.db import transaction
 
 from . import models as lab
 from .initial_cleanup import remove_demo
-from .measurement_groups import seed_measurement_groups
+from .measurement_groups import BALLOON_METRIC_CODES, seed_measurement_groups
 from .initial_materials import ArchiveMaterials, property_source_cell, row_name
 from .categories import seed_material_categories, sync_material_categories
 
@@ -50,6 +50,7 @@ class ArchiveLoader:
         self.materials = {}
         self.recipes = {}
         self.pending_matches = []
+        self.balloon_runs = {}
         self.counts = {'recipes': 0, 'tests': 0, 'sources': 0}
 
     def load(self, data):
@@ -297,9 +298,9 @@ class ArchiveLoader:
         for row in rows:
             kind = 'numeric' if row.get('value_numeric') is not None else 'text'
             metric = self.metric(row['code'], row['title'], row.get('unit'), kind)
-            group.metrics.add(metric)
+            target = self.measurement_run(run, metric)
             lab.Result.objects.create(
-                test_run=run, metric=metric,
+                test_run=target, metric=metric,
                 numeric_value=number(row.get('value_numeric')),
                 text_value=row.get('value_text'),
                 source_cell=cells.get(row.get('cell')),
@@ -342,6 +343,26 @@ class ArchiveLoader:
             scope_cell=cells.get(data.get('scope_cell')),
         )
 
+    def measurement_run(self, run, metric):
+        if (run.measurement_group.code == 'basic_parameters'
+                and metric.code in BALLOON_METRIC_CODES):
+            target = self.balloon_runs.get(run.pk)
+            if target is None:
+                group = lab.MeasurementGroup.objects.get(code='can_checks')
+                target = lab.TestRun.objects.create(
+                    session=run.session, measurement_group=group, scope=group.name,
+                    method_code=run.method_code, scope_cell=run.scope_cell,
+                )
+                self.balloon_runs[run.pk] = target
+            if (target.scope_cell_id != run.scope_cell_id
+                    or target.method_code != run.method_code):
+                target.scope_cell = run.scope_cell
+                target.method_code = run.method_code
+                target.save(update_fields=['scope_cell', 'method_code'])
+            run = target
+        run.measurement_group.metrics.add(metric)
+        return run
+
     def result(self, run, cells, row):
         kind = 'text' if row.get('value_text') is not None else 'numeric'
         # Unparsed text still belongs to the original numeric indicator.
@@ -350,7 +371,7 @@ class ArchiveLoader:
         metric = self.metric(
             row['metric_code'], row['metric_title'], row.get('unit'), kind,
         )
-        run.measurement_group.metrics.add(metric)
+        run = self.measurement_run(run, metric)
         return lab.Result.objects.create(
             test_run=run, metric=metric,
             numeric_value=number(row.get('value_numeric')),
