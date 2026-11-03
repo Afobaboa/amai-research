@@ -115,6 +115,7 @@
         const firstInput = fragment.querySelector('input:not([type="hidden"]):not([name$="-DELETE"]), select, textarea');
         rows.appendChild(fragment);
         total.value = String(count + 1);
+        refreshComponentLots();
         firstInput?.focus();
         refreshSourceChoices();
         group?.closest('form')?.dispatchEvent(new Event('formsetchange'));
@@ -243,6 +244,41 @@
     document.querySelector('[name="source_sheet"]')
         ?.addEventListener('change', () => refreshSourceChoices(false));
     refreshSourceChoices(true);
+    function filterComponentLots(lots) {
+        const material = lots.closest('.formset-row')
+            ?.querySelector('select[name$="-material"]');
+        if (!material)
+            return;
+        const previous = lots.value;
+        for (const option of lots.options) {
+            if (!option.value)
+                continue;
+            const available = !!material.value
+                && option.dataset.materialId === material.value;
+            option.hidden = !available;
+            option.disabled = !available;
+            if (!available && option.selected)
+                lots.value = '';
+        }
+        lots.dataset.error = material.value ? '' : 'Сначала выберите компонент.';
+        if (previous !== lots.value) {
+            lots.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+    function refreshComponentLots() {
+        document.querySelectorAll('select[data-component-lot]')
+            .forEach(filterComponentLots);
+    }
+    document.addEventListener('change', event => {
+        if (!(event.target instanceof HTMLSelectElement)
+            || !event.target.name.endsWith('-material'))
+            return;
+        const lots = event.target.closest('.formset-row')
+            ?.querySelector('select[data-component-lot]');
+        if (lots)
+            filterComponentLots(lots);
+    });
+    window.addEventListener('pageshow', refreshComponentLots);
     const draftPrefix = 'lims.form-draft.v1:';
     const pendingDraftKey = 'lims.form-draft.pending';
     function draftControls(form) {
@@ -430,6 +466,7 @@
         });
     }
     retainFormDrafts();
+    refreshComponentLots();
     function toggleMeasurementReasons() {
         document.querySelectorAll('form[data-measurement-values]')
             .forEach(form => {

@@ -145,6 +145,26 @@ class ExpandedWorkflowTests(TestCase):
                 recipe = self.assert_saved(self.client.post(reverse('recipe_create'), payload), payload['version_label'])
                 self.assertEqual(recipe.groups.get().components.get().specified_lot_id, lot.pk)
 
+    def test_recipe_saves_selected_component_with_its_lot(self):
+        payload = self.payload(**{'components-0-material': str(self.material.pk)})
+        recipe = self.assert_saved(
+            self.client.post(reverse('recipe_create'), payload),
+        )
+        component = recipe.groups.get().components.get()
+        self.assertEqual(component.specified_lot_id, self.lot.pk)
+        self.assertIsNone(component.unbatched_material_id)
+        self.assertEqual(component.material, self.material)
+
+    def test_recipe_rejects_a_lot_from_another_component(self):
+        other = Material.objects.create(name='Чужой компонент')
+        payload = self.payload(**{'components-0-material': str(other.pk)})
+        response = self.client.post(reverse('recipe_create'), payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('specified_lot',
+                      response.context['component_formset'].forms[0].errors)
+        self.assertFalse(RecipeVersion.objects.exists())
+        self.assertFalse(ChangeEvent.objects.exists())
+
     def test_properties_and_source_cells_survive_edit_and_fork(self):
         payload = self.payload(status='draft', source_sheet=str(self.sheet.pk), **{
             'components-0-name_cell': str(self.name_cell.pk), 'components-0-quantity_cell': str(self.qty_cell.pk),

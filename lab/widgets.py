@@ -15,3 +15,21 @@ class ServerHiddenInput(ServerValueMixin, forms.HiddenInput):
 
 class ServerDateInput(ServerValueMixin, forms.DateInput):
     pass
+
+
+class ComponentLotSelect(forms.Select):
+    material_id = None
+
+    def __init__(self, attrs=None, choices=()):
+        super().__init__({'data-component-lot': True, **(attrs or {})}, choices)
+
+    def create_option(self, name, value, label, selected, index, **kwargs):
+        option = super().create_option(
+            name, value, label, selected, index, **kwargs,
+        )
+        if value:
+            material_id = str(value.instance.material_id)
+            option['attrs']['data-material-id'] = material_id
+            if material_id != str(self.material_id):
+                option['attrs'].update(hidden=True, disabled=True)
+        return option

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
+import { checkComponentLots } from './component_lots.mjs';
 
 // Both Django and the browser run locally. Only this run's temporary DB is used.
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -1145,6 +1146,7 @@ try {
   await option(page,'#id_employee','Гущин Даниил');
   await Promise.all([page.waitForNavigation({waitUntil:'networkidle'}),page.getByRole('button',{name:/Открыть лабораторию/}).click()]);
   checks: {
+  await checkComponentLots(context, base, init);
   await checkFormDrafts(context);
   if (formsOnly) { console.log('PASS: form draft persistence checks.'); break checks; }
   await go('/');
@@ -1495,6 +1497,7 @@ try {
   await option(page,'#id_mixture_type','Зимняя пена');
   assert.equal(await page.locator('#id_calculation_template').count(), 0);
   await page.locator('#id_batch_mass_g').fill('1000');
+  await page.locator('#id_components-0-material').selectOption(materialId);
   await page.locator('#id_components-0-specified_lot').selectOption(lotId);
   await page.locator('#id_components-0-quantity_value').fill('100');
   await page.locator('#id_components-0-completeness').selectOption('complete');

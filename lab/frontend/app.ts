@@ -115,6 +115,7 @@
     );
     rows.appendChild(fragment);
     total.value = String(count + 1);
+    refreshComponentLots();
     firstInput?.focus();
     refreshSourceChoices();
     group?.closest('form')?.dispatchEvent(new Event('formsetchange'));
@@ -261,6 +262,40 @@
   document.querySelector('[name="source_sheet"]')
     ?.addEventListener('change', () => refreshSourceChoices(false));
   refreshSourceChoices(true);
+
+  function filterComponentLots(lots: HTMLSelectElement): void {
+    const material = lots.closest('.formset-row')
+      ?.querySelector<HTMLSelectElement>('select[name$="-material"]');
+    if (!material) return;
+    const previous = lots.value;
+    for (const option of lots.options) {
+      if (!option.value) continue;
+      const available = !!material.value
+        && option.dataset.materialId === material.value;
+      option.hidden = !available;
+      option.disabled = !available;
+      if (!available && option.selected) lots.value = '';
+    }
+    lots.dataset.error = material.value ? '' : 'Сначала выберите компонент.';
+    if (previous !== lots.value) {
+      lots.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+  }
+
+  function refreshComponentLots(): void {
+    document.querySelectorAll<HTMLSelectElement>('select[data-component-lot]')
+      .forEach(filterComponentLots);
+  }
+
+  document.addEventListener('change', event => {
+    if (!(event.target instanceof HTMLSelectElement)
+        || !event.target.name.endsWith('-material')) return;
+    const lots = event.target.closest('.formset-row')
+      ?.querySelector<HTMLSelectElement>('select[data-component-lot]');
+    if (lots) filterComponentLots(lots);
+  });
+
+  window.addEventListener('pageshow', refreshComponentLots);
 
   type DraftControl = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
   interface DraftField {
@@ -445,6 +480,7 @@
     });
   }
   retainFormDrafts();
+  refreshComponentLots();
 
   function toggleMeasurementReasons(): void {
     document.querySelectorAll<HTMLFormElement>('form[data-measurement-values]')

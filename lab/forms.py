@@ -4,7 +4,7 @@ from django import forms
 from django.forms import formset_factory
 
 from .source_fields import SourceCellField
-from .widgets import ServerDateInput, ServerHiddenInput
+from .widgets import ComponentLotSelect, ServerDateInput, ServerHiddenInput
 
 from .models import (
     ConditioningEvent, EmployeeProfile, FillingPlanLine, Material, MaterialLot,
@@ -72,20 +72,55 @@ class ComponentForm(forms.Form):
     quantity_basis = forms.ChoiceField(label="База количества", choices=[("mass_percent", "% масс."), ("weight_parts", "масс. ч."), ("unknown", "Не определена")], initial="mass_percent", required=False)
     completeness = forms.ChoiceField(label='Полнота группы', choices=RecipeGroup.Completeness.choices, initial='unknown', required=False)
     material = forms.ModelChoiceField(label="Компонент", queryset=Material.objects.all(), required=False)
-    specified_lot = forms.ModelChoiceField(label="Партия (если известна)", queryset=MaterialLot.objects.select_related("material"), required=False)
+    specified_lot = forms.ModelChoiceField(
+        label="Партия (если известна)",
+        queryset=MaterialLot.objects.select_related("material"),
+        required=False, widget=ComponentLotSelect,
+    )
     quantity_value = LIMSDecimalField(label="Количество", min_value=Decimal("0"), required=False)
     name_cell = SourceCellField(label='Ячейка наименования')
     quantity_cell = SourceCellField(label='Ячейка количества')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        material = (self.data.get(self.add_prefix('material')) if self.is_bound
+                    else self.initial.get('material'))
+        if not material:
+            try:
+                lot = self.fields['specified_lot'].to_python(
+                    self['specified_lot'].value(),
+                )
+            except forms.ValidationError:
+                lot = None
+            if lot:
+                if self.is_bound:
+                    self.data = self.data.copy()
+                    self.data[self.add_prefix('material')] = str(lot.material_id)
+                else:
+                    self.initial = {**self.initial, 'material': lot.material_id}
+        self.fields['specified_lot'].widget.material_id = self['material'].value()
+
+    def clean_material_lot(self, data):
+        material, lot = data.get('material'), data.get('specified_lot')
+        if material and lot:
+            if lot.material_id != material.pk:
+                self.add_error('specified_lot',
+                               'Выбранная партия не относится к компоненту.')
+            else:
+                # The lot already identifies its material in the saved model.
+                data['material'] = None
+
     def clean(self):
         data = super().clean()
-        material, lot, quantity = data.get("material"), data.get("specified_lot"), data.get("quantity_value")
+        material = data.get("material")
+        lot = data.get("specified_lot")
+        quantity = data.get("quantity_value")
         # Default group/basis alone do not turn an unused row into a component.
-        if not material and not lot and quantity is None and not data.get('name_cell') and not data.get('quantity_cell'):
+        if (not material and not lot and quantity is None
+                and not data.get('name_cell') and not data.get('quantity_cell')):
             data["unused"] = True
             return data
-        if material and lot:
-            raise forms.ValidationError("Выберите либо материал, либо конкретную партию.")
+        self.clean_material_lot(data)
         if not material and not lot and not data.get('name_cell'):
             raise forms.ValidationError("Укажите материал или партию для количества.")
         if not data.get("group_label"):
