@@ -94,7 +94,11 @@ def field_labels(data, model):
                     used.update((section, labels[section]) for section in item if section in labels)
                 nested_model = section_model(current_model, key)
                 if nested_model is None:
-                    nested_model = None if key in ('definition', 'inputs', 'outputs', 'template_snapshot') else current_model
+                    documents = (
+                        'definition', 'inputs', 'outputs', 'template_snapshot',
+                        'formulation', 'formulation_calculation',
+                    )
+                    nested_model = None if key in documents else current_model
                 visit(item, nested_model)
         elif isinstance(value, list):
             for item in value:

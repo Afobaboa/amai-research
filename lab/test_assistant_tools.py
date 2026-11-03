@@ -258,6 +258,56 @@ class LaboratoryAssistantToolTests(TestCase):
 
 
 class AssistantProjectFileTests(SimpleTestCase):
+    def test_current_editor_sources_and_import_contract_are_readable(self):
+        for path in (
+            'docs/recipe-editor.md', 'initial_data/README.md',
+            'lab/frontend/recipe-editor.ts', 'lab/static/lab/recipe-editor.js',
+            'lab/static/lab/recipe-editor.css', 'lab/frontend/search-select.ts',
+            'lab/static/lab/search-select.js', 'lab/static/lab/search-select.css',
+            'lab/frontend/date-picker.ts', 'lab/static/lab/date-picker.js',
+            'lab/static/lab/date-picker.css', 'lab/frontend/live-search.ts',
+            'lab/templates/lab/recipe_editor.html',
+        ):
+            with self.subTest(path=path):
+                listing = execute_tool('list_project_files', {'query': path})
+                self.assertIn(path, [item['path'] for item in listing['items']])
+                data = execute_tool('read_project_file', {
+                    'path': path, 'line_count': 1,
+                })
+                self.assertNotIn('error', data)
+                self.assertEqual(data['lines'][0]['number'], 1)
+
+    def test_retired_recipe_routes_and_forms_are_not_offered(self):
+        for path in (
+            'lab/template_urls.py', 'lab/templates/lab/recipe_form.html',
+            'lab/templates/lab/templates/recipe_list.html',
+            'lab/templates/lab/templates/recipe_form.html',
+            'lab/templates/lab/templates/recipe_detail.html',
+        ):
+            with self.subTest(path=path):
+                listing = execute_tool('list_project_files', {'query': path})
+                self.assertEqual(listing['items'], [])
+                self.assertIn('error', execute_tool('read_project_file', {
+                    'path': path,
+                }))
+
+    def test_new_source_directories_cannot_be_symlinked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for parent, name, filename in (
+                ('lab', 'frontend', 'recipe-editor.ts'),
+                ('lab/static', 'lab', 'recipe-editor.js'),
+                ('', 'initial_data', 'README.md'),
+            ):
+                target = root / ('target-' + name)
+                target.mkdir()
+                (target / filename).write_text('private source')
+                base = root / parent
+                base.mkdir(parents=True, exist_ok=True)
+                (base / name).symlink_to(target, target_is_directory=True)
+            with override_settings(BASE_DIR=root):
+                self.assertEqual(execute_tool('list_project_files', {})['items'], [])
+
     def test_real_templates_and_docs_are_readable_with_line_numbers(self):
         listing = execute_tool('list_project_files', {'query': 'base.html'})
         self.assertTrue(any(item['path'] == 'lab/templates/lab/base.html' for item in listing['items']))
