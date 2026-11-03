@@ -53,6 +53,9 @@
   {% endif %}
 </header>
 <main id="main-content" tabindex="-1">{% if messages %}<div class="messages" role="status">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main>
-<footer class="page-footer"><span>АМАИ ИССЛЕДОВАНИЯ <span class="footer-dot">·</span> Система лабораторного учета</span><span>Все изменения сохраняются в истории <svg><use href="#i-check"/></svg></span></footer></div>
+<footer class="page-footer">
+  <span>АМАИтех <span class="footer-dot">·</span> Завод будущего</span>
+  <span>Все изменения сохраняются в истории <svg><use href="#i-check"/></svg></span>
+</footer></div>
 {% if employee %}{% include 'lab/includes/assistant.html' %}{% endif %}
 </body></html>
