@@ -4,8 +4,8 @@
 {% block breadcrumb %}Рецептуры<span class="breadcrumb-separator">/</span>{{ title }}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{% versioned_static 'lab/recipe-editor.css' %}">
-<div class="form-wrap recipe-editor">
-  <form method="post" data-recipe-editor data-preview-url="{{ preview_url }}">
+<div class="form-wrap recipe-editor{% if readonly %} recipe-readonly{% endif %}">
+  <form method="post" data-recipe-editor{% if readonly %} data-recipe-readonly{% else %} data-preview-url="{{ preview_url }}"{% endif %}>
     {% csrf_token %}
     <input type="hidden" name="editor_version" value="1">
     <input type="hidden" name="recipe_id" value="{{ recipe.pk|default:'' }}">
@@ -14,14 +14,26 @@
     {% for field in settings_form.hidden_fields %}{{ field }}{% endfor %}
     <div class="page-heading recipe-page-heading">
       <div class="recipe-title-line">
-        <a class="back-link" href="{% if recipe %}{% url 'recipe_detail' recipe.pk %}{% elif source %}{% url 'recipe_detail' source.pk %}{% else %}{% url 'recipe_list' %}{% endif %}" aria-label="К рецептурам" title="К рецептурам">←</a>
+        <a class="back-link" href="{% if readonly %}{% url 'recipe_list' %}{% elif recipe %}{% url 'recipe_detail' recipe.pk %}{% elif source %}{% url 'recipe_detail' source.pk %}{% else %}{% url 'recipe_list' %}{% endif %}" aria-label="К рецептурам" title="К рецептурам">←</a>
         <h1>{{ title }}</h1>
       </div>
       <div class="form-actions recipe-toolbar-actions">
         <span class="recipe-balance" data-recipe-balance title="Сумма массовых долей смеси A">— / 100 %</span>
         <button type="button" class="button small recipe-expand" data-recipe-expand aria-pressed="false" aria-controls="recipe-workspace" hidden>На весь экран</button>
+        {% if readonly %}
+          {% if can_write %}
+            <a class="button" href="{% url 'recipe_fork' recipe.pk %}">Новая версия ↗</a>
+            {% if can_edit_recipe %}
+              <a class="button" href="{% url 'recipe_status' recipe.pk %}">Изменить статус</a>
+              <a class="button primary" href="{% url 'recipe_edit' recipe.pk %}">Редактировать</a>
+            {% elif recipe.status == 'published' %}
+              <a class="button primary" href="{% url 'test_create' %}?recipe={{ recipe.pk }}">Создать эксперимент</a>
+            {% endif %}
+          {% endif %}
+        {% else %}
         <a class="button quiet" href="{% url 'recipe_list' %}">Отмена</a>
         <button type="submit" class="button primary">{% if recipe %}Сохранить изменения{% else %}Сохранить рецептуру{% endif %}</button>
+        {% endif %}
       </div>
     </div>
     <section class="recipe-metadata-panel" aria-label="О рецептуре">
@@ -68,8 +80,10 @@
                 <span data-total-label="Стоимость Batch"><output data-recipe-output="polyol.cost" data-recipe-precision="3" aria-label="Стоимость Batch">—</output> <span data-recipe-currency="polyol.price_currency"></span></span><span></span>
               </div>
             </div>
+            {% if not readonly %}
             <template>{% include 'lab/includes/recipe_editor_row.html' with row=polyol_formset.empty_form kind='polyol' %}</template>
             <div class="recipe-sheet-footer"><button type="button" class="button small" data-add-form="{{ polyol_formset.prefix }}-formset" aria-controls="{{ polyol_formset.prefix }}-formset">+ Добавить компонент</button><small><span class="recipe-input-dot"></span> Ввод <span class="recipe-calc-dot"></span> Расчёт<span class="recipe-keyboard-hint"> · Enter / ↑ ↓ — по столбцу</span></small></div>
+            {% endif %}
           </div>
         </div>
       </section>
@@ -103,8 +117,10 @@
               <div class="formset-rows">{% for row in gas_formset %}{% include 'lab/includes/recipe_editor_row.html' with kind='gas' %}{% endfor %}</div>
               <div class="recipe-gas-total recipe-gas-columns"><strong>Итого</strong><output data-recipe-total-column="quantity" data-recipe-output="gases.quantity_total" data-recipe-precision="2" aria-label="Сумма долей газов, %">—</output><output data-recipe-total-column="density_g_ml" data-recipe-output="gases.density_g_ml" data-recipe-precision="4" aria-label="Плотность газовой смеси, г/мл">—</output><span aria-hidden="true"></span><output data-recipe-total-column="pressure_bar" data-recipe-output="gases.pressure_bar" data-recipe-precision="3" aria-label="Давление газовой смеси, бар">—</output><output data-recipe-total-column="mass_g" data-recipe-output="filling.gas_mass_g" data-recipe-precision="2" aria-label="Масса газов на баллон, г">—</output><span aria-hidden="true"></span></div>
             </div>
+            {% if not readonly %}
             <template>{% include 'lab/includes/recipe_editor_row.html' with row=gas_formset.empty_form kind='gas' %}</template>
             <div class="recipe-sheet-footer"><button type="button" class="button small" data-add-form="{{ gas_formset.prefix }}-formset" aria-controls="{{ gas_formset.prefix }}-formset">+ Добавить газ</button></div>
+            {% endif %}
           </div>
         </div>
       </section>
@@ -127,9 +143,17 @@
       </section>
     </div>
     <details class="recipe-preview-issues" data-recipe-issues-wrapper hidden><summary>Проверьте исходные данные <span data-recipe-issue-count></span></summary><div class="info-note" data-recipe-preview-issues></div></details>
+    {% if readonly %}
+    <div class="recipe-workspace-status">
+      <p>{% if fixed_result %}Показан зафиксированный расчёт со снимком исходных свойств.{% else %}Расчёт по сохранённым исходным параметрам рецептуры.{% endif %}</p>
+      <small>Просмотр{% if recipe.status == 'published' %} · Версия опубликована. Изменения сохраняются в новой версии рецептуры.{% endif %}</small>
+    </div>
+    {% else %}
     <noscript><div class="info-note">Для пересчёта во время ввода включите JavaScript. При сохранении сервер рассчитает значения из введённых параметров.</div></noscript>
     <div class="recipe-workspace-status"><p class="recipe-preview-status" data-recipe-preview-status role="status" aria-live="polite">Расчёт по исходным данным.</p><small>Изменения сохраняются в истории</small></div>
+    {% endif %}
   </form>
+  {% block recipe_details %}{% endblock %}
 </div>
 {{ calculation|json_script:'recipe-calculation-data' }}
 {{ catalog_values|json_script:'recipe-catalog-data' }}

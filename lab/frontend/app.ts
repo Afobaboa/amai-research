@@ -421,6 +421,7 @@
     } catch { /* Editing also works when browser storage is unavailable. */ }
 
     document.querySelectorAll<HTMLFormElement>('main form').forEach((form, index) => {
+      if (form.hasAttribute('data-recipe-readonly')) return;
       const groups = Array.from(form.querySelectorAll<HTMLElement>('[data-formset-prefix]'));
       if (!groups.length && !form.hasAttribute('data-form-draft')) return;
       const key = draftPrefix + JSON.stringify([

@@ -391,6 +391,8 @@
         }
         catch { /* Editing also works when browser storage is unavailable. */ }
         document.querySelectorAll('main form').forEach((form, index) => {
+            if (form.hasAttribute('data-recipe-readonly'))
+                return;
             const groups = Array.from(form.querySelectorAll('[data-formset-prefix]'));
             if (!groups.length && !form.hasAttribute('data-form-draft'))
                 return;

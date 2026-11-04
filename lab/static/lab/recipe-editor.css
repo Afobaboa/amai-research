@@ -27,6 +27,17 @@ body:has(.recipe-editor) .page-footer { display: none; }
   gap: 6px; margin: 0; padding: 0; flex-wrap: nowrap;
 }
 .recipe-toolbar-actions .button.primary { box-shadow: 0 2px 4px #1b73f820; }
+.recipe-readonly .recipe-page-heading { flex-wrap: wrap; }
+.recipe-readonly input:disabled, .recipe-readonly select:disabled,
+.recipe-readonly textarea:disabled, .recipe-readonly .search-select-trigger:disabled {
+  opacity: 1; color: var(--amai-ink); -webkit-text-fill-color: currentColor;
+  cursor: default;
+}
+.recipe-readonly .search-select-icon-chevron { visibility: hidden; }
+.recipe-readonly .recipe-row-extra > summary { right: 10px; }
+.recipe-inspector-links { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+.recipe-detail-sections { display: grid; gap: 12px; margin-top: 16px; }
+.recipe-editor .recipe-detail-sections .panel-body { padding: 12px; }
 .recipe-balance {
   display: inline-flex; align-items: center; gap: 6px;
   margin-right: 6px; color: #738196; font-size: 11px; white-space: nowrap;

@@ -1,6 +1,7 @@
 "use strict";
 {
     const form = document.querySelector('form[data-recipe-editor]');
+    const readonly = form?.hasAttribute('data-recipe-readonly') ?? false;
     const numberFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 6 });
     let previewController = null;
     let previewTimer = 0;
@@ -316,7 +317,7 @@
         return record(value) && 'calculation' in value;
     }
     async function refreshPreview(requestRevision) {
-        if (!form?.dataset.previewUrl)
+        if (readonly || !form?.dataset.previewUrl)
             return;
         previewController?.abort();
         previewController = new AbortController();
@@ -617,8 +618,10 @@
         });
     }
     function closeWorkspacePanel() {
-        if (activeInspector?.open) {
-            closeInspector(activeInspector);
+        const inspector = activeInspector?.open ? activeInspector
+            : form?.querySelector('details.recipe-row-extra[open]');
+        if (inspector) {
+            closeInspector(inspector);
             return true;
         }
         const details = form?.querySelector('details[data-recipe-calculation-details][open]');
@@ -636,9 +639,9 @@
             data.delete('settings-isocyanate_absence_reason');
         }
     }
-    if (form) {
-        initializeWorkspace();
-        initializeInspector();
+    function initializeEditing() {
+        if (!form)
+            return;
         form.addEventListener('keydown', navigateNumericInput);
         form.querySelectorAll('.recipe-ingredient').forEach(row => applyCatalog(row));
         synchronizeReasons();
@@ -662,5 +665,17 @@
             window.clearTimeout(previewTimer);
         });
         queuePreview();
+    }
+    if (form) {
+        initializeWorkspace();
+        initializeInspector();
+        if (readonly) {
+            form.addEventListener('submit', event => event.preventDefault());
+            synchronizeReasons();
+            synchronizeIso();
+            renderCalculation(readScript('recipe-calculation-data'));
+        }
+        else
+            initializeEditing();
     }
 }

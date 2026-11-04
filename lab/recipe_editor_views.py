@@ -1,6 +1,7 @@
 """Recipe editing and stateless previews share validation and calculation."""
 from copy import deepcopy
 
+from django import forms
 from django.contrib import messages
 from django.db import transaction
 from django.http import HttpResponseForbidden, JsonResponse
@@ -207,23 +208,63 @@ def recipe_preview(request):
                          'errors': editor.errors(), 'valid': bool(valid)})
 
 
-def formulation_detail(request, recipe):
-    from .views import _events_for, _recipe_properties
-    records = recipe.calculations.select_related('created_by')
+def _detail_calculation(recipe, records):
     saved = None
     if recipe.status != 'draft':
-        saved = records.filter(outputs__purpose='publication').order_by('created_at', 'pk').first()
+        saved = records.filter(outputs__purpose='publication').order_by(
+            'created_at', 'pk').first()
         saved = saved or records.order_by('created_at', 'pk').first()
-    result = (saved.outputs.get('formulation') if saved else None)
-    result = result or _calculate(recipe.formulation)
-    return render(request, 'lab/recipe_plan_detail.html', {
-        'recipe': recipe, 'plan': recipe.formulation, 'result': result,
-        'polyol_rows': list(zip(recipe.formulation['polyol'], result['polyol']['rows'])),
-        'gas_rows': list(zip(recipe.formulation['gases'], result['filling']['gases'])),
+    result = saved.outputs.get('formulation') if saved else None
+    plan = (saved.inputs.get('formulation') if result else None)
+    plan = plan or recipe.formulation
+    return saved, plan, result or _calculate(plan)
+
+
+def _readonly_row(form, values):
+    for name, key, label in (
+        ('material', 'material_id', values.get('name') or 'Материал не указан'),
+        ('specified_lot', 'lot_id', values.get('lot_code') or 'Партия не указана'),
+    ):
+        field = form.fields[name]
+        field.widget = forms.Select()
+        field.choices = [(values.get(key) or '', label)]
+    form.material_url = (reverse('material_detail', args=[values['material_id']])
+                         if values.get('material_id') else '')
+    form.lot_url = (reverse('lot_detail', args=[values['lot_id']])
+                    if values.get('lot_id') else '')
+
+
+def _readonly_context(recipe, plan):
+    metadata = RecipeMetadataForm(instance=recipe)
+    metadata.fields['status'].choices = [(recipe.status, recipe.get_status_display())]
+    metadata.fields['recorded_on'].widget = forms.DateInput(format='%d.%m.%Y')
+    editor = EditorForms(None, plan)
+    editor.polyol.extra = editor.gases.extra = 0
+    for formset, values in ((editor.polyol, plan['polyol']),
+                            (editor.gases, plan['gases'])):
+        for form, row in zip(formset, values):
+            _readonly_row(form, row)
+    _readonly_row(editor.isocyanate, plan.get('isocyanate', {}))
+    for form in [metadata, editor.settings, editor.isocyanate,
+                 *editor.polyol, *editor.gases]:
+        for field in form.fields.values():
+            field.disabled = True
+            field.required = False
+    return editor.context() | {'form': metadata, 'readonly': True,
+                               'title': recipe.version_label}
+
+
+def formulation_detail(request, recipe):
+    from .views import _events_for, _recipe_properties
+    records = recipe.calculations.all()
+    saved, plan, result = _detail_calculation(recipe, records)
+    context = _readonly_context(recipe, plan) | {
+        'recipe': recipe, 'plan': plan, 'result': result, 'calculation': result,
         'events': _events_for('recipe', recipe.pk),
         'properties': _recipe_properties(recipe),
         'matches': recipe.session_matches.select_related('session'),
-        'calculation_records': records, 'saved_calculation': saved,
+        'saved_calculation': saved,
         'fixed_result': bool(saved and saved.outputs.get('formulation')),
         'can_edit_recipe': _can_edit(recipe),
-    })
+    }
+    return render(request, 'lab/recipe_plan_detail.html', context)

@@ -29,7 +29,12 @@
     <div class="recipe-inspector" id="{{ row.prefix }}-inspector" role="region" aria-labelledby="{{ row.prefix }}-inspector-title">
       <div class="recipe-inspector-header"><div><small>КОМПОНЕНТ РЕЦЕПТУРЫ</small><h3 id="{{ row.prefix }}-inspector-title" data-recipe-inspector-title>Свойства компонента</h3></div><button type="button" data-recipe-inspector-close aria-label="Закрыть свойства компонента">×</button></div>
       <div class="recipe-inspector-body">
+        {% if readonly %}
+        <p class="recipe-inspector-note">Сохранённые свойства компонента рецептуры.</p>
+        <p class="recipe-inspector-links">{% if row.material_url %}<a href="{{ row.material_url }}">Карточка материала ↗</a>{% endif %}{% if row.lot_url %}<a href="{{ row.lot_url }}">Карточка партии ↗</a>{% endif %}</p>
+        {% else %}
         <p class="recipe-inspector-note">Значения из выбранной партии подставляются автоматически. Для отсутствующего значения укажите причину.</p>
+        {% endif %}
         <div class="recipe-property-fields">
           {% if kind == 'polyol' %}<div>{% include 'lab/includes/field.html' with field=row.ohv_applicable %}</div>{% endif %}
           {% if kind == 'gas' %}<div>{% include 'lab/includes/field.html' with field=row.specified_lot %}</div>{% endif %}
@@ -60,5 +65,5 @@
       </div>
     </div>
   </details>
-  {% if row.DELETE %}<button type="button" class="button small formset-remove" data-remove-form aria-label="Удалить строку" title="Удалить строку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7m4-7v7"/></svg></button>{% endif %}
+  {% if row.DELETE and not readonly %}<button type="button" class="button small formset-remove" data-remove-form aria-label="Удалить строку" title="Удалить строку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7m4-7v7"/></svg></button>{% endif %}
 </div>

@@ -11,6 +11,7 @@
   }
 
   const form = document.querySelector<HTMLFormElement>('form[data-recipe-editor]');
+  const readonly = form?.hasAttribute('data-recipe-readonly') ?? false;
   const numberFormat = new Intl.NumberFormat('ru-RU', {maximumFractionDigits: 6});
   let previewController: AbortController | null = null;
   let previewTimer = 0;
@@ -326,7 +327,7 @@
   }
 
   async function refreshPreview(requestRevision: number): Promise<void> {
-    if (!form?.dataset.previewUrl) return;
+    if (readonly || !form?.dataset.previewUrl) return;
     previewController?.abort();
     previewController = new AbortController();
     setStatus('Пересчитываем по введённым параметрам…', 'loading');
@@ -598,8 +599,10 @@
   }
 
   function closeWorkspacePanel(): boolean {
-    if (activeInspector?.open) {
-      closeInspector(activeInspector);
+    const inspector = activeInspector?.open ? activeInspector
+      : form?.querySelector<HTMLDetailsElement>('details.recipe-row-extra[open]');
+    if (inspector) {
+      closeInspector(inspector);
       return true;
     }
     const details = form?.querySelector<HTMLDetailsElement>(
@@ -620,9 +623,8 @@
     }
   }
 
-  if (form) {
-    initializeWorkspace();
-    initializeInspector();
+  function initializeEditing(): void {
+    if (!form) return;
     form.addEventListener('keydown', navigateNumericInput);
     form.querySelectorAll<HTMLElement>('.recipe-ingredient').forEach(row => applyCatalog(row));
     synchronizeReasons();
@@ -646,5 +648,16 @@
       window.clearTimeout(previewTimer);
     });
     queuePreview();
+  }
+
+  if (form) {
+    initializeWorkspace();
+    initializeInspector();
+    if (readonly) {
+      form.addEventListener('submit', event => event.preventDefault());
+      synchronizeReasons();
+      synchronizeIso();
+      renderCalculation(readScript('recipe-calculation-data'));
+    } else initializeEditing();
   }
 }

@@ -152,6 +152,51 @@ class RecipeEditorTests(TestCase):
         self.assertEqual(Decimal(result['polyol']['mass_g']['value']), Decimal('260.4'))
         self.assertEqual(Decimal(result['isocyanate']['mass_g']['value']), Decimal('377.2'))
 
+    def test_detail_reuses_worksheet_with_disabled_saved_inputs(self):
+        response = self.client.get(reverse('recipe_detail', args=[self.source.pk]))
+        self.assertTemplateUsed(response, 'lab/recipe_editor.html')
+        self.assertTrue(response.context['readonly'])
+        for key in ('form', 'settings_form', 'isocyanate_form'):
+            self.assertTrue(all(field.disabled for field in
+                                response.context[key].fields.values()))
+        for key, rows in (('polyol_formset', 'polyol'), ('gas_formset', 'gases')):
+            formset = response.context[key]
+            self.assertEqual(len(formset), len(self.source.formulation[rows]))
+            self.assertTrue(all(field.disabled for form in formset
+                                for field in form.fields.values()))
+        self.assertNotContains(response, 'data-add-form=')
+        self.assertNotContains(response, 'data-remove-form')
+        self.assertNotContains(response, 'data-preview-url=')
+        self.assertContains(response, reverse('recipe_fork', args=[self.source.pk]))
+        self.assertNotContains(response, reverse('recipe_edit', args=[self.source.pk]))
+
+    def test_reader_can_view_worksheet_without_write_actions(self):
+        self.login(self.reader)
+        response = self.client.get(reverse('recipe_detail', args=[self.source.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-recipe-readonly')
+        for route in ('recipe_fork', 'recipe_edit', 'recipe_calculate'):
+            self.assertNotContains(response, reverse(route, args=[self.source.pk]))
+        self.assertContains(response, 'Связанные эксперименты')
+        self.assertContains(response, 'История')
+
+    def test_draft_detail_offers_editing_and_preserves_absent_isocyanate(self):
+        response = self.client.post(reverse('recipe_create'),
+                                    simple_recipe_payload(self.new_material,
+                                                          status='draft'))
+        recipe = RecipeVersion.objects.get(version_label='TEST.2')
+        self.assertRedirects(response, reverse('recipe_detail', args=[recipe.pk]))
+        detail = self.client.get(response.url)
+        self.assertContains(detail, reverse('recipe_edit', args=[recipe.pk]))
+        self.assertFalse(detail.context['settings_form']['isocyanate_present'].value())
+        self.assertContains(detail, 'Изоцианат не используется')
+
+    def test_archived_detail_keeps_archived_status_in_metadata(self):
+        RecipeVersion.objects.filter(pk=self.source.pk).update(status='archived')
+        response = self.client.get(reverse('recipe_detail', args=[self.source.pk]))
+        field = response.context['form'].fields['status']
+        self.assertEqual(list(field.choices), [('archived', 'В архиве')])
+
     def test_live_preview_reproduces_the_screenshot_filling_plan(self):
         _, data = self.fork_form()
         result = self.preview(data)
@@ -248,10 +293,16 @@ class RecipeEditorTests(TestCase):
         MaterialLot.objects.filter(pk=self.new_lot.pk).update(
             density_g_ml=9, price_per_kg=9999,
         )
+        Material.objects.filter(pk=self.new_material.pk).update(name='Новое имя')
         response = self.client.get(reverse('recipe_detail', args=[recipe.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['result'], expected['formulation'])
         self.assertEqual(response.context['saved_calculation'].pk, record.pk)
+        row = response.context['polyol_formset'].forms[0]
+        self.assertEqual(Decimal(row['density_g_ml'].value()), Decimal(4))
+        self.assertEqual(Decimal(row['price_per_kg'].value()), Decimal(100))
+        self.assertEqual(list(row.fields['material'].choices),
+                         [(self.new_material.pk, self.new_material.name)])
         record.refresh_from_db()
         self.assertEqual(record.outputs, expected)
 

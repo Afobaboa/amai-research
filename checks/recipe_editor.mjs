@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright';
+import {checkReadonlyRecipeDetail} from './recipe_detail.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const scratch = mkdtempSync(join(tmpdir(), 'lims-recipe-editor-'));
@@ -420,6 +421,7 @@ try {
     }
   });
   await login(page, base);
+  await checkReadonlyRecipeDetail(page, base, info.recipe, artifacts);
   await page.goto(fork, {waitUntil: 'networkidle'});
   await checkLiveCalculation(page);
   await checkWorksheetLayout(page);

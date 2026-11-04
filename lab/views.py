@@ -157,7 +157,7 @@ def recipe_detail(request, pk):
     if recipe.formulation:
         from .recipe_editor_views import formulation_detail
         return formulation_detail(request, recipe)
-    records = recipe.calculations.select_related('created_by')
+    records = recipe.calculations.all()
     saved_calculation = None
     if recipe.status != 'draft':
         saved_calculation = records.filter(outputs__purpose='publication').order_by('created_at', 'pk').first() or records.order_by('created_at', 'pk').first()
@@ -169,7 +169,7 @@ def recipe_detail(request, pk):
         "events": _events_for("recipe", pk),
         'properties': _recipe_properties(recipe),
         'calculation': saved_calculation.outputs if saved_calculation else calculate_recipe(recipe),
-        'saved_calculation': saved_calculation, 'calculation_records': records,
+        'saved_calculation': saved_calculation,
         'can_edit_recipe': recipe.status == 'draft' and not recipe.session_matches.exists(),
     })
 
