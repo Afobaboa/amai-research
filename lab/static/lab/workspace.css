@@ -69,7 +69,8 @@
 .workspace-meta dt { margin-bottom: 4px; color: var(--amai-muted); font-size: 11px; }
 .workspace-meta dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .workspace-table-scroll { overflow: auto; min-width: 0; max-width: 100%; }
-.workspace-scroll { scrollbar-width: thin; overscroll-behavior: contain; }
+/* Let vertical scrolling continue to the page at table boundaries. */
+.workspace-scroll { scrollbar-width: thin; overscroll-behavior-x: contain; }
 .workspace-scroll thead th {
   position: sticky; top: 0; z-index: 2;
   box-shadow: 0 1px 0 var(--amai-line); background: #f7f9fc;

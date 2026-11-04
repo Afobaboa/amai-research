@@ -81,6 +81,59 @@ async function checkFits(page, path) {
   assert.ok(geometry.scrollHeight <= geometry.height + 1, `${path}: vertical ${JSON.stringify(geometry)}`);
 }
 
+async function wheelOverTable(page, table, deltaY) {
+  const area = await table.boundingBox();
+  const viewport = page.viewportSize();
+  await page.mouse.move(area.x + Math.min(80, area.width / 2),
+    Math.min(area.y + 60, viewport.height - 40));
+  await page.mouse.wheel(0, deltaY);
+}
+
+async function checkPageScrollOverTables(page, base) {
+  for (const width of [1024, 390]) {
+    await page.setViewportSize({width, height: 768});
+    for (const [path, selector] of [
+      ['/', '#overview-experiments .workspace-table-scroll'],
+      ['/materials/1/', '#material-lots .workspace-table-scroll'],
+    ]) {
+      await page.goto(base + path, {waitUntil: 'networkidle'});
+      const table = page.locator(selector);
+      assert.ok(await table.evaluate(el => el.scrollHeight <= el.clientHeight + 1),
+        `${path} at ${width}px: table has no vertical overflow`);
+      assert.ok(await page.evaluate(() =>
+        document.documentElement.scrollHeight > innerHeight),
+      `${path} at ${width}px: page has content to scroll`);
+      await wheelOverTable(page, table, 180);
+      await page.waitForFunction(() => scrollY > 0, null, {timeout: 3000});
+      assert.equal(await table.evaluate(el => el.scrollTop), 0);
+    }
+  }
+  await page.setViewportSize({width: 1366, height: 768});
+}
+
+async function checkTableScrollBoundaries(page, base) {
+  await page.setViewportSize({width: 1366, height: 420});
+  await page.goto(base + '/materials/', {waitUntil: 'networkidle'});
+  const table = page.locator('[data-live-results] > .table-scroll');
+  assert.ok(await table.evaluate(el => el.scrollHeight > el.clientHeight + 1));
+  assert.ok(await page.evaluate(() =>
+    document.documentElement.scrollHeight > innerHeight));
+  await wheelOverTable(page, table, 120);
+  await page.waitForFunction(() =>
+    document.querySelector('[data-live-results] > .table-scroll').scrollTop > 0);
+  assert.equal(await page.evaluate(() => scrollY), 0);
+  await table.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.waitForTimeout(250);
+  await wheelOverTable(page, table, 120);
+  await page.waitForFunction(() => scrollY > 0, null, {timeout: 3000});
+  const before = await page.evaluate(() => scrollY);
+  await table.evaluate(el => { el.scrollTop = 0; });
+  await page.waitForTimeout(250);
+  await wheelOverTable(page, table, -120);
+  await page.waitForFunction(start => scrollY < start, before, {timeout: 3000});
+  await page.setViewportSize({width: 1366, height: 768});
+}
+
 async function checkRegisters(page, base) {
   for (const path of ['/', '/recipes/', '/experiments/', '/materials/', '/lots/',
     '/material-categories/', '/mixtures/', '/metrics/', '/sources/',
@@ -242,6 +295,9 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await login(page, base);
+  await checkPageScrollOverTables(page, base);
+  await checkTableScrollBoundaries(page, base);
+  console.log('Wheel scrolls the page over short tables and at long-table boundaries.');
   await checkRegisters(page, base);
   console.log('Registers fit 1366 × 768; live search and sticky headers passed.');
   await checkVisibleSections(page, base);
