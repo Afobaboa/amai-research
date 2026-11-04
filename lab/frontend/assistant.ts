@@ -293,6 +293,78 @@
     });
     section.append(row);
   };
+  const tableExportType =
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const tableExportError = 'Не удалось скачать таблицу. Повторите попытку.';
+  const requestTableExport = async (table: HTMLTableElement): Promise<Blob> => {
+    const rows = [...table.rows].map(row =>
+      [...row.cells].map(cell => cell.textContent || ''));
+    const response = await fetch(panel.dataset.tableExportUrl!, {
+      method:'POST', credentials:'same-origin',
+      signal:AbortSignal.timeout(30000),
+      headers:{Accept:tableExportType, 'Content-Type':'application/json',
+        'X-CSRFToken':$('form').querySelector<HTMLInputElement>(
+          '[name=csrfmiddlewaretoken]',
+        )!.value},
+      body:JSON.stringify({rows}),
+    });
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null) as
+        {error?: string} | null;
+      throw new Error(failure?.error || tableExportError);
+    }
+    if (!response.headers.get('content-type')?.includes(tableExportType)) {
+      throw new Error('Обновите страницу и войдите снова.');
+    }
+    return response.blob();
+  };
+  const saveTableExport = (blob: Blob, table: HTMLTableElement) => {
+    const url = URL.createObjectURL(blob), link = element('a');
+    const tables = table.closest('.assistant-message')?.querySelectorAll('table');
+    const number = tables ? [...tables].indexOf(table) + 1 : 1;
+    link.href = url;
+    link.download = `table-${number}.xlsx`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+  const downloadTable = async (
+    table: HTMLTableElement, button: HTMLButtonElement, notice: HTMLElement,
+  ) => {
+    button.disabled = true;
+    button.textContent = 'Готовлю файл…';
+    notice.hidden = true;
+    try {
+      saveTableExport(await requestTableExport(table), table);
+    } catch (caught) {
+      notice.textContent = caught instanceof Error && caught.name === 'Error'
+        ? caught.message : tableExportError;
+      notice.hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Скачать Excel';
+    }
+  };
+  const tableBlock = (table: HTMLTableElement) => {
+    const block = element('div', 'assistant-table');
+    const toolbar = element('div', 'assistant-table-toolbar');
+    const button = element('button', 'assistant-table-download', 'Скачать Excel');
+    button.type = 'button';
+    button.title = 'Скачать эту таблицу в формате Excel (.xlsx)';
+    const notice = element('div', 'assistant-table-error');
+    notice.setAttribute('role', 'alert');
+    notice.hidden = true;
+    button.addEventListener('click', () => void downloadTable(table, button, notice));
+    toolbar.append(button);
+    const wrapper = element('div', 'assistant-table-scroll');
+    wrapper.tabIndex = 0;
+    wrapper.setAttribute('role', 'region');
+    wrapper.setAttribute('aria-label', 'Таблица в ответе ИИ-ассистента');
+    wrapper.append(table);
+    block.append(toolbar, notice, wrapper);
+    return block;
+  };
   const appendMarkdownTable = (
     target: HTMLElement, lines: string[], index: number,
   ): number | null => {
@@ -301,10 +373,6 @@
     if (!header.hasPipe || !header.cells.length
       || header.cells.length !== separator.cells.length
       || !separator.cells.every(cell => /^:?-{3,}:?$/.test(cell))) return null;
-    const wrapper = element('div', 'assistant-table-scroll');
-    wrapper.tabIndex = 0;
-    wrapper.setAttribute('role', 'region');
-    wrapper.setAttribute('aria-label', 'Таблица в ответе ИИ-ассистента');
     const table = element('table'), head = element('thead'), body = element('tbody');
     const alignment = separator.cells.map(cell => cell.endsWith(':')
       ? (cell.startsWith(':') ? 'center' : 'right') : 'left');
@@ -314,7 +382,8 @@
       && !/^\s*(?:```|#{1,6}\s|(?:[-*]|\d+[.)])\s)/.test(lines[index + 1])) {
       appendTableRow(body, tableRow(lines[++index]).cells, header.cells, alignment);
     }
-    table.append(head, body); wrapper.append(table); target.append(wrapper);
+    table.append(head, body);
+    target.append(tableBlock(table));
     return index;
   };
   const appendMarkdownText = (

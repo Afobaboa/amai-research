@@ -20,6 +20,49 @@ delete env.SITE_PASSWORD_HASH;
 for (const key of Object.keys(env)) if (key.startsWith('CLOUD_RU_') || key.startsWith('ASSISTANT_')) delete env[key];
 const artifacts = join(root, 'var', 'assistant-browser-artifacts');
 mkdirSync(artifacts, {recursive:true});
+function workbookRows(path) {
+  const code = `
+import json, sys
+from zipfile import ZipFile
+from xml.etree import ElementTree as ET
+namespace = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+with ZipFile(sys.argv[1]) as workbook:
+    assert workbook.testzip() is None
+    assert '[Content_Types].xml' in workbook.namelist()
+    assert 'xl/workbook.xml' in workbook.namelist()
+    sheet = ET.fromstring(workbook.read('xl/worksheets/sheet1.xml'))
+    assert not sheet.findall('.//s:f', namespace), 'Export must not contain formulas'
+    rows = [[(''.join(cell.itertext()) if cell.get('t') == 'inlineStr'
+              else cell.findtext('s:v', default='', namespaces=namespace))
+             for cell in row.findall('s:c', namespace)]
+            for row in sheet.findall('s:sheetData/s:row', namespace)]
+    print(json.dumps(rows, ensure_ascii=False))
+`;
+  const result = spawnSync(python, ['-c', code, path], {env, encoding:'utf8'});
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  return JSON.parse(result.stdout);
+}
+async function checkTableDownload(target, index) {
+  const table = target.locator('.assistant-table').nth(index);
+  const rows = await table.locator('table').evaluate(node => [...node.rows]
+    .map(row => [...row.cells].map(cell => cell.textContent)));
+  const [request, download] = await Promise.all([
+    target.waitForRequest(request => new URL(request.url()).pathname
+      === '/assistant/table.xlsx'),
+    target.waitForEvent('download'),
+    table.getByRole('button', {name:'Скачать Excel', exact:true}).click(),
+  ]);
+  assert.equal(request.method(), 'POST');
+  assert.ok(request.headers()['x-csrftoken'], 'Export includes the CSRF token');
+  assert.deepEqual(request.postDataJSON(), {rows});
+  assert.equal(download.suggestedFilename(), `table-${index + 1}.xlsx`);
+  assert.equal(await download.failure(), null);
+  const path = join(scratch, `table-${index + 1}.xlsx`);
+  await download.saveAs(path);
+  assert.deepEqual(workbookRows(path), rows,
+    'The downloaded workbook contains this table, including visible headings');
+  assert.equal(await table.locator('.assistant-table-error').isVisible(), false);
+}
 let server, browser, stopped;
 try {
   for (const args of [['migrate','--noinput'], ['seed_initial']]) {
@@ -223,6 +266,26 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.deepEqual(await table.locator('tbody tr').first().locator('td').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).textAlign)), ['left','right','center']);
   assert.equal(await tables.nth(1).locator('tbody td').first().textContent(), 'Без внешних разделителей');
   assert.match(await firstReply.locator('pre code').textContent(), /\| Это \| Код \|/);
+  assert.equal(await firstReply.getByRole('button', {
+    name:'Скачать Excel', exact:true,
+  }).count(), 3, 'Every Markdown table has its own export button');
+  const sentBeforeExports = captured.length;
+  for (let index = 0; index < 3; index++) await checkTableDownload(page, index);
+  await context.route('**/assistant/table.xlsx', route => route.fulfill({
+    status:503, json:{error:'Не удалось подготовить Excel. Повторите попытку.'},
+  }), {times:1});
+  await firstReply.locator('.assistant-table-download').first().click();
+  const exportError = firstReply.locator('.assistant-table-error').first();
+  await exportError.waitFor({state:'visible'});
+  assert.match(await exportError.textContent(), /Не удалось подготовить Excel/);
+  assert.equal(await firstReply.locator('.assistant-table-download')
+    .first().isEnabled(), true, 'A failed export can be retried');
+  assert.equal(await page.locator('.assistant-message.is-assistant').count(), 1);
+  assert.equal(await page.locator('#assistant-error').isVisible(), false,
+    'An export failure stays beside its table');
+  await checkTableDownload(page, 0);
+  assert.equal(captured.length, sentBeforeExports,
+    'Downloading and retrying an export do not send another question');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   for (const selector of ['.assistant-header','#assistant-form']) {
     const box = await page.locator(selector).boundingBox();
@@ -395,6 +458,9 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await checkWidth(savedWidth);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'Recipe details fit beside the maximum-width panel');
   assert.equal(await page.locator('.assistant-table-scroll > table').count(), 3, 'Tables survive history restoration after navigation');
+  assert.equal(await page.locator('.assistant-table-download').count(), 3,
+    'Export controls survive history restoration after navigation');
+  await checkTableDownload(page, 1);
   for (const path of ['/recipes/','/experiments/','/recipes/new/','/recipes/1/']) {
     const response = await page.goto(base + path, {waitUntil:'networkidle'});
     assert.ok(response.ok(), `Desktop layout check opens ${path}`);
@@ -502,6 +568,13 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   assert.equal(await returned.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   const wide = returned.locator('.assistant-table-scroll').last();
   assert.ok(await wide.evaluate(node => node.scrollWidth > node.clientWidth));
+  const mobileExport = returned.locator('.assistant-table-download').last();
+  await mobileExport.scrollIntoViewIfNeeded();
+  const mobileExportBox = await mobileExport.boundingBox();
+  assert.ok(mobileExportBox.x >= 0
+    && mobileExportBox.x + mobileExportBox.width <= 390,
+  'The export button stays within the mobile screen beside a wide table');
+  await checkTableDownload(returned, 2);
   await returned.screenshot({path:join(artifacts,'mobile-tables.png')});
   await returned.close();
   const formPage = await context.newPage();
@@ -630,7 +703,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await formPage.locator('#assistant-conversations').click();
   await formPage.locator('#lab-assistant').screenshot({path:join(artifacts,'history-preview.png')});
   assert.deepEqual(errors, []);
-  console.log('Assistant browser checks passed: history search, keyboard, polling, pagination, short viewports, saved chats, reload, tab closure, cancellation, rendering, resizing, mobile, and form context.');
+  console.log('Assistant browser checks passed: history search, keyboard, polling, pagination, short viewports, saved chats, reload, tab closure, cancellation, rendering, Excel downloads and retries, resizing, mobile, and form context.');
 } finally {
   await browser?.close();
   if (server && server.exitCode === null) { server.kill('SIGTERM'); await stopped; }

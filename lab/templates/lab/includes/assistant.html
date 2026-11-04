@@ -1,6 +1,9 @@
 {{ assistant_navigation|json_script:"assistant-navigation" }}
 <div class="assistant-backdrop" id="assistant-backdrop" hidden></div>
-<aside class="assistant" id="lab-assistant" aria-labelledby="assistant-title" data-employee="{{ employee.pk }}" data-status-url="/assistant/status/" data-chat-url="/assistant/chat/" hidden>
+<aside class="assistant" id="lab-assistant" aria-labelledby="assistant-title"
+       data-employee="{{ employee.pk }}" data-status-url="/assistant/status/"
+       data-chat-url="/assistant/chat/"
+       data-table-export-url="{% url 'assistant_table_export' %}" hidden>
   <div class="assistant-resize" id="assistant-resize" role="separator" tabindex="0" aria-label="Ширина окна ИИ-ассистента" aria-controls="lab-assistant" aria-orientation="vertical" aria-valuemin="340" aria-valuemax="960" aria-valuenow="374" title="Потяните, чтобы изменить ширину. Клавиши ← и → — изменить, Home — минимум, End — максимум."></div>
   <header class="assistant-header">
     <span class="assistant-mark" aria-hidden="true">✦</span>

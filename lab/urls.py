@@ -1,7 +1,8 @@
 from django.urls import include, path, re_path
 
 from . import (
-    assistant_conversations, assistant_views, feedback_views, status_views, views,
+    assistant_conversations, assistant_exports, assistant_views,
+    feedback_views, status_views, views,
     measurement_views,
 )
 
@@ -13,6 +14,8 @@ urlpatterns = [
     path('assistant/conversations/<int:pk>/jobs/<uuid:job_id>/cancel/', assistant_conversations.cancel),
     path('assistant/status/', assistant_views.status, name='assistant_status'),
     path('assistant/chat/', assistant_views.chat, name='assistant_chat'),
+    path('assistant/table.xlsx', assistant_exports.table_export,
+         name='assistant_table_export'),
     path('', include('lab.catalog_urls')),
     path("login/", views.login_view, name="login"),
     path("employees/", views.choose_employee, name="choose_employee"),
