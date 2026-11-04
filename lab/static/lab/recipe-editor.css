@@ -13,7 +13,9 @@ body:has(.recipe-editor) .page-footer { display: none; }
 .recipe-editor .recipe-page-heading {
   display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
 }
-.recipe-title-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.recipe-title-line {
+  display: flex; align-items: center; flex: 1; gap: 10px; min-width: 0;
+}
 .recipe-editor h1 { margin: 0; font-size: 22px; letter-spacing: -.7px; }
 .recipe-editor .back-link {
   display: grid; place-items: center; flex: 0 0 28px;
