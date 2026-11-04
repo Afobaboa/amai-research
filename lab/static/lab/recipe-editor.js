@@ -5,6 +5,9 @@
     let previewController = null;
     let previewTimer = 0;
     let revision = 0;
+    let activeInspector = null;
+    const numberFormats = new Map([[6, numberFormat]]);
+    const popupEscapeEvents = new WeakSet();
     function record(value) {
         return typeof value === 'object' && value !== null;
     }
@@ -42,12 +45,29 @@
             reason: '',
         };
     }
-    function formatted(value, unit = '') {
+    function formatted(value, unit = '', precision = 6) {
         if (value.value === null || value.value === '')
             return '—';
         const number = Number(value.value);
-        const label = Number.isFinite(number) ? numberFormat.format(number) : String(value.value);
+        if (!numberFormats.has(precision)) {
+            numberFormats.set(precision, new Intl.NumberFormat('ru-RU', {
+                maximumFractionDigits: precision,
+            }));
+        }
+        const label = Number.isFinite(number)
+            ? numberFormats.get(precision).format(number) : String(value.value);
         return unit ? `${label} ${unit}` : label;
+    }
+    function renderNumber(output, value) {
+        const requested = Number(output.dataset.recipePrecision ?? '6');
+        const precision = Number.isInteger(requested) && requested >= 0
+            && requested <= 20 ? requested : 6;
+        const raw = value.value === null ? '' : String(value.value);
+        const unit = output.dataset.recipeUnit ?? '';
+        output.value = formatted(value, unit, precision);
+        output.dataset.recipeRawValue = raw;
+        const complete = raw ? [raw.replace('.', ','), unit].filter(Boolean).join(' ') : '';
+        output.title = [complete, value.reason].filter(Boolean).join(' · ');
     }
     function currencyLabel(value) {
         const currencies = { EUR: '€', RUB: '₽', USD: '$' };
@@ -56,8 +76,7 @@
     function renderOutputs(root, source) {
         root.querySelectorAll('[data-recipe-output]').forEach(output => {
             const value = cell(pathValue(source, output.dataset.recipeOutput ?? ''));
-            output.value = formatted(value, output.dataset.recipeUnit);
-            output.title = value.reason ?? '';
+            renderNumber(output, value);
         });
         root.querySelectorAll('[data-recipe-reason]').forEach(reason => {
             const value = cell(pathValue(source, reason.dataset.recipeReason ?? ''));
@@ -78,8 +97,7 @@
     function renderRow(row, source) {
         row.querySelectorAll('[data-recipe-row-output]').forEach(output => {
             const value = cell(pathValue(source, output.dataset.recipeRowOutput ?? ''));
-            output.value = formatted(value);
-            output.title = value.reason ?? '';
+            renderNumber(output, value);
         });
         row.querySelectorAll('[data-recipe-row-reason]').forEach(reason => {
             const value = cell(pathValue(source, reason.dataset.recipeRowReason ?? ''));
@@ -96,13 +114,15 @@
         form.querySelectorAll('[data-recipe-rows]').forEach(group => {
             const path = group.dataset.recipeRows === 'polyol' ? 'polyol.rows' : 'filling.gases';
             const rows = group.querySelectorAll('.formset-rows > .formset-row');
-            rows.forEach((row, index) => {
+            let calculationIndex = 0;
+            rows.forEach(row => {
                 if (!rowUsed(row)) {
                     renderRow(row, undefined);
                     return;
                 }
-                const filling = rowSource(source, path, row, index);
-                const gas = rowSource(source, 'gases.rows', row, index);
+                const filling = rowSource(source, path, row, calculationIndex);
+                const gas = rowSource(source, 'gases.rows', row, calculationIndex);
+                calculationIndex += 1;
                 renderRow(row, path === 'filling.gases' && record(filling) && record(gas)
                     ? { ...gas, ...filling } : filling);
             });
@@ -110,6 +130,66 @@
         const iso = form.querySelector('[data-recipe-row-kind="isocyanate"]');
         if (iso)
             renderRow(iso, pathValue(source, 'filling.isocyanate'));
+    }
+    function fillingOutput(row, path, precision, unit = '') {
+        const column = row.insertCell();
+        column.className = 'recipe-filling-number';
+        const output = document.createElement('output');
+        output.dataset.recipeOutput = path;
+        output.dataset.recipePrecision = String(precision);
+        if (unit)
+            output.dataset.recipeUnit = unit;
+        column.append(output);
+    }
+    function fillingRow(source, index) {
+        const row = document.createElement('tr');
+        const kind = index === 0 ? 'A' : index === 1 ? 'B' : 'G';
+        row.className = 'recipe-filling-row';
+        row.dataset.recipeFillingKind = kind;
+        const mark = document.createElement('span');
+        mark.className = 'recipe-filling-mark';
+        mark.textContent = kind;
+        row.insertCell().append(mark);
+        const name = document.createElement('th');
+        name.scope = 'row';
+        row.append(name);
+        name.className = 'recipe-filling-name';
+        name.textContent = typeof source.name === 'string' && source.name
+            ? source.name : index === 0 ? 'Полиольная смесь A'
+            : index === 1 ? 'Изоцианат' : 'Газ / газовая смесь';
+        name.title = name.textContent;
+        const path = index === 0 ? 'filling.polyol' : index === 1
+            ? 'filling.isocyanate' : `filling.gases.${index - 2}`;
+        fillingOutput(row, `${path}.mass_g`, 1);
+        fillingOutput(row, `${path}.volume_ml`, 1);
+        fillingOutput(row, `${path}.cost`, 3, currencyLabel(source.price_currency));
+        return row;
+    }
+    function renderFilling(source) {
+        const body = form?.querySelector('tbody[data-recipe-filling-rows]');
+        if (!body)
+            return;
+        const rows = pathValue(source, 'filling.rows');
+        body.replaceChildren();
+        if (!Array.isArray(rows))
+            return;
+        rows.forEach((row, index) => {
+            if (record(row))
+                body.append(fillingRow(row, index));
+        });
+    }
+    function renderBalance(source) {
+        const rows = pathValue(source, 'polyol.rows');
+        form?.querySelectorAll('[data-recipe-component-count]')
+            .forEach(count => { count.textContent = String(Array.isArray(rows) ? rows.length : 0); });
+        const total = cell(pathValue(source, 'polyol.quantity_total'));
+        const number = total.value === null ? NaN : Number(total.value);
+        const balanced = Number.isFinite(number) && Math.abs(number - 100) <= .001;
+        form?.querySelectorAll('[data-recipe-balance]').forEach(balance => {
+            balance.dataset.state = balanced ? 'balanced' : 'warning';
+            balance.textContent = `${formatted(total, '', 3)} % / 100 %`;
+            balance.title = total.reason ?? '';
+        });
     }
     function control(name) {
         const field = form?.elements.namedItem(name);
@@ -126,6 +206,14 @@
     function fieldInRow(row, name) {
         return row.querySelector(`[name$="-${name}"]`);
     }
+    function setDerivedInput(field, value) {
+        if (!field)
+            return;
+        field.value = computedInput(value);
+        const raw = value.value === null ? '' : String(value.value);
+        field.dataset.recipeRawValue = raw;
+        field.title = [raw.replace('.', ','), value.reason].filter(Boolean).join(' · ');
+    }
     function updateDerivedRatio(source) {
         const mode = control('settings-iso_ratio_mode')?.value ?? 'parts';
         const parts = control('settings-isocyanate_parts');
@@ -137,8 +225,12 @@
         const field = mode === 'index' ? parts : index;
         const path = mode === 'index' ? 'isocyanate.parts' : 'isocyanate.iso_index';
         const value = cell(pathValue(source, path));
-        if (field)
-            field.value = computedInput(value);
+        setDerivedInput(field, value);
+        const editable = mode === 'index' ? index : parts;
+        if (editable) {
+            editable.title = '';
+            delete editable.dataset.recipeRawValue;
+        }
         form?.querySelectorAll('[data-recipe-ratio-parts], [data-recipe-ratio-index]')
             .forEach(wrapper => {
             const derived = wrapper.hasAttribute(mode === 'index'
@@ -154,8 +246,11 @@
     function renderCalculation(source) {
         if (!form)
             return;
+        renderFilling(source);
         renderOutputs(form, source);
         renderRows(source);
+        renderBalance(source);
+        updateSelectionTitles();
         updateDerivedRatio(source);
         renderIssues({}, source);
     }
@@ -201,6 +296,12 @@
             ])];
         panel.replaceChildren();
         panel.hidden = messages.length === 0;
+        const wrapper = form?.querySelector('[data-recipe-issues-wrapper]');
+        const count = form?.querySelector('[data-recipe-issue-count]');
+        if (wrapper)
+            wrapper.hidden = messages.length === 0;
+        if (count)
+            count.textContent = `(${messages.length})`;
         if (!messages.length)
             return;
         const list = document.createElement('ul');
@@ -259,6 +360,10 @@
         return control(name);
     }
     function rowUsed(row) {
+        if (row.dataset.recipeRowKind === 'isocyanate') {
+            const present = control('settings-isocyanate_present');
+            return present instanceof HTMLInputElement && present.checked;
+        }
         const identity = fieldInRow(row, 'row_id');
         if (identity?.value)
             return true;
@@ -294,6 +399,7 @@
             if (value instanceof HTMLInputElement && value.readOnly)
                 wrapper.hidden = true;
         });
+        synchronizeInspector();
     }
     function synchronizeIso() {
         const checkbox = control('settings-isocyanate_present');
@@ -381,9 +487,146 @@
         }
         clearProperties(row);
         applyCatalog(row, true);
-        const details = row.querySelector('details');
-        if (details)
-            details.open = true;
+    }
+    function popupOpen() {
+        return Boolean(document.querySelector('.search-select-trigger[aria-expanded="true"], '
+            + '.date-picker-popover:not([hidden])'));
+    }
+    function updateSelectionTitles() {
+        form?.querySelectorAll('select').forEach(select => {
+            const label = select.selectedOptions[0]?.textContent?.trim() ?? '';
+            select.title = label;
+            const trigger = select.closest('.search-select')
+                ?.querySelector('.search-select-trigger');
+            if (trigger)
+                trigger.title = label;
+        });
+    }
+    function updateInspectorTitle(details) {
+        const row = details.closest('.recipe-ingredient');
+        const material = row?.querySelector('select[name$="-material"]');
+        const fallback = row?.dataset.recipeRowKind === 'gas'
+            ? 'Газ / газовая смесь' : 'Компонент рецептуры';
+        const label = material?.value
+            ? material.selectedOptions[0]?.textContent?.trim() ?? fallback : fallback;
+        details.querySelectorAll('[data-recipe-inspector-title]')
+            .forEach(title => { title.textContent = label; title.title = label; });
+    }
+    function closeInspector(details, focus = true) {
+        details.open = false;
+        details.closest('.recipe-ingredient')?.classList.remove('recipe-inspector-active');
+        if (activeInspector === details)
+            activeInspector = null;
+        if (!activeInspector)
+            document.body.classList.remove('recipe-inspector-open');
+        if (focus && details.isConnected)
+            details.querySelector('summary')?.focus();
+    }
+    function openInspector(details) {
+        form?.querySelectorAll('details.recipe-row-extra[open]')
+            .forEach(other => { if (other !== details)
+            closeInspector(other, false); });
+        activeInspector = details;
+        details.closest('.recipe-ingredient')?.classList.add('recipe-inspector-active');
+        document.body.classList.add('recipe-inspector-open');
+        updateInspectorTitle(details);
+    }
+    function synchronizeInspector() {
+        if (!activeInspector)
+            return;
+        if (!activeInspector.isConnected || activeInspector.hidden || !activeInspector.open) {
+            closeInspector(activeInspector, false);
+        }
+        else
+            updateInspectorTitle(activeInspector);
+    }
+    function initializeInspector() {
+        form?.addEventListener('toggle', event => {
+            const details = event.target;
+            if (!(details instanceof HTMLDetailsElement)
+                || !details.classList.contains('recipe-row-extra'))
+                return;
+            if (details.open)
+                openInspector(details);
+            else
+                closeInspector(details, details.contains(document.activeElement));
+        }, true);
+        form?.addEventListener('click', event => {
+            const button = event.target instanceof Element
+                ? event.target.closest('[data-recipe-inspector-close]') : null;
+            const details = button?.closest('details.recipe-row-extra');
+            if (details) {
+                event.preventDefault();
+                closeInspector(details);
+            }
+        });
+        const initial = form?.querySelector('details.recipe-row-extra[open]');
+        if (initial)
+            openInspector(initial);
+        updateSelectionTitles();
+    }
+    function navigateNumericInput(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || popupOpen()
+            || event.altKey || event.ctrlKey || event.metaKey)
+            return;
+        const match = target.name.match(/^(polyol|gases)-\d+-(quantity|ohv|density_g_ml|price_per_kg|pressure_bar)$/);
+        if (!match || !['ArrowUp', 'ArrowDown', 'Enter'].includes(event.key))
+            return;
+        if (event.shiftKey && event.key !== 'Enter')
+            return;
+        const group = target.closest('[data-recipe-rows]');
+        const inputs = Array.from(group?.querySelectorAll(`input[name$="-${match[2]}"]`) ?? []).filter(input => !input.disabled && input.getClientRects().length > 0);
+        const direction = event.key === 'ArrowUp' || event.shiftKey ? -1 : 1;
+        const next = inputs[inputs.indexOf(target) + direction];
+        event.preventDefault();
+        next?.focus();
+        if (next && next.type !== 'number')
+            next.select();
+    }
+    function initializeWorkspace() {
+        const button = document.querySelector('[data-recipe-expand]');
+        if (!button)
+            return;
+        const expand = (expanded) => {
+            document.body.classList.toggle('recipe-workspace-expanded', expanded);
+            button.setAttribute('aria-pressed', String(expanded));
+            button.textContent = expanded ? 'Свернуть экран' : 'На весь экран';
+        };
+        button.hidden = false;
+        button.addEventListener('click', () => {
+            expand(button.getAttribute('aria-pressed') !== 'true');
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && popupOpen())
+                popupEscapeEvents.add(event);
+        }, true);
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || event.defaultPrevented)
+                return;
+            if (popupEscapeEvents.has(event) || popupOpen())
+                return;
+            if (closeWorkspacePanel()) {
+                event.preventDefault();
+                return;
+            }
+            if (button.getAttribute('aria-pressed') !== 'true')
+                return;
+            expand(false);
+            button.focus();
+        });
+    }
+    function closeWorkspacePanel() {
+        if (activeInspector?.open) {
+            closeInspector(activeInspector);
+            return true;
+        }
+        const details = form?.querySelector('details[data-recipe-calculation-details][open]');
+        if (!details)
+            return false;
+        details.open = false;
+        details.querySelector('summary')?.focus();
+        return true;
     }
     function normalizeFormData(data) {
         form?.querySelectorAll('.recipe-reason-field[hidden] input, .recipe-reason-field[hidden] textarea')
@@ -394,6 +637,9 @@
         }
     }
     if (form) {
+        initializeWorkspace();
+        initializeInspector();
+        form.addEventListener('keydown', navigateNumericInput);
         form.querySelectorAll('.recipe-ingredient').forEach(row => applyCatalog(row));
         synchronizeReasons();
         synchronizeIso();
@@ -401,6 +647,7 @@
         form.addEventListener('input', () => { synchronizeReasons(); queuePreview(); });
         form.addEventListener('change', event => {
             changedSelection(event.target);
+            updateSelectionTitles();
             synchronizeReasons();
             synchronizeIso();
             queuePreview();

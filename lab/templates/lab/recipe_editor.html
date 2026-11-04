@@ -1,12 +1,10 @@
 {% extends 'lab/base.html' %}
-{% load static_assets %}
+{% load static_assets lab_tags %}
 {% block title %}{{ title }}{% endblock %}
 {% block breadcrumb %}Рецептуры<span class="breadcrumb-separator">/</span>{{ title }}{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{% versioned_static 'lab/recipe-editor.css' %}">
 <div class="form-wrap recipe-editor">
-  <a class="back-link" href="{% if recipe %}{% url 'recipe_detail' recipe.pk %}{% elif source %}{% url 'recipe_detail' source.pk %}{% else %}{% url 'recipe_list' %}{% endif %}">← К рецептурам</a>
-  <div class="page-heading"><div><h1>{{ title }}</h1><p>{% if source %}На основе {{ source.version_label }}.{% else %}Состав смеси, изоцианат и газы на одном листе.{% endif %} Навески и заправка пересчитываются из исходных параметров.</p></div></div>
   <form method="post" data-recipe-editor data-preview-url="{{ preview_url }}">
     {% csrf_token %}
     <input type="hidden" name="editor_version" value="1">
@@ -14,109 +12,123 @@
     <input type="hidden" name="source_id" value="{{ source.pk|default:'' }}">
     {% for field in form.hidden_fields %}{{ field }}{% endfor %}
     {% for field in settings_form.hidden_fields %}{{ field }}{% endfor %}
-    <section class="panel">
-      <div class="panel-heading"><div><h2>О рецептуре</h2></div></div>
-      <div class="panel-body">
-        {{ form.non_field_errors }}{{ settings_form.non_field_errors }}
-        <div class="recipe-metadata">{% for field in form.visible_fields %}{% include 'lab/includes/field.html' %}{% endfor %}</div>
+    <div class="page-heading recipe-page-heading">
+      <div class="recipe-title-line">
+        <a class="back-link" href="{% if recipe %}{% url 'recipe_detail' recipe.pk %}{% elif source %}{% url 'recipe_detail' source.pk %}{% else %}{% url 'recipe_list' %}{% endif %}" aria-label="К рецептурам" title="К рецептурам">←</a>
+        <h1>{{ title }}</h1>
       </div>
-    </section>
-
-    <section class="panel" aria-labelledby="polyol-heading">
-      <div class="panel-heading"><div class="recipe-section-heading"><span class="recipe-section-number" aria-hidden="true">1</span><div><h2 id="polyol-heading">Состав полиольной смеси</h2><p>Recipe задаёт массовую долю компонента внутри смеси A. Batch задаёт массу смеси для расчёта навесок.</p></div></div></div>
-      <div class="panel-body">
-        <div class="recipe-settings">
-          <div>{% include 'lab/includes/field.html' with field=settings_form.batch_mass_g %}{% include 'lab/includes/field.html' with field=settings_form.batch_mass_g_reason %}</div>
-          <div>{% include 'lab/includes/field.html' with field=settings_form.polyol_parts %}{% include 'lab/includes/field.html' with field=settings_form.polyol_parts_reason %}</div>
-          <div class="field"><label>Сумма Recipe, % <span class="recipe-locked-label">расчёт</span></label><output class="recipe-computed" data-recipe-output="polyol.quantity_total">—</output><small class="recipe-computed-reason" data-recipe-reason="polyol.quantity_total"></small></div>
-        </div>
-        <div id="{{ polyol_formset.prefix }}-formset" data-formset-prefix="{{ polyol_formset.prefix }}" data-recipe-rows="polyol"
-             data-draft-owner="{{ employee.pk }}" data-draft-bound="{{ polyol_formset.is_bound|yesno:'true,false' }}"
-             data-server-total="{{ polyol_formset.total_form_count }}" data-server-initial="{{ polyol_formset.initial_form_count }}">
-          {{ polyol_formset.management_form }}{{ polyol_formset.non_form_errors }}
-          <div class="formset-rows">{% for row in polyol_formset %}{% include 'lab/includes/recipe_editor_row.html' with kind='polyol' %}{% endfor %}</div>
-          <template>{% include 'lab/includes/recipe_editor_row.html' with row=polyol_formset.empty_form kind='polyol' %}</template>
-          <div class="formset-controls"><button type="button" class="button small" data-add-form="{{ polyol_formset.prefix }}-formset" aria-controls="{{ polyol_formset.prefix }}-formset">+ Добавить компонент</button></div>
-        </div>
-        <div class="recipe-row-results">
-          <div><small>Сумма навесок, г</small><output data-recipe-output="polyol.mass_g">—</output><small data-recipe-reason="polyol.mass_g"></small></div>
-          <div><small>OHV смеси, мг KOH/г</small><output data-recipe-output="polyol.ohv">—</output><small data-recipe-reason="polyol.ohv"></small></div>
-          <div><small>Части изоцианата на 100 частей A</small><output data-recipe-output="polyol.stoichiometric_iso_parts">—</output><small data-recipe-reason="polyol.stoichiometric_iso_parts"></small></div>
-          <div><small>Плотность, г/мл</small><output data-recipe-output="polyol.density_g_ml">—</output><small data-recipe-reason="polyol.density_g_ml"></small></div>
-          <div><small>Цена смеси, <span data-recipe-currency="polyol.price_currency"></span>/кг</small><output data-recipe-output="polyol.price_per_kg">—</output><small data-recipe-reason="polyol.price_per_kg"></small></div>
-        </div>
-        <div class="recipe-fill-result"><div><strong>Полиольная смесь на один баллон</strong><small>Рассчитывается из соотношения A:B, доли газов и объёма заполнения.</small><small data-recipe-reason="filling.polyol.mass_g"></small></div><output data-recipe-output="filling.polyol.mass_g" data-recipe-unit="г">—</output></div>
+      <div class="form-actions recipe-toolbar-actions">
+        <span class="recipe-balance" data-recipe-balance title="Сумма массовых долей смеси A">— / 100 %</span>
+        <button type="button" class="button small recipe-expand" data-recipe-expand aria-pressed="false" aria-controls="recipe-workspace" hidden>На весь экран</button>
+        <a class="button quiet" href="{% url 'recipe_list' %}">Отмена</a>
+        <button type="submit" class="button primary">{% if recipe %}Сохранить изменения{% else %}Сохранить рецептуру{% endif %}</button>
       </div>
-    </section>
-
-    <section class="panel" aria-labelledby="isocyanate-heading">
-      <div class="panel-heading"><div class="recipe-section-heading"><span class="recipe-section-number" aria-hidden="true">2</span><div><h2 id="isocyanate-heading">Изоцианат</h2><p>Выберите сырьё и партию, укажите NCO и соотношение со смесью A.</p></div></div></div>
-      <div class="panel-body">
-        {% include 'lab/includes/field.html' with field=settings_form.isocyanate_present %}
-        <div data-recipe-iso-absence>{% include 'lab/includes/field.html' with field=settings_form.isocyanate_absence_reason %}</div>
-        <div data-recipe-iso-fields>
-          <div class="recipe-settings">
-            <div>{% include 'lab/includes/field.html' with field=settings_form.iso_ratio_mode %}</div>
-            <div data-recipe-ratio-parts>{% include 'lab/includes/field.html' with field=settings_form.isocyanate_parts %}{% include 'lab/includes/field.html' with field=settings_form.isocyanate_parts_reason %}</div>
-            <div data-recipe-ratio-index>{% include 'lab/includes/field.html' with field=settings_form.iso_index %}{% include 'lab/includes/field.html' with field=settings_form.iso_index_reason %}</div>
-            <div class="field"><label>Расчётный ISO index</label><output class="recipe-computed" data-recipe-output="isocyanate.iso_index">—</output><small class="recipe-computed-reason" data-recipe-reason="isocyanate.iso_index"></small></div>
-            <div class="field"><label>Эквивалентная масса NCO, г/экв.</label><output class="recipe-computed" data-recipe-output="isocyanate.nco_equivalent_weight">—</output><small class="recipe-computed-reason" data-recipe-reason="isocyanate.nco_equivalent_weight"></small></div>
-          </div>
-          {% include 'lab/includes/recipe_editor_row.html' with row=isocyanate_form kind='isocyanate' %}
-        </div>
-        <div class="recipe-fill-result recipe-fill-result--iso"><div><strong>Изоцианат на один баллон</strong><small data-recipe-reason="filling.isocyanate.mass_g"></small></div><output data-recipe-output="filling.isocyanate.mass_g" data-recipe-unit="г">—</output></div>
-      </div>
-    </section>
-
-    <section class="panel" aria-labelledby="gases-heading">
-      <div class="panel-heading"><div class="recipe-section-heading"><span class="recipe-section-number" aria-hidden="true">3</span><div><h2 id="gases-heading">Состав газов</h2><p>Доли в строках относятся к газовой смеси. Готовую пропан-изобутановую смесь можно выбрать одним материалом.</p></div></div></div>
-      <div class="panel-body">
-        <div class="recipe-settings">
-          <div>{% include 'lab/includes/field.html' with field=settings_form.gas_mass_pct %}{% include 'lab/includes/field.html' with field=settings_form.gas_mass_pct_reason %}</div>
-          <div>{% include 'lab/includes/field.html' with field=settings_form.fill_volume_ml %}{% include 'lab/includes/field.html' with field=settings_form.fill_volume_ml_reason %}</div>
-          <div class="field"><label>Сумма долей газов, %</label><output class="recipe-computed" data-recipe-output="gases.quantity_total">—</output><small class="recipe-computed-reason" data-recipe-reason="gases.quantity_total"></small></div>
-        </div>
-        <div id="{{ gas_formset.prefix }}-formset" data-formset-prefix="{{ gas_formset.prefix }}" data-recipe-rows="gases"
-             data-draft-owner="{{ employee.pk }}" data-draft-bound="{{ gas_formset.is_bound|yesno:'true,false' }}"
-             data-server-total="{{ gas_formset.total_form_count }}" data-server-initial="{{ gas_formset.initial_form_count }}">
-          {{ gas_formset.management_form }}{{ gas_formset.non_form_errors }}
-          <div class="formset-rows">{% for row in gas_formset %}{% include 'lab/includes/recipe_editor_row.html' with kind='gas' %}{% endfor %}</div>
-          <template>{% include 'lab/includes/recipe_editor_row.html' with row=gas_formset.empty_form kind='gas' %}</template>
-          <div class="formset-controls"><button type="button" class="button small" data-add-form="{{ gas_formset.prefix }}-formset" aria-controls="{{ gas_formset.prefix }}-formset">+ Добавить газ</button></div>
-        </div>
-        <div class="recipe-row-results">
-          <div><small>Плотность газовой смеси, г/мл</small><output data-recipe-output="gases.density_g_ml">—</output><small data-recipe-reason="gases.density_g_ml"></small></div>
-          <div><small>Расчётное давление смеси</small><output data-recipe-output="gases.pressure_bar">—</output><small data-recipe-reason="gases.pressure_bar"></small></div>
-        </div>
-        <div class="recipe-fill-result recipe-fill-result--gas"><div><strong>Газы на один баллон</strong><small data-recipe-reason="filling.gas_mass_g"></small></div><output data-recipe-output="filling.gas_mass_g" data-recipe-unit="г">—</output></div>
-      </div>
-    </section>
-
-    <section class="panel" aria-labelledby="recipe-total-heading">
-      <div class="panel-heading"><div><h2 id="recipe-total-heading">Заправка одного баллона</h2><p>Расчётные значения обновляются при изменении исходных данных и недоступны для редактирования.</p></div></div>
-      <div class="panel-body" data-recipe-preview>
-        <p class="recipe-preview-status" data-recipe-preview-status role="status" aria-live="polite">Расчёт по исходным данным.</p>
-        <dl class="recipe-totals">
-          <div><dt>Общая масса, г</dt><dd><output data-recipe-output="filling.mass_g">—</output><small class="recipe-computed-reason" data-recipe-reason="filling.mass_g"></small></dd></div>
-          <div><dt>Общий объём, мл</dt><dd><output data-recipe-output="filling.volume_ml">—</output><small class="recipe-computed-reason" data-recipe-reason="filling.volume_ml"></small></dd></div>
-          <div><dt>Стоимость содержимого, <span data-recipe-currency="filling.price_currency"></span></dt><dd><output data-recipe-output="filling.cost">—</output><small class="recipe-computed-reason" data-recipe-reason="filling.cost"></small></dd></div>
-          <div><dt>Плотность содержимого, г/мл</dt><dd><output data-recipe-output="filling.density_g_ml">—</output><small class="recipe-computed-reason" data-recipe-reason="filling.density_g_ml"></small></dd></div>
-        </dl>
-        <details class="recipe-row-properties">
-          <summary>Промежуточные расчёты заправки</summary>
-          <div class="recipe-row-results">
-            <div><small>Доля A + изоцианата, % масс.</small><output data-recipe-output="filling.pur_mass_pct">—</output><small data-recipe-reason="filling.pur_mass_pct"></small></div>
-            <div><small>Плотность A + изоцианата, г/мл</small><output data-recipe-output="filling.pur_density_g_ml">—</output><small data-recipe-reason="filling.pur_density_g_ml"></small></div>
-            <div><small>Объём A + изоцианата, мл</small><output data-recipe-output="filling.pur_volume_ml">—</output><small data-recipe-reason="filling.pur_volume_ml"></small></div>
-            <div><small>Объём газов, мл</small><output data-recipe-output="filling.gas_volume_ml">—</output><small data-recipe-reason="filling.gas_volume_ml"></small></div>
-            <div><small>Цена содержимого, <span data-recipe-currency="filling.price_currency"></span>/кг</small><output data-recipe-output="filling.price_per_kg">—</output><small data-recipe-reason="filling.price_per_kg"></small></div>
-          </div>
+    </div>
+    <section class="recipe-metadata-panel" aria-label="О рецептуре">
+      {{ form.non_field_errors }}{{ settings_form.non_field_errors }}
+      <div class="recipe-metadata">
+        {% include 'lab/includes/field.html' with field=form.version_label %}
+        {% include 'lab/includes/field.html' with field=form.title %}
+        {% include 'lab/includes/field.html' with field=form.mixture_type %}
+        {% include 'lab/includes/field.html' with field=form.recorded_on %}
+        {% include 'lab/includes/field.html' with field=form.status %}
+        <details class="recipe-notes" {% if form.notes.errors %}open{% endif %}>
+          <summary>Примечание{% if form.notes.value %}<span class="recipe-note-dot" aria-label="Есть примечание"></span>{% endif %}</summary>
+          {% include 'lab/includes/field.html' with field=form.notes %}
         </details>
-        <div class="info-note recipe-preview-issues" data-recipe-preview-issues hidden></div>
       </div>
     </section>
+
+    <div class="recipe-workspace" id="recipe-workspace">
+      <section class="panel recipe-polyol-panel" aria-labelledby="polyol-heading">
+        <div class="panel-heading">
+          <div class="recipe-section-heading"><span class="recipe-section-number recipe-mark-a" aria-hidden="true">A</span><h2 id="polyol-heading">Состав полиольной смеси</h2><span class="recipe-count"><span data-recipe-component-count>{{ polyol_formset.initial_form_count }}</span> комп.</span></div>
+          <div class="recipe-batch-setting">{% include 'lab/includes/recipe_editor_field.html' with field=settings_form.batch_mass_g label='Batch, г' reason=settings_form.batch_mass_g_reason %}</div>
+        </div>
+        <div class="panel-body">
+          <div id="{{ polyol_formset.prefix }}-formset" data-formset-prefix="{{ polyol_formset.prefix }}" data-recipe-rows="polyol"
+               data-draft-owner="{{ employee.pk }}" data-draft-bound="{{ polyol_formset.is_bound|yesno:'true,false' }}"
+               data-server-total="{{ polyol_formset.total_form_count }}" data-server-initial="{{ polyol_formset.initial_form_count }}">
+            {{ polyol_formset.management_form }}{{ polyol_formset.non_form_errors }}
+            <div class="recipe-sheet-scroll" role="region" aria-label="Состав и расчёт навесок" tabindex="0">
+              <div class="recipe-sheet-groups recipe-polyol-columns" aria-hidden="true"><span class="recipe-group-identity">Сырьё и партия</span><span class="recipe-group-properties">Свойства сырья</span><span class="recipe-group-input">Состав</span><span class="recipe-group-calculated">Расчёт навесок · Batch</span><span></span></div>
+              <div class="recipe-sheet-heading recipe-polyol-columns" aria-hidden="true">
+                <span>№</span><span>Материал</span><span>Партия</span><span>OHV<small>мг KOH/г</small></span><span>Плотность<small>г/мл</small></span><span>Цена<small>за кг</small></span><span class="recipe-column-input">Recipe<small>% масс.</small></span><span class="recipe-column-calculated">Вклад OHV</span><span class="recipe-column-calculated">Навеска<small>г</small></span><span class="recipe-column-calculated">Объём<small>мл</small></span><span class="recipe-column-calculated">Стоимость</span><span></span>
+              </div>
+              <div class="formset-rows">{% for row in polyol_formset %}{% include 'lab/includes/recipe_editor_row.html' with kind='polyol' %}{% endfor %}</div>
+              <div class="recipe-sheet-total recipe-polyol-columns">
+                <strong class="recipe-total-label">Итого · смесь A</strong>
+                <output class="recipe-total-ohv" data-recipe-output="polyol.ohv" data-recipe-precision="2" aria-label="OHV смеси">—</output>
+                <output class="recipe-total-density" data-recipe-output="polyol.density_g_ml" data-recipe-precision="4" aria-label="Плотность смеси">—</output>
+                <span class="recipe-total-price" data-total-label="Цена смеси за кг"><output data-recipe-output="polyol.price_per_kg" data-recipe-precision="3" aria-label="Цена смеси за кг">—</output> <span data-recipe-currency="polyol.price_currency"></span></span>
+                <output class="recipe-total-quantity" data-recipe-output="polyol.quantity_total" data-recipe-precision="3" aria-label="Сумма Recipe">—</output>
+                <span></span>
+                <output data-recipe-output="polyol.mass_g" data-recipe-precision="2" aria-label="Сумма навесок">—</output>
+                <output data-recipe-output="polyol.volume_ml" data-recipe-precision="2" aria-label="Объём смеси">—</output>
+                <span data-total-label="Стоимость Batch"><output data-recipe-output="polyol.cost" data-recipe-precision="3" aria-label="Стоимость Batch">—</output> <span data-recipe-currency="polyol.price_currency"></span></span><span></span>
+              </div>
+            </div>
+            <template>{% include 'lab/includes/recipe_editor_row.html' with row=polyol_formset.empty_form kind='polyol' %}</template>
+            <div class="recipe-sheet-footer"><button type="button" class="button small" data-add-form="{{ polyol_formset.prefix }}-formset" aria-controls="{{ polyol_formset.prefix }}-formset">+ Добавить компонент</button><small><span class="recipe-input-dot"></span> Ввод <span class="recipe-calc-dot"></span> Расчёт<span class="recipe-keyboard-hint"> · Enter / ↑ ↓ — по столбцу</span></small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel recipe-iso-panel" aria-labelledby="isocyanate-heading">
+        <div class="panel-heading"><div class="recipe-section-heading"><span class="recipe-section-number recipe-mark-b" aria-hidden="true">B</span><h2 id="isocyanate-heading">Изоцианат</h2></div><label class="recipe-toggle">{{ settings_form.isocyanate_present }} Использовать</label></div>
+        <div class="panel-body">
+          <div data-recipe-iso-absence>{% include 'lab/includes/field.html' with field=settings_form.isocyanate_absence_reason %}</div>
+          <div data-recipe-iso-fields>
+            {% include 'lab/includes/recipe_editor_row.html' with row=isocyanate_form kind='isocyanate' %}
+            <div class="recipe-settings recipe-ratio-settings">
+              <div class="recipe-ratio-mode">{% include 'lab/includes/recipe_editor_field.html' with field=settings_form.iso_ratio_mode label='Режим расчёта' %}</div>
+              <div>{% include 'lab/includes/recipe_editor_field.html' with field=settings_form.polyol_parts label='Части A' reason=settings_form.polyol_parts_reason %}</div>
+              <div data-recipe-ratio-parts>{% include 'lab/includes/recipe_editor_field.html' with field=settings_form.isocyanate_parts label='Части B' reason=settings_form.isocyanate_parts_reason %}</div>
+              <div data-recipe-ratio-index>{% include 'lab/includes/recipe_editor_field.html' with field=settings_form.iso_index reason=settings_form.iso_index_reason %}</div>
+            </div>
+            <div class="recipe-iso-equivalent"><span>Экв. масса NCO</span><strong><output data-recipe-output="isocyanate.nco_equivalent_weight" data-recipe-precision="2">—</output> <small>г/экв.</small></strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel recipe-gas-panel" aria-labelledby="gases-heading">
+        <div class="panel-heading"><div class="recipe-section-heading"><span class="recipe-section-number recipe-mark-g" aria-hidden="true">G</span><h2 id="gases-heading">Состав газов</h2></div><div class="recipe-gas-setting">{% include 'lab/includes/recipe_editor_field.html' with field=settings_form.gas_mass_pct label='В заправке, %' reason=settings_form.gas_mass_pct_reason %}</div></div>
+        <div class="panel-body">
+          <div id="{{ gas_formset.prefix }}-formset" data-formset-prefix="{{ gas_formset.prefix }}" data-recipe-rows="gases"
+               data-draft-owner="{{ employee.pk }}" data-draft-bound="{{ gas_formset.is_bound|yesno:'true,false' }}"
+               data-server-total="{{ gas_formset.total_form_count }}" data-server-initial="{{ gas_formset.initial_form_count }}">
+            {{ gas_formset.management_form }}{{ gas_formset.non_form_errors }}
+            <div class="recipe-sheet-scroll" role="region" aria-label="Газовая смесь" tabindex="0">
+              <div class="recipe-sheet-heading recipe-gas-columns" aria-hidden="true"><span>Газ / смесь</span><span>Доля<small>% масс.</small></span><span>Плотн.<small>г/мл</small></span><span>Цена<small>за кг</small></span><span>Давл.<small>бар</small></span><span>Баллон<small>г</small></span><span></span></div>
+              <div class="formset-rows">{% for row in gas_formset %}{% include 'lab/includes/recipe_editor_row.html' with kind='gas' %}{% endfor %}</div>
+              <div class="recipe-gas-total recipe-gas-columns"><strong>Итого</strong><output data-recipe-total-column="quantity" data-recipe-output="gases.quantity_total" data-recipe-precision="2" aria-label="Сумма долей газов, %">—</output><output data-recipe-total-column="density_g_ml" data-recipe-output="gases.density_g_ml" data-recipe-precision="4" aria-label="Плотность газовой смеси, г/мл">—</output><span aria-hidden="true"></span><output data-recipe-total-column="pressure_bar" data-recipe-output="gases.pressure_bar" data-recipe-precision="3" aria-label="Давление газовой смеси, бар">—</output><output data-recipe-total-column="mass_g" data-recipe-output="filling.gas_mass_g" data-recipe-precision="2" aria-label="Масса газов на баллон, г">—</output><span aria-hidden="true"></span></div>
+            </div>
+            <template>{% include 'lab/includes/recipe_editor_row.html' with row=gas_formset.empty_form kind='gas' %}</template>
+            <div class="recipe-sheet-footer"><button type="button" class="button small" data-add-form="{{ gas_formset.prefix }}-formset" aria-controls="{{ gas_formset.prefix }}-formset">+ Добавить газ</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel recipe-total-panel" aria-labelledby="recipe-total-heading">
+        <div class="panel-heading"><div class="recipe-section-heading"><span class="recipe-fill-icon" aria-hidden="true"><svg><use href="#i-box"/></svg></span><h2 id="recipe-total-heading">Заправка одного баллона</h2></div><div class="recipe-volume-setting">{% include 'lab/includes/recipe_editor_field.html' with field=settings_form.fill_volume_ml label='Объём, мл' reason=settings_form.fill_volume_ml_reason %}</div></div>
+        <div class="panel-body" data-recipe-preview>
+          <div class="recipe-filling-table-scroll"><table class="recipe-filling-table"><colgroup><col class="recipe-filling-col-mark"><col class="recipe-filling-col-name"><col><col><col></colgroup><thead><tr><th scope="col" aria-label="Группа"></th><th scope="col">Компонент</th><th scope="col">Масса, г</th><th scope="col">Объём, мл</th><th scope="col">Стоимость</th></tr></thead><tbody data-recipe-filling-rows>
+            {% for item in calculation.filling.rows %}<tr class="recipe-filling-row" data-recipe-filling-kind="{% if forloop.first %}A{% elif forloop.counter == 2 %}B{% else %}G{% endif %}"><td><span class="recipe-filling-mark">{% if forloop.first %}A{% elif forloop.counter == 2 %}B{% else %}G{% endif %}</span></td><th scope="row" class="recipe-filling-name">{{ item.name }}</th><td>{{ item.mass_g.value|decimal_display:1 }}</td><td>{{ item.volume_ml.value|decimal_display:1 }}</td><td>{{ item.cost.value|decimal_display:3 }}</td></tr>{% endfor %}
+          </tbody><tfoot><tr class="recipe-filling-total"><th scope="row" colspan="2">Итого</th><td><strong><output data-recipe-output="filling.mass_g" data-recipe-precision="1">—</output></strong></td><td><strong><output data-recipe-output="filling.volume_ml" data-recipe-precision="1">—</output></strong></td><td><strong class="recipe-filling-cost"><output data-recipe-output="filling.cost" data-recipe-precision="3">—</output><small data-recipe-currency="filling.price_currency"></small></strong></td></tr></tfoot></table></div>
+          <div class="recipe-filling-meta"><span>Плотность <strong><output data-recipe-output="filling.density_g_ml" data-recipe-precision="4">—</output></strong> г/мл</span><span>Цена/кг <strong><output data-recipe-output="filling.price_per_kg" data-recipe-precision="3">—</output></strong> <span data-recipe-currency="filling.price_currency"></span></span><details class="recipe-fill-details" data-recipe-calculation-details><summary>Баланс</summary><div class="recipe-fill-details-body" role="region" aria-label="Промежуточные расчёты заправки">
+            <h3>Баланс заправки</h3>
+            <div><span>Доля A + B, % масс.</span><output data-recipe-output="filling.pur_mass_pct">—</output></div>
+            <div><span>Плотность A + B, г/мл</span><output data-recipe-output="filling.pur_density_g_ml">—</output></div>
+            <div><span>Объём A + B, мл</span><output data-recipe-output="filling.pur_volume_ml">—</output></div>
+            <div><span>Объём газов, мл</span><output data-recipe-output="filling.gas_volume_ml">—</output></div>
+            <div><span>Части изоцианата на 100 частей A</span><output data-recipe-output="polyol.stoichiometric_iso_parts">—</output></div>
+          </div></details></div>
+        </div>
+      </section>
+    </div>
+    <details class="recipe-preview-issues" data-recipe-issues-wrapper hidden><summary>Проверьте исходные данные <span data-recipe-issue-count></span></summary><div class="info-note" data-recipe-preview-issues></div></details>
     <noscript><div class="info-note">Для пересчёта во время ввода включите JavaScript. При сохранении сервер рассчитает значения из введённых параметров.</div></noscript>
-    <div class="form-actions"><button type="submit" class="button primary">{% if recipe %}Сохранить изменения{% else %}Сохранить рецептуру{% endif %}</button><a class="button quiet" href="{% url 'recipe_list' %}">Отмена</a><small>Изменение будет записано в историю</small></div>
+    <div class="recipe-workspace-status"><p class="recipe-preview-status" data-recipe-preview-status role="status" aria-live="polite">Расчёт по исходным данным.</p><small>Изменения сохраняются в истории</small></div>
   </form>
 </div>
 {{ calculation|json_script:'recipe-calculation-data' }}

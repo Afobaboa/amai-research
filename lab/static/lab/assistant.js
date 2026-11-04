@@ -11,6 +11,8 @@
     const resize = $('resize');
     const inputHelp = $('input-help'), inputHint = $('input-hint');
     const desktop = window.matchMedia('(min-width: 1400px)');
+    const defaultOpen = () => desktop.matches
+        && !document.querySelector('form[data-recipe-editor]');
     const storageKey = `kudo-assistant-v1:${panel.dataset.employee}`;
     const preferenceKey = `${storageKey}:open`;
     const widthKey = `${storageKey}:width`;
@@ -398,8 +400,12 @@
         document.body.classList.toggle('assistant-narrow-workspace', desktop.matches && viewport - sidebar - width < 760);
         if (remember) {
             preferredWidth = width;
+            if (open)
+                savedOpen = 'true';
             try {
                 sessionStorage.setItem(widthKey, String(width));
+                if (open)
+                    sessionStorage.setItem(preferenceKey, 'true');
             }
             catch { /* Resizing also works without storage. */ }
         }
@@ -485,7 +491,7 @@
     backdrop.addEventListener('click', () => setOpen(false, true));
     desktop.addEventListener('change', () => {
         if (savedOpen === null)
-            setOpen(desktop.matches, false, false);
+            setOpen(defaultOpen(), false, false);
         else
             syncModal();
     });
@@ -1292,7 +1298,7 @@
     });
     render();
     setWidth();
-    setOpen(savedOpen === null ? desktop.matches : savedOpen === 'true', false, false);
+    setOpen(savedOpen === null ? defaultOpen() : savedOpen === 'true', false, false);
     void loadStatus();
     void (async () => {
         const ownTurn = turn;

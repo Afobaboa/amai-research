@@ -507,6 +507,9 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   const formPage = await context.newPage();
   formPage.on('pageerror', error => errors.push(error.message));
   await formPage.goto(base + '/recipes/new/', {waitUntil:'networkidle'});
+  assert.equal(await formPage.locator('#lab-assistant').isVisible(), false,
+    'A fresh recipe tab starts with the assistant collapsed');
+  await formPage.locator('#assistant-launcher').click();
   await formPage.locator('#assistant-new').click();
   await formPage.locator('#id_title').fill('Несохранённый черновик');
   await formPage.locator('#id_polyol-0-quantity').fill('0');

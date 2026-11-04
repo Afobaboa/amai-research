@@ -60,6 +60,8 @@ with make_server('127.0.0.1',0,StaticFilesHandler(get_wsgi_application()),server
 function output(page, path) { return page.locator(`[data-recipe-output="${path}"]`); }
 
 async function numeric(locator) {
+  const raw = await locator.getAttribute('data-recipe-raw-value');
+  if (raw !== null) return raw === '' ? NaN : Number(raw);
   const label = await locator.innerText();
   return Number(label.replace(/[^\d,.-]/g, '').replace(',', '.'));
 }
@@ -133,11 +135,233 @@ async function checkReplacement(page, info, fork) {
   await page.locator(prefix + 'ohv').fill('112');
   await settled(page);
   const row = page.locator('#polyol-formset .formset-rows > .formset-row').nth(index);
+  await row.locator('details').first().locator('summary').click();
   const mass = await numeric(row.locator('[data-recipe-row-output="mass_g"]'));
   const cost = await numeric(row.locator('[data-recipe-row-output="cost"]'));
   assert.ok(Math.abs(cost - mass / 1000 * 100) < 0.000001);
   const itemVolume = await numeric(row.locator('[data-recipe-row-output="volume_ml"]'));
   assert.ok(Math.abs(itemVolume - mass / 4) < 0.000001);
+}
+
+async function checkWorksheetLayout(page) {
+  await checkDocumentOverflow(page, 1320, 1000);
+  await page.getByRole('button', {name: 'На весь экран', exact: true}).click();
+  await page.setViewportSize({width: 1366, height: 768});
+  await settled(page);
+  assert.equal(await page.locator('.sidebar').isVisible(), false);
+  assert.equal(await page.locator('#lab-assistant').isVisible(), false);
+  assertWorksheetBounds(await worksheetBounds(page));
+  await checkTotalColumnAlignment(page, 'fullscreen 1366');
+  for (const name of ['material', 'specified_lot', 'quantity', 'ohv',
+    'density_g_ml', 'price_per_kg']) {
+    assert.equal(await page.locator(`#id_polyol-0-${name}`)
+      .locator('..').isVisible(), true);
+  }
+  await page.screenshot({path: join(artifacts, 'recipe-editor-worksheet.png'),
+    fullPage: true});
+  await checkExtraWorksheetRows(page);
+  await checkInspectorAndKeyboard(page);
+  await checkUnusedMiddleRows(page);
+  await checkDocumentOverflow(page, 1101, 768);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.sidebar').isVisible(), true);
+  assert.equal(await page.locator('[data-recipe-expand]')
+    .getAttribute('aria-pressed'), 'false');
+  await page.setViewportSize({width: 1440, height: 1000});
+  await page.evaluate(() => scrollTo(0, 0));
+  await checkTotalColumnAlignment(page, 'default 1440');
+}
+
+async function checkTotalColumnAlignment(page, viewport) {
+  const columns = [...await gasTotalColumnBounds(page),
+    ...await fillingTotalColumnBounds(page)];
+  assert.equal(columns.length, 7);
+  for (const column of columns) {
+    assert.ok(Math.abs(column.total - column.row) <= 1,
+      `${viewport}: footer vs first row ${JSON.stringify(column)}`);
+    assert.ok(Math.abs(column.total - column.header) <= 1,
+      `${viewport}: footer vs header ${JSON.stringify(column)}`);
+  }
+}
+
+async function gasTotalColumnBounds(page) {
+  return page.evaluate(() => {
+    const panel = document.querySelector('.recipe-gas-panel');
+    const right = selector => {
+      const element = panel.querySelector(selector);
+      if (!element) throw new Error(`Missing gas column: ${selector}`);
+      return element.getBoundingClientRect().right;
+    };
+    const columns = [['quantity', 'quantity', 2],
+      ['density_g_ml', 'density', 3], ['pressure_bar', 'pressure', 5],
+      ['mass_g', 'mass', 6]];
+    return columns.map(([name, cell, heading]) => ({
+      name: `gases.${name}`,
+      total: right(`.recipe-gas-total [data-recipe-total-column="${name}"]`),
+      row: right(`.formset-rows > .formset-row:first-child .recipe-cell-${cell}`),
+      header: right(`.recipe-gas-columns > span:nth-child(${heading})`),
+    }));
+  });
+}
+
+async function fillingTotalColumnBounds(page) {
+  return page.evaluate(() => {
+    const table = document.querySelector('.recipe-filling-table');
+    const right = selector => {
+      const element = table.querySelector(selector);
+      if (!element) throw new Error(`Missing filling column: ${selector}`);
+      return element.getBoundingClientRect().right;
+    };
+    return ['mass_g', 'volume_ml', 'cost'].map((name, index) => ({
+      name: `filling.${name}`,
+      total: right(`tfoot .recipe-filling-total > td:nth-of-type(${index + 1})`),
+      row: right(`tbody tr:first-child > td:nth-child(${index + 3})`),
+      header: right(`thead tr > th:nth-child(${index + 3})`),
+    }));
+  });
+}
+
+async function worksheetBounds(page) {
+  return page.evaluate(() => {
+    const rectangle = selector => document.querySelector(selector)
+      .getBoundingClientRect();
+    return {
+      polyolBottom: rectangle('.recipe-polyol-panel').bottom,
+      polyolWidth: rectangle('.recipe-polyol-panel').width,
+      iso: rectangle('.recipe-iso-panel').top,
+      gasTop: rectangle('.recipe-gas-panel').top,
+      totalTop: rectangle('.recipe-total-panel').top,
+      total: rectangle('.recipe-total-panel').bottom,
+      gas: rectangle('.recipe-gas-panel').bottom,
+      width: document.documentElement.scrollWidth,
+    };
+  });
+}
+
+function assertWorksheetBounds(bounds) {
+  assert.ok(bounds.iso >= bounds.polyolBottom, JSON.stringify(bounds));
+  assert.ok(Math.abs(bounds.iso - bounds.gasTop) < 1, JSON.stringify(bounds));
+  assert.ok(Math.abs(bounds.iso - bounds.totalTop) < 1, JSON.stringify(bounds));
+  assert.ok(bounds.polyolWidth > 1300, JSON.stringify(bounds));
+  assert.ok(bounds.total < 768 && bounds.gas < 768, JSON.stringify(bounds));
+  assert.ok(bounds.width <= 1366, JSON.stringify(bounds));
+}
+
+async function checkDocumentOverflow(page, width, height) {
+  await page.setViewportSize({width, height});
+  await settled(page);
+  const documentWidth = await page.evaluate(() => (
+    document.documentElement.scrollWidth
+  ));
+  assert.ok(documentWidth <= width,
+    `Document width ${documentWidth} exceeds viewport ${width}`);
+}
+
+async function checkInspectorAndKeyboard(page) {
+  await checkInspectorSwitching(page);
+  await page.locator('#id_polyol-0-quantity').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#id_polyol-1-quantity')
+    .evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('Shift+Enter');
+  assert.equal(await page.locator('#id_polyol-0-quantity')
+    .evaluate(node => node === document.activeElement), true);
+  assert.equal(await page.locator('[data-recipe-filling-rows] tr').count(), 5);
+  assert.equal(await page.locator('[data-recipe-filling-rows] th[scope="row"]')
+    .count(), 5);
+  const cost = output(page, 'filling.cost');
+  assert.match(await cost.innerText(), /^74,444$/);
+  assert.ok(Math.abs(await numeric(cost) - 74.44431206) < 0.000001);
+  assert.match(await cost.getAttribute('title'), /74,444312/);
+  assert.ok(Number(await page.locator('#id_settings-iso_index')
+    .getAttribute('data-recipe-raw-value')) > 4.9);
+}
+
+async function checkInspectorSwitching(page) {
+  const rows = page.locator('#polyol-formset .formset-rows > .formset-row');
+  await rows.first().locator('summary').click();
+  assert.equal(await rows.first().locator('.recipe-inspector').isVisible(), true);
+  await rows.nth(1).locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => (
+    document.querySelectorAll('.recipe-row-extra[open]').length === 1
+      && document.querySelector('.recipe-inspector-active')
+        ?.dataset.formPrefix === 'polyol-1'
+  ));
+  assert.match(await rows.nth(1).locator('[data-recipe-inspector-title]')
+    .innerText(), /YD-C310/);
+  await rows.nth(1).locator('.recipe-cell-material .search-select-trigger')
+    .click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.recipe-row-extra[open]').count(), 1);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.recipe-row-extra[open]').count(), 0);
+  assert.equal(await page.locator('.recipe-inspector-active').count(), 0);
+  assert.equal(await rows.nth(1).locator('summary')
+    .evaluate(node => node === document.activeElement), true);
+  assert.equal(await page.locator('[data-recipe-expand]')
+    .getAttribute('aria-pressed'), 'true');
+}
+
+async function calculationSnapshot(page) {
+  const paths = ['polyol.quantity_total', 'gases.quantity_total',
+    'filling.polyol.mass_g', 'filling.isocyanate.mass_g',
+    'filling.mass_g', 'filling.volume_ml', 'filling.cost'];
+  return page.evaluate(paths => Object.fromEntries(paths.map(path => [
+    path, document.querySelector(`[data-recipe-output="${path}"]`)
+      ?.getAttribute('data-recipe-raw-value'),
+  ])), paths);
+}
+
+async function checkUnusedMiddleRows(page) {
+  const original = await calculationSnapshot(page);
+  assert.equal(Number(original['polyol.quantity_total']), 100);
+  assert.equal(Number(original['gases.quantity_total']), 100);
+  for (const prefix of ['polyol', 'gases']) {
+    await checkZeroRowAfterGap(page, prefix, original);
+  }
+}
+
+async function checkZeroRowAfterGap(page, prefix, original) {
+  const rows = page.locator(`#${prefix}-formset .formset-rows > .formset-row`);
+  const count = await rows.count();
+  assert.equal(await rows.last().locator('input[name$="-quantity"]')
+    .inputValue(), '');
+  await page.locator(`[data-add-form="${prefix}-formset"]`).click();
+  const row = rows.last();
+  await row.locator('input[name$="-quantity"]').fill('0');
+  await settled(page);
+  assert.equal(await rows.count(), count + 1);
+  assert.equal(await numeric(row.locator('[data-recipe-row-output="mass_g"]')), 0);
+  assert.equal(await numeric(row.locator('[data-recipe-row-output="cost"]')), 0);
+  assert.deepEqual(await calculationSnapshot(page), original);
+  assert.equal(await page.locator('[data-recipe-balance]')
+    .getAttribute('data-state'), 'balanced');
+  await row.getByRole('button', {name: 'Удалить строку', exact: true}).click();
+  await settled(page);
+  assert.equal(await rows.count(), count);
+  assert.deepEqual(await calculationSnapshot(page), original);
+}
+
+async function checkExtraWorksheetRows(page) {
+  const rows = page.locator('#polyol-formset .formset-rows > .formset-row');
+  const original = await rows.count();
+  for (let index = 0; index < 3; index++) {
+    await page.getByRole('button', {name: '+ Добавить компонент', exact: true}).click();
+  }
+  await settled(page);
+  assert.equal(await rows.count(), original + 3);
+  const size = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+  }));
+  assert.ok(size.width <= 1366 && size.height <= 768, JSON.stringify(size));
+  await page.screenshot({path: join(artifacts, 'recipe-editor-extra-rows.png'), fullPage: true});
+  for (let index = 0; index < 3; index++) {
+    await rows.last().getByRole('button', {name: 'Удалить строку', exact: true}).click();
+  }
+  await settled(page);
+  assert.equal(await rows.count(), original);
 }
 
 async function checkReasonsAndDrafts(page, fork) {
@@ -150,6 +374,7 @@ async function checkReasonsAndDrafts(page, fork) {
   await ohv.fill('');
   await settled(page);
   assert.equal(await reason.isVisible(), true);
+  await page.locator('[data-recipe-issues-wrapper] > summary').click();
   assert.match(await page.locator('[data-recipe-preview-issues]').innerText(), /причин|OHV/i);
   await reason.fill('Нет паспорта исходной партии');
   await settled(page);
@@ -197,6 +422,7 @@ try {
   await login(page, base);
   await page.goto(fork, {waitUntil: 'networkidle'});
   await checkLiveCalculation(page);
+  await checkWorksheetLayout(page);
   await page.screenshot({path: join(artifacts, 'recipe-editor-desktop.png'), fullPage: true});
   if (existingOnly) {
     await checkMobile(page, fork);

@@ -160,6 +160,7 @@
       const selected = this.select.selectedOptions[0];
       const label = selected ? this.optionLabel(selected) : 'Выберите значение';
       this.value.textContent = label;
+      this.trigger.title = label;
       if (!this.trigger.hasAttribute('aria-labelledby')) {
         this.trigger.setAttribute('aria-label', `${this.labelName}: ${label}`);
       }

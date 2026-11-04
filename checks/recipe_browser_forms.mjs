@@ -142,6 +142,7 @@ async function reloadDraft(page) {
 async function prepareDraft(page, controls, completeRecipeInputs) {
   await page.locator('#id_version_label').fill('QA-REFRESH-DRAFT');
   await page.locator('#id_title').fill('Черновик перед обновлением');
+  await page.locator('.recipe-notes > summary').click();
   await page.locator('#id_notes').fill('Первая строка\nВторая строка');
   await page.locator('#id_recorded_on').fill('03.11.2026');
   const material = await firstMaterial(page);

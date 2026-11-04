@@ -102,6 +102,8 @@
   const resize = $('resize');
   const inputHelp = $('input-help'), inputHint = $('input-hint');
   const desktop = window.matchMedia('(min-width: 1400px)');
+  const defaultOpen = () => desktop.matches
+    && !document.querySelector('form[data-recipe-editor]');
   const storageKey = `kudo-assistant-v1:${panel.dataset.employee}`;
   const preferenceKey = `${storageKey}:open`;
   const widthKey = `${storageKey}:width`;
@@ -450,7 +452,11 @@
       desktop.matches && viewport - sidebar - width < 760);
     if (remember) {
       preferredWidth = width;
-      try { sessionStorage.setItem(widthKey, String(width)); }
+      if (open) savedOpen = 'true';
+      try {
+        sessionStorage.setItem(widthKey, String(width));
+        if (open) sessionStorage.setItem(preferenceKey, 'true');
+      }
       catch { /* Resizing also works without storage. */ }
     }
     fitInput();
@@ -521,7 +527,7 @@
   $('close').addEventListener('click', () => setOpen(false, true));
   backdrop.addEventListener('click', () => setOpen(false, true));
   desktop.addEventListener('change', () => {
-    if (savedOpen === null) setOpen(desktop.matches, false, false);
+    if (savedOpen === null) setOpen(defaultOpen(), false, false);
     else syncModal();
   });
   document.addEventListener('keydown', event => {
@@ -1216,7 +1222,7 @@
   render();
   setWidth();
 
-  setOpen(savedOpen === null ? desktop.matches : savedOpen === 'true', false, false);
+  setOpen(savedOpen === null ? defaultOpen() : savedOpen === 'true', false, false);
   void loadStatus();
   void (async () => {
     const ownTurn = turn;

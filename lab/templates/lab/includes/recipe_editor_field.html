@@ -1,0 +1,10 @@
+<div class="field {% if field.errors %}invalid{% endif %}">
+  <label for="{{ field.id_for_label }}" title="{{ field.label }}">{{ label|default:field.label }}{% if field.field.required %}<span class="required">*</span>{% endif %}</label>
+  {{ field }}
+  {% if field.errors %}
+    <div id="{{ field.auto_id }}_error">
+      {% for error in field.errors %}<small class="field-error">{{ error }}</small>{% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% if reason %}{% include 'lab/includes/field.html' with field=reason %}{% endif %}

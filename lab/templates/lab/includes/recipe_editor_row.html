@@ -1,82 +1,64 @@
 <div class="formset-row recipe-ingredient" data-form-prefix="{{ row.prefix }}"
      data-recipe-row-kind="{{ kind }}">
-  <div class="formset-row-heading">
-    <span class="formset-row-title">{% if kind == 'polyol' %}Компонент смеси{% elif kind == 'gas' %}Газ / газовая смесь{% else %}Изоцианат{% endif %}</span>
-    {% if row.DELETE %}
-      <button type="button" class="button small formset-remove" data-remove-form
-              aria-label="Удалить строку" title="Удалить строку">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7m4-7v7"/></svg>
-      </button>
-    {% endif %}
-  </div>
   {{ row.non_field_errors }}
   {% for field in row.hidden_fields %}{{ field }}{{ field.errors }}{% endfor %}
-  <div class="recipe-primary-fields">
-    <div>
-      {% include 'lab/includes/field.html' with field=row.material %}
-      {% include 'lab/includes/field.html' with field=row.material_reason %}
-    </div>
-    <div>
-      {% include 'lab/includes/field.html' with field=row.specified_lot %}
-      {% include 'lab/includes/field.html' with field=row.lot_reason %}
-    </div>
-    {% if row.quantity %}
-      <div>
-        {% include 'lab/includes/field.html' with field=row.quantity %}
-        {% include 'lab/includes/field.html' with field=row.quantity_reason %}
-      </div>
-    {% else %}
-      <div>
-        {% include 'lab/includes/field.html' with field=row.nco_pct %}
-        {% include 'lab/includes/field.html' with field=row.nco_pct_reason %}
-      </div>
+  <div class="recipe-row-main">
+    {% if kind == 'polyol' %}<span class="recipe-cell recipe-cell-number" aria-hidden="true"></span>{% endif %}
+    <div class="recipe-cell recipe-cell-material">{% include 'lab/includes/field.html' with field=row.material %}</div>
+    {% if kind != 'gas' %}<div class="recipe-cell recipe-cell-lot">{% include 'lab/includes/field.html' with field=row.specified_lot %}</div>{% endif %}
+    {% if kind == 'polyol' %}<div class="recipe-cell recipe-cell-ohv">{% include 'lab/includes/field.html' with field=row.ohv %}</div>{% endif %}
+    {% if kind == 'isocyanate' %}<div class="recipe-cell recipe-cell-nco">{% include 'lab/includes/field.html' with field=row.nco_pct %}</div>{% endif %}
+    {% if kind == 'gas' %}<div class="recipe-cell recipe-cell-quantity">{% include 'lab/includes/field.html' with field=row.quantity %}</div>{% endif %}
+    <div class="recipe-cell recipe-cell-density">{% include 'lab/includes/field.html' with field=row.density_g_ml %}</div>
+    <div class="recipe-cell recipe-cell-price">{% include 'lab/includes/field.html' with field=row.price_per_kg %}<span class="recipe-price-currency" data-recipe-row-currency aria-hidden="true"></span></div>
+    {% if kind == 'polyol' %}
+      <div class="recipe-cell recipe-cell-quantity">{% include 'lab/includes/field.html' with field=row.quantity %}</div>
+      <div class="recipe-cell recipe-cell-calculated recipe-cell-weighted-ohv"><small>Вклад OHV</small><output data-recipe-row-output="weighted_ohv" data-recipe-precision="2">—</output><small class="recipe-cell-reason" data-recipe-row-reason="weighted_ohv"></small></div>
+    {% endif %}
+    {% if kind == 'gas' %}<div class="recipe-cell recipe-cell-pressure">{% include 'lab/includes/field.html' with field=row.pressure_bar %}</div>{% endif %}
+    {% if kind != 'isocyanate' %}
+      <div class="recipe-cell recipe-cell-calculated recipe-cell-mass"><small>{% if kind == 'polyol' %}Навеска, г{% else %}На баллон, г{% endif %}</small><output data-recipe-row-output="mass_g" data-recipe-precision="2">—</output><small class="recipe-cell-reason" data-recipe-row-reason="mass_g"></small></div>
+    {% endif %}
+    {% if kind == 'polyol' %}
+      <div class="recipe-cell recipe-cell-calculated recipe-cell-volume"><small>Объём, мл</small><output data-recipe-row-output="volume_ml" data-recipe-precision="2">—</output><small class="recipe-cell-reason" data-recipe-row-reason="volume_ml"></small></div>
+      <div class="recipe-cell recipe-cell-calculated recipe-cell-cost"><small>Стоимость Batch</small><output data-recipe-row-output="cost" data-recipe-precision="3">—</output> <span data-recipe-row-currency></span><small class="recipe-cell-reason" data-recipe-row-reason="cost"></small></div>
     {% endif %}
   </div>
-  <details class="recipe-row-properties" {% if row.errors %}open{% endif %}>
-    <summary>{% if kind == 'polyol' %}OHV, плотность и цена{% elif kind == 'gas' %}Плотность, цена и давление{% else %}Плотность и цена{% endif %}</summary>
-    <p class="muted recipe-catalog-note">Известные свойства подставляются из выбранной партии. Для отсутствующего значения укажите причину.</p>
-    <div class="recipe-property-fields">
-      {% if kind == 'polyol' %}
-        <div>
-          {% include 'lab/includes/field.html' with field=row.ohv_applicable %}
-          {% include 'lab/includes/field.html' with field=row.ohv %}
-          {% include 'lab/includes/field.html' with field=row.ohv_reason %}
+  <details class="recipe-row-properties recipe-row-extra" {% if row.errors %}open{% endif %}>
+    <summary title="Свойства и расчёты компонента" aria-labelledby="{{ row.prefix }}-inspector-label {{ row.prefix }}-inspector-title" aria-controls="{{ row.prefix }}-inspector"><span class="recipe-extra-label" id="{{ row.prefix }}-inspector-label">Подробнее</span><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 9v5m0-8v.1"/></svg></summary>
+    <div class="recipe-inspector" id="{{ row.prefix }}-inspector" role="region" aria-labelledby="{{ row.prefix }}-inspector-title">
+      <div class="recipe-inspector-header"><div><small>КОМПОНЕНТ РЕЦЕПТУРЫ</small><h3 id="{{ row.prefix }}-inspector-title" data-recipe-inspector-title>Свойства компонента</h3></div><button type="button" data-recipe-inspector-close aria-label="Закрыть свойства компонента">×</button></div>
+      <div class="recipe-inspector-body">
+        <p class="recipe-inspector-note">Значения из выбранной партии подставляются автоматически. Для отсутствующего значения укажите причину.</p>
+        <div class="recipe-property-fields">
+          {% if kind == 'polyol' %}<div>{% include 'lab/includes/field.html' with field=row.ohv_applicable %}</div>{% endif %}
+          {% if kind == 'gas' %}<div>{% include 'lab/includes/field.html' with field=row.specified_lot %}</div>{% endif %}
+          <div>{% include 'lab/includes/field.html' with field=row.price_currency %}</div>
         </div>
-      {% endif %}
-      <div>
-        {% include 'lab/includes/field.html' with field=row.density_g_ml %}
-        {% include 'lab/includes/field.html' with field=row.density_g_ml_reason %}
-      </div>
-      <div>
-        {% include 'lab/includes/field.html' with field=row.price_per_kg %}
-        {% include 'lab/includes/field.html' with field=row.price_per_kg_reason %}
-      </div>
-      <div>{% include 'lab/includes/field.html' with field=row.price_currency %}</div>
-      {% if kind == 'gas' %}
-        <div>
-          {% include 'lab/includes/field.html' with field=row.pressure_bar %}
-          {% include 'lab/includes/field.html' with field=row.pressure_bar_reason %}
+        <div class="recipe-property-fields recipe-missing-fields">
+          {% include 'lab/includes/field.html' with field=row.material_reason %}
+          {% include 'lab/includes/field.html' with field=row.lot_reason %}
+          {% if row.quantity %}{% include 'lab/includes/field.html' with field=row.quantity_reason %}{% else %}{% include 'lab/includes/field.html' with field=row.nco_pct_reason %}{% endif %}
+          {% if kind == 'polyol' %}{% include 'lab/includes/field.html' with field=row.ohv_reason %}{% endif %}
+          {% include 'lab/includes/field.html' with field=row.density_g_ml_reason %}
+          {% include 'lab/includes/field.html' with field=row.price_per_kg_reason %}
+          {% if kind == 'gas' %}{% include 'lab/includes/field.html' with field=row.pressure_bar_reason %}{% endif %}
         </div>
-      {% endif %}
+        <div class="recipe-inspector-results">
+          <h4>Дополнительные расчёты</h4>
+          {% if kind == 'polyol' %}
+            <div><small>Части изоцианата на 100 частей A</small><output data-recipe-row-output="stoichiometric_iso_parts">—</output><small data-recipe-row-reason="stoichiometric_iso_parts"></small></div>
+            <div><small>Вклад в цену смеси, <span data-recipe-row-currency></span>/кг</small><output data-recipe-row-output="weighted_price">—</output><small data-recipe-row-reason="weighted_price"></small></div>
+          {% else %}
+            <div><small>Объём, мл</small><output data-recipe-row-output="volume_ml">—</output><small data-recipe-row-reason="volume_ml"></small></div>
+            <div><small>Стоимость <span data-recipe-row-currency></span></small><output data-recipe-row-output="cost">—</output><small data-recipe-row-reason="cost"></small></div>
+            <div><small>Доля во всей заправке, % масс.</small><output data-recipe-row-output="mass_pct">—</output><small data-recipe-row-reason="mass_pct"></small></div>
+            <div><small>Опорный объём, мл</small><output data-recipe-row-output="reference_volume_ml">—</output><small data-recipe-row-reason="reference_volume_ml"></small></div>
+            {% if kind == 'gas' %}<div><small>Вклад в давление, бар</small><output data-recipe-row-output="pressure_contribution">—</output><small data-recipe-row-reason="pressure_contribution"></small></div>{% endif %}
+          {% endif %}
+        </div>
+      </div>
     </div>
   </details>
-  <div class="recipe-row-results" aria-label="Расчётные значения компонента">
-    <div><small>{% if kind == 'polyol' %}Навеска, г{% else %}На баллон, г{% endif %}</small><output data-recipe-row-output="mass_g">—</output><small data-recipe-row-reason="mass_g"></small></div>
-    <div><small>Объём, мл</small><output data-recipe-row-output="volume_ml">—</output><small data-recipe-row-reason="volume_ml"></small></div>
-    <div><small>Стоимость <span data-recipe-row-currency></span></small><output data-recipe-row-output="cost">—</output><small data-recipe-row-reason="cost"></small></div>
-    {% if kind == 'polyol' %}<div><small>Вклад OHV</small><output data-recipe-row-output="weighted_ohv">—</output><small data-recipe-row-reason="weighted_ohv"></small></div>{% endif %}
-  </div>
-  <details class="recipe-row-properties">
-    <summary>Промежуточные расчёты</summary>
-    <div class="recipe-row-results">
-      {% if kind == 'polyol' %}
-        <div><small>Части изоцианата на 100 частей A</small><output data-recipe-row-output="stoichiometric_iso_parts">—</output><small data-recipe-row-reason="stoichiometric_iso_parts"></small></div>
-        <div><small>Вклад в цену смеси, <span data-recipe-row-currency></span>/кг</small><output data-recipe-row-output="weighted_price">—</output><small data-recipe-row-reason="weighted_price"></small></div>
-      {% else %}
-        <div><small>Доля в общей заправке, % масс.</small><output data-recipe-row-output="mass_pct">—</output><small data-recipe-row-reason="mass_pct"></small></div>
-        <div><small>Опорный объём, мл</small><output data-recipe-row-output="reference_volume_ml">—</output><small data-recipe-row-reason="reference_volume_ml"></small></div>
-        {% if kind == 'gas' %}<div><small>Вклад в давление смеси, бар</small><output data-recipe-row-output="pressure_contribution">—</output><small data-recipe-row-reason="pressure_contribution"></small></div>{% endif %}
-      {% endif %}
-    </div>
-  </details>
+  {% if row.DELETE %}<button type="button" class="button small formset-remove" data-remove-form aria-label="Удалить строку" title="Удалить строку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7m4-7v7"/></svg></button>{% endif %}
 </div>

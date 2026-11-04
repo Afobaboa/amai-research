@@ -82,8 +82,8 @@ class RecipeMetadataForm(RecipeForm):
 class RecipeSettingsForm(forms.Form):
     iso_ratio_mode = forms.ChoiceField(
         label='Способ задания соотношения A:B',
-        choices=[('parts', 'Задать A:B, рассчитать ISO index'),
-                 ('index', 'Задать ISO index, рассчитать A:B')],
+        choices=[('parts', 'A:B → ISO index'),
+                 ('index', 'ISO index → A:B')],
     )
     isocyanate_present = forms.BooleanField(
         label='В рецептуре используется изоцианат', required=False, initial=True,
@@ -180,8 +180,13 @@ class RecipeRowForm(forms.Form):
                 label='OHV применяется к компоненту', required=False,
                 initial=initial.get('ohv', {}).get('applicable', True),
             )
-        self.fields['specified_lot'].widget.material_id = self['material'].value()
+        self._configure_lot_picker()
         self._mark_snapshot_properties(initial)
+
+    def _configure_lot_picker(self):
+        field = self.fields['specified_lot']
+        field.label_from_instance = lambda lot: lot.lot_code
+        field.widget.material_id = self['material'].value()
 
     def _mark_snapshot_properties(self, initial):
         original = self.original_rows.get(self['row_id'].value(), initial)
