@@ -141,7 +141,11 @@ svg {
   min-width: 0; font-weight: 500; color: var(--amai-ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.feedback-link { flex-shrink: 0; white-space: nowrap; }
+.topbar-actions {
+  display: flex; flex-shrink: 0; gap: 8px; margin-left: auto;
+}
+.topbar-actions .button { white-space: nowrap; }
+.feedback-link { flex-shrink: 0; }
 .topbar-meta {
   display: flex; align-items: center; gap: 8px; flex-shrink: 0;
   font-size: 14px; color: var(--amai-muted);
@@ -708,7 +712,9 @@ input[type=checkbox], input[type=radio] {
 }
 @media (max-width: 480px) {
   #main-content { padding: 24px 16px; }
-  .topbar { padding-inline: 16px; }
+  .topbar { padding-inline: 16px; flex-wrap: wrap; }
+  .topbar-actions { width: 100%; justify-content: flex-end; }
+  .topbar-actions .button { flex: 1; }
   .topbar-meta { display: none; }
   .page-heading { gap: 16px; }
   .heading-actions { width: 100%; }

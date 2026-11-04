@@ -137,7 +137,7 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await page.getByRole('button',{name:/Открыть лабораторию/}).click();
   await page.waitForLoadState('networkidle');
   await page.locator('#lab-assistant').waitFor({state:'visible'});
-  assert.equal(await page.title(),'АМАИ ИССЛЕДОВАНИЯ · Обзор лаборатории');
+  assert.equal(await page.title(),'АМАИ РАЗРАБОТКА · Обзор лаборатории');
   assert.equal(await page.locator('.topbar-meta').count(), 0);
   assert.doesNotMatch(await page.locator('body').innerText(), /AMAI LAB/);
   assert.equal(await page.locator('#assistant-title').textContent(),'ИИ-ассистент');

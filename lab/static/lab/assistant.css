@@ -906,32 +906,8 @@ button.assistant-history-notice {
   color: var(--amai-ink);
 }
 
-.assistant-launcher {
-  position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 25;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: var(--amai-control);
-  padding: 12px 16px;
-  border: 1px solid var(--amai-primary);
-  border-radius: var(--amai-radius);
-  background: var(--amai-primary);
-  color: white;
-  font-size: 16px;
-  font-weight: 600;
-  box-shadow: var(--amai-shadow);
-  cursor: pointer;
-}
-
-.assistant-launcher:hover {
-  background: var(--amai-primary-hover);
-}
-
 .assistant-launcher > span {
-  font-size: 24px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -1100,11 +1076,6 @@ button.assistant-history-notice {
 
   .assistant-scroll {
     padding-top: 16px;
-  }
-
-  .assistant-launcher {
-    right: 16px;
-    bottom: 16px;
   }
 }
 
