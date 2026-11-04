@@ -185,8 +185,15 @@ with make_server('127.0.0.1', 0, StaticFilesHandler(get_wsgi_application()), ser
   await input.fill('');
   assert.equal((await input.boundingBox()).height, emptyInputHeight);
   await page.screenshot({path:join(artifacts,'desktop.png'),fullPage:true});
+  // Reproduce HTTP deployments where randomUUID is unavailable.
+  await page.evaluate(() => Object.defineProperty(crypto, 'randomUUID', {
+    value:undefined, configurable:true,
+  }));
   await page.locator('[data-assistant-prompt]').first().click();
   await page.locator('.assistant-message.is-assistant').waitFor();
+  assert.match(captured[0].request_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    'Sending without randomUUID still supplies a valid UUID v4');
+  await page.evaluate(() => { delete crypto.randomUUID; });
   assert.equal(captured[0].page, '/');
   assert.ok(captured[0].question);
   assert.equal(Object.hasOwn(captured[0], 'form_state'), false, 'Pages without a form do not attach a draft');
