@@ -1,0 +1,73 @@
+/* Catalogue records keep related tables and context visible together. */
+.catalog-workspace { min-width: 0; }
+.catalog-workspace .workspace-heading > div:first-child {
+  min-width: 0; flex: 1;
+}
+.catalog-workspace h1 { overflow-wrap: anywhere; }
+.catalog-inline-note {
+  margin: 0 0 12px; color: var(--amai-muted); font-size: 12px;
+}
+.catalog-workspace .catalog-provenance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  margin: 0; padding: 0; border: 0; background: transparent;
+}
+.catalog-provenance > div:has(.preserve-text) { grid-column: 1 / -1; }
+.catalog-provenance dd { overflow-wrap: anywhere; }
+.catalog-caption {
+  padding: 8px 12px; border-top: 1px solid var(--amai-line);
+  color: var(--amai-muted); font-size: 11px; line-height: 1.5;
+}
+.catalog-source-context { display: grid; gap: 12px; min-width: 0; }
+.catalog-source-context > .panel { margin-bottom: 0; }
+.catalog-source-grid { --workspace-section-height: 140px; }
+.catalog-source-grid .workspace-primary { --workspace-section-height: 280px; }
+.catalog-source-context #source-history { --workspace-section-height: 130px; }
+.catalog-source-context .catalog-provenance { grid-template-columns: 1fr; gap: 8px; }
+.catalog-source-context .catalog-provenance dt { margin-bottom: 2px; }
+.catalog-source-context .catalog-provenance dd { font-size: 12px; }
+.catalog-source-context .catalog-caption { font-size: 10px; }
+.catalog-source-context .empty-state { padding: 12px; }
+.source-workspace .source-picker .field:first-child { max-width: 480px; }
+.source-workspace #source-fragments table { table-layout: fixed; }
+.source-workspace #source-fragments th:first-child { width: 100px; }
+.source-workspace #source-fragments th:nth-child(2) { width: 160px; }
+.source-workspace #source-fragments td { overflow-wrap: anywhere; }
+.source-workspace #source-fragments .preserve-text { line-height: 1.45; }
+.catalog-form .form-grid > .field:has(textarea) { grid-column: auto; }
+.catalog-form textarea { min-height: 88px; }
+
+.catalog-mixture-history {
+  display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px 16px;
+  align-items: baseline; margin-bottom: 12px; padding: 10px 14px;
+  border: 1px solid var(--amai-line); border-radius: var(--amai-radius);
+  background: var(--amai-surface);
+}
+.workspace-ui .catalog-mixture-history h2 { font-size: 12px; }
+.catalog-mixture-history > div { min-width: 0; font-size: 12px; }
+.catalog-mixture-history .timeline-event { padding-bottom: 10px; }
+.catalog-mixture-history .timeline-event:last-child { padding-bottom: 0; }
+.catalog-mixture-count { font-size: 12px; font-variant-numeric: tabular-nums; }
+.catalog-mixture-workspace #mixture-recipes table { table-layout: fixed; }
+.catalog-mixture-workspace #mixture-recipes th:first-child { width: 20%; }
+.catalog-mixture-workspace #mixture-recipes th:last-child { width: 20%; }
+.catalog-mixture-workspace #mixture-recipes td { overflow-wrap: anywhere; }
+
+@media (min-width: 1101px) {
+  .catalog-workspace .catalog-reference-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  }
+  .catalog-reference-grid .workspace-primary { grid-row: span 2; }
+  .catalog-material-grid .workspace-primary { grid-column: 1 / -1; }
+  .catalog-workspace .catalog-source-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .catalog-source-grid .workspace-primary { grid-column: span 2; }
+}
+
+@media (max-width: 640px) {
+  .catalog-mixture-history { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .catalog-mixture-workspace #mixture-recipes table { min-width: 520px; }
+  .source-workspace #source-fragments table { min-width: 640px; }
+  .source-workspace .source-picker .field:first-child { max-width: none; }
+}

@@ -19,7 +19,12 @@ PUBLIC_ASSETS = frozenset({
     'lab/search-select.css', 'lab/search-select.js',
     'lab/assistant.css', 'lab/assistant.js',
 })
-PAGE_ASSETS = frozenset({'lab/recipe-editor.css', 'lab/recipe-editor.js'})
+PAGE_ASSETS = frozenset({
+    'lab/recipe-editor.css', 'lab/recipe-editor.js',
+    'lab/workspace.css', 'lab/workspace.js',
+    'lab/measurements.css', 'lab/measurements.js',
+    'lab/catalog-workspace.css', 'lab/overview-workspace.css',
+})
 
 
 @lru_cache(maxsize=128)

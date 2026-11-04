@@ -2,12 +2,12 @@
 {% block title %}{{ title }}{% endblock %}
 {% block breadcrumb %}Эксперименты<span class="breadcrumb-separator">/</span>{{ title }}{% endblock %}
 {% block content %}
-<div class="form-wrap">
+<div class="experiment-form" data-workspace>
   <a class="back-link" href="{% if card %}{% url 'test_detail' card.pk %}{% else %}{% url 'test_list' %}{% endif %}">← К экспериментам</a>
   <div class="page-heading"><div><h1>{{ title }}</h1><p>Укажите рецептуру, название и даты эксперимента.</p></div></div>
   <form method="post" data-form-draft data-draft-owner="{{ employee.pk }}" data-draft-bound="{{ form.is_bound|yesno:'true,false' }}">{% csrf_token %}
     <section class="panel"><div class="panel-heading"><div><h2>Основная информация</h2><p>Связанная рецептура, название и даты</p></div></div><div class="panel-body">{{ form.non_field_errors }}<div class="form-grid">{% for field in form %}{% include 'lab/includes/field.html' %}{% endfor %}</div></div></section>
-    <div class="info-note">После сохранения добавьте группы измерений: «Основные параметры», «На бумаге», «В форме» и другие. Температура, влажность и давление заполняются в группе «Основные параметры».</div>
+    <div class="info-note">После сохранения добавьте группы измерений: «Основные параметры», «На бумаге», «В форме» и другие. Температура и влажность заполняются в группе «Основные параметры», давление — в «Проверке баллона».</div>
     <div class="form-actions"><button class="button primary" type="submit">Сохранить эксперимент</button><a class="button quiet" href="{% url 'test_list' %}">Отмена</a><small>Автор записи: {{ employee.full_name }}</small></div>
   </form>
 </div>

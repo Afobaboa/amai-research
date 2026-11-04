@@ -1,3 +1,23 @@
-{% extends 'lab/base.html' %}{% block title %}{{ mixture.title|default:mixture.code }}{% endblock %}{% block breadcrumb %}Типы смесей<span class="breadcrumb-separator">/</span>{{ mixture.code }}{% endblock %}{% block content %}
-<a class="back-link" href="{% url 'mixture_list' %}">← Все типы смесей</a><div class="page-heading"><div><h1>{{ mixture.title|default:mixture.code }}</h1></div>{% if can_write %}<a class="button primary" href="{% url 'mixture_edit' mixture.pk %}">Редактировать</a>{% endif %}</div><section class="panel"><div class="panel-heading"><h2>Версии рецептур</h2></div>{% include 'lab/catalog/recipe_usage.html' %}</section><section class="panel"><div class="panel-heading"><h2>История типа смеси</h2></div><div class="panel-body">{% include 'lab/includes/events.html' %}</div></section>
+{% extends 'lab/base.html' %}
+{% block title %}{{ mixture.title|default:mixture.code }}{% endblock %}
+{% block breadcrumb %}Типы смесей<span class="breadcrumb-separator">/</span>{{ mixture.code }}{% endblock %}
+{% block content %}
+<div class="catalog-workspace catalog-mixture-workspace" data-workspace>
+  <a class="back-link" href="{% url 'mixture_list' %}">← Все типы смесей</a>
+  <div class="page-heading workspace-heading">
+    <div><h1>{{ mixture.title|default:mixture.code }}</h1><p class="mono">{{ mixture.code }}</p></div>
+    <div class="heading-actions">
+      {% if can_write %}<a class="button primary" href="{% url 'mixture_edit' mixture.pk %}">Редактировать</a>{% endif %}
+      <button class="button quiet" type="button" data-workspace-fullscreen hidden>На весь экран</button>
+    </div>
+  </div>
+  <section class="catalog-mixture-history" id="mixture-history" data-workspace-section>
+    <h2>История типа смеси</h2>
+    <div>{% if events %}{% include 'lab/includes/events.html' %}{% else %}<p class="muted">Изменений пока нет</p>{% endif %}</div>
+  </section>
+  <section class="panel" id="mixture-recipes" data-workspace-section>
+    <div class="panel-heading"><h2>Версии рецептур</h2><span class="muted catalog-mixture-count">Всего: {{ recipes|length }}</span></div>
+    {% include 'lab/catalog/recipe_usage.html' %}
+  </section>
+</div>
 {% endblock %}

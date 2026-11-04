@@ -1,0 +1,142 @@
+/* Shared worksheet layout for laboratory registers, records and forms. */
+.workspace-ui {
+  --amai-radius: 8px;
+  --amai-radius-sm: 5px;
+}
+.workspace-ui #main-content { max-width: none; padding: 16px 20px 20px; }
+.workspace-ui .topbar { min-height: 52px; padding: 8px 20px; }
+.workspace-ui .page-footer { padding: 10px 20px; font-size: 11px; }
+.workspace-ui .page-heading { gap: 12px; margin-bottom: 14px; }
+.workspace-ui h1 { margin-bottom: 4px; font-size: 23px; letter-spacing: -.6px; }
+.workspace-ui h2 { margin: 0; font-size: 15px; }
+.workspace-ui .page-heading p { font-size: 12px; line-height: 1.5; }
+.workspace-ui .panel { margin-bottom: 12px; box-shadow: none; }
+.workspace-ui .panel-heading { padding: 10px 14px; gap: 10px; }
+.workspace-ui .panel-heading p { margin-top: 4px; font-size: 12px; }
+.workspace-ui .panel-body { padding: 14px; }
+.workspace-ui .heading-actions { gap: 6px; }
+.workspace-ui .back-link { margin-bottom: 5px; }
+.workspace-ui .detail-meta { gap: 12px; padding-top: 5px; font-size: 12px; }
+.workspace-ui .info-note { padding: 10px 12px; margin-bottom: 12px; font-size: 12px; }
+.workspace-ui .meta-list > div { padding-block: 9px; }
+.workspace-ui .meta-list dt { font-size: 12px; }
+.workspace-ui .preserve-text { line-height: 1.55; }
+.workspace-ui .filter-bar { gap: 8px; padding: 10px 12px; }
+.workspace-ui .search-field { max-width: 520px; }
+.workspace-ui .workspace-expand { margin-left: auto; white-space: nowrap; }
+.workspace-ui table { font-size: 13px; font-variant-numeric: tabular-nums; }
+.workspace-ui th { padding: 9px 12px; font-size: 10px; letter-spacing: .025em; }
+.workspace-ui td { padding: 9px 12px; line-height: 1.45; }
+.workspace-ui .cell-subtitle { margin-top: 2px; font-size: 11px; }
+.workspace-ui .table-footer { padding: 6px 12px; font-size: 12px; }
+.workspace-ui .badge { padding: 2px 7px; font-size: 11px; gap: 5px; }
+.workspace-ui .recipe-chip { padding: 2px 6px; }
+.workspace-ui .empty-state { padding: 24px 14px; gap: 8px; }
+.workspace-ui .empty-state p { font-size: 13px; }
+.workspace-ui .form-wrap { max-width: 1280px; }
+.workspace-ui .narrow-form { max-width: 1040px; }
+.workspace-ui .form-grid { gap: 14px 18px; }
+.workspace-ui .field label, .workspace-ui .field legend {
+  margin-bottom: 5px; font-size: 12px; font-weight: 500;
+}
+.workspace-ui :where(#main-content) textarea { min-height: 76px; }
+.workspace-ui .help, .workspace-ui .field-error { margin-top: 5px; font-size: 11px; }
+.workspace-ui .form-actions { margin-top: 10px; padding: 8px 0; gap: 8px; }
+.workspace-ui .form-actions small { font-size: 12px; }
+.workspace-ui .timeline-event { padding-bottom: 14px; font-size: 13px; }
+.workspace-ui .event-meta { margin-top: 4px; font-size: 11px; }
+.workspace-ui .event-kind { font-size: 11px; }
+.workspace-ui .event-details summary { padding-block: 5px; font-size: 12px; }
+.workspace-ui .observation { padding: 10px 12px; margin-bottom: 10px; }
+.workspace-ui .observation p { line-height: 1.5; }
+.workspace-ui .observation small { margin-top: 6px; font-size: 11px; }
+
+.workspace-heading { align-items: center; }
+.workspace-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px;
+  align-items: start; min-width: 0;
+}
+.workspace-grid > * { min-width: 0; }
+.workspace-ui .workspace-grid .panel { margin-bottom: 0; }
+.workspace-primary { --workspace-section-height: 360px; }
+[data-workspace-section] { scroll-margin-top: 12px; }
+.workspace-meta {
+  display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 0 0 12px;
+  padding: 12px 14px; border: 1px solid var(--amai-line);
+  border-radius: var(--amai-radius); background: var(--amai-surface);
+}
+.workspace-meta > div { min-width: 0; }
+.workspace-meta dt { margin-bottom: 4px; color: var(--amai-muted); font-size: 11px; }
+.workspace-meta dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.workspace-table-scroll { overflow: auto; min-width: 0; max-width: 100%; }
+.workspace-scroll { scrollbar-width: thin; overscroll-behavior: contain; }
+.workspace-scroll thead th {
+  position: sticky; top: 0; z-index: 2;
+  box-shadow: 0 1px 0 var(--amai-line); background: #f7f9fc;
+}
+.workspace-scroll:focus-visible { outline-offset: -2px; }
+[data-workspace-fullscreen][hidden] { display: none; }
+body.workspace-expanded .sidebar, body.workspace-expanded .topbar,
+body.workspace-expanded .assistant, body.workspace-expanded .assistant-backdrop,
+body.workspace-expanded .page-footer { display: none !important; }
+body.workspace-expanded .main-shell { margin: 0; }
+body.workspace-expanded #main-content { padding: 12px; }
+
+@media (min-width: 1101px) and (pointer: fine) {
+  .workspace-ui :where(#main-content, .topbar, .sidebar) {
+    --amai-control: 34px; --amai-control-sm: 30px;
+  }
+  .workspace-ui .sidebar { padding-top: 20px; }
+  .workspace-ui .brand { margin-bottom: 20px; }
+  .workspace-ui .sidebar .nav-link {
+    min-height: 34px; margin-bottom: 3px; padding: 8px 12px;
+    gap: 10px; font-size: 13px; border-radius: 6px;
+  }
+  .workspace-ui .sidebar .nav-section { margin: 17px 12px 9px; font-size: 10px; }
+  .workspace-ui .profile { padding-top: 10px; }
+  .workspace-ui .profile strong, .workspace-ui .profile small { font-size: 12px; }
+  .workspace-ui .logout-form { margin-bottom: 6px; }
+  .workspace-ui .logout-form button { font-size: 12px; }
+  .workspace-ui .button { padding: 6px 10px; font-size: 12px; border-radius: 5px; }
+  .workspace-ui .button.small { padding: 5px 9px; font-size: 12px; }
+  .workspace-ui .text-link, .workspace-ui .back-link { font-size: 12px; }
+  .workspace-ui :where(#main-content) input:not([type=checkbox], [type=radio], [type=hidden]),
+  .workspace-ui :where(#main-content) select,
+  .workspace-ui :where(#main-content) textarea {
+    padding: 6px 9px; font-size: 13px;
+  }
+  .workspace-ui .search-select-trigger {
+    min-height: var(--amai-control); padding: 6px 9px; font-size: 13px;
+  }
+  .workspace-ui .search-field input { padding-left: 34px !important; }
+  .workspace-ui .row-arrow { font-size: 18px; }
+  .workspace-scroll { max-height: var(--workspace-table-height, calc(100dvh - 260px)); }
+  .workspace-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace-grid .workspace-scroll { max-height: var(--workspace-section-height, 220px); }
+  .catalog-form #id_metrics { max-height: max(180px, calc(100dvh - 390px)); overflow: auto; }
+}
+@media (max-width: 1100px), (pointer: coarse) {
+  .workspace-ui :where(#main-content) input:not([type=checkbox], [type=radio], [type=hidden]),
+  .workspace-ui :where(#main-content) select,
+  .workspace-ui :where(#main-content) textarea { font-size: 16px; }
+  .workspace-ui .button { font-size: 14px; }
+  .workspace-ui td { padding-block: 12px; }
+}
+@media (max-width: 800px) {
+  .workspace-ui #main-content { padding: 14px 16px; }
+  .workspace-ui .topbar { min-height: 64px; padding: 8px 16px; }
+  .workspace-ui .page-heading { flex-wrap: wrap; }
+  .workspace-ui h1 { font-size: 22px; overflow-wrap: anywhere; }
+  .workspace-ui .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .workspace-meta { gap: 12px 20px; }
+  .workspace-meta > div { flex: 1 1 140px; }
+  .workspace-ui .page-footer { padding-inline: 16px; }
+}
+@media print {
+  [data-workspace-fullscreen] { display: none !important; }
+  .workspace-grid { display: block; }
+  .workspace-ui .workspace-grid .panel { margin-bottom: 12px; }
+  .workspace-grid .workspace-scroll { max-height: none; }
+  .workspace-scroll { max-height: none; overflow: visible; }
+  .workspace-scroll thead th { position: static; }
+}

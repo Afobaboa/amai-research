@@ -420,6 +420,11 @@ def _save_recipe_match(card, recipe):
         )
 
 
+def _experiment_redirect(card, section=''):
+    url = reverse('test_detail', args=[card.pk])
+    return redirect(f'{url}#{section}' if section else url)
+
+
 def _save_experiment(request, form, card):
     with transaction.atomic():
         locked = TestSession.objects.select_for_update().get(pk=card.pk) if card else None
@@ -436,7 +441,7 @@ def _save_experiment(request, form, card):
                f"Сохранён эксперимент {saved.identifier or saved.pk}",
                before=before, after=_card_snapshot(saved))
     messages.success(request, 'Эксперимент сохранён.', extra_tags='form-draft-saved')
-    return redirect('test_detail', pk=saved.pk)
+    return _experiment_redirect(saved, 'experiment-info' if card else '')
 
 
 @author_required
@@ -467,60 +472,96 @@ def _source_changed(card, cell):
     return bool(cell and card.source_sheet_id and cell.sheet_id != card.source_sheet_id)
 
 
+def _stale_source_response():
+    return HttpResponse(
+        'Источник карточки изменился. Обновите форму и проверьте первичную ячейку.',
+        status=409,
+    )
+
+
+def _save_observation(request, card, form):
+    with transaction.atomic():
+        card = TestSession.objects.select_for_update().get(pk=card.pk)
+        if card.status == 'completed':
+            return HttpResponseForbidden('Карточка уже завершена.')
+        if _source_changed(card, form.cleaned_data.get('source_cell')):
+            return _stale_source_response()
+        run = form.cleaned_data['run']
+        sequence = run.observations.aggregate(value=Max('sequence_no'))
+        observation = Observation.objects.create(
+            test_run=run, sequence_no=(sequence['value'] or 0) + 1,
+            text_value=form.cleaned_data['text_value'],
+            source_cell=form.cleaned_data.get('source_cell'),
+        )
+        _audit(request, card, 'observation_added', 'Добавлено наблюдение',
+               after={'observation': model_to_dict(observation)})
+    messages.success(request, 'Наблюдение сохранено дословно.')
+    return _experiment_redirect(card, f'measurement-run-{run.pk}')
+
+
 @author_required
 def observation_add(request, pk):
     card = get_object_or_404(TestSession, pk=pk)
-    if card.status == "completed":
-        return HttpResponseForbidden("Завершённый эксперимент доступен только для просмотра.")
+    if card.status == 'completed':
+        return HttpResponseForbidden(
+            'Завершённый эксперимент доступен только для просмотра.',
+        )
     form = ObservationForm(
-        request.POST or None, card=card, initial={"run": request.GET.get("run")},
+        request.POST or None, card=card, initial={'run': request.GET.get('run')},
     )
-    if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            card = TestSession.objects.select_for_update().get(pk=pk)
-            if card.status == "completed":
-                return HttpResponseForbidden("Карточка уже завершена.")
-            if _source_changed(card, form.cleaned_data.get('source_cell')):
-                return HttpResponse('Источник карточки изменился. Обновите форму и проверьте первичную ячейку.', status=409)
-            run = form.cleaned_data["run"]
-            seq = (run.observations.aggregate(value=Max("sequence_no"))["value"] or 0) + 1
-            observation = Observation.objects.create(test_run=run, sequence_no=seq, text_value=form.cleaned_data["text_value"], source_cell=form.cleaned_data.get('source_cell'))
-            _audit(request, card, "observation_added", "Добавлено наблюдение", after={"observation": model_to_dict(observation)})
-        messages.success(request, "Наблюдение сохранено дословно.")
-        return redirect("test_detail", pk=pk)
-    return render(request, "lab/observation_form.html", {"form": form, "card": card, "title": "Добавить наблюдение"})
+    if request.method == 'POST' and form.is_valid():
+        return _save_observation(request, card, form)
+    return render(request, 'lab/observation_form.html', {
+        'form': form, 'card': card, 'title': 'Добавить наблюдение',
+    })
+
+
+def _save_conditioning(request, card, form):
+    with transaction.atomic():
+        card = TestSession.objects.select_for_update().get(pk=card.pk)
+        if card.status == 'completed':
+            return HttpResponseForbidden('Карточка уже завершена.')
+        event = form.save(commit=False)
+        if _source_changed(card, event.source_cell):
+            return _stale_source_response()
+        event.session = card
+        sequence = card.conditioning_events.aggregate(value=Max('step_no'))
+        event.step_no = (sequence['value'] or 0) + 1
+        event.full_clean()
+        event.save()
+        _audit(request, card, 'conditioning_added', 'Записана обработка',
+               after={'conditioning': model_to_dict(event)})
+    messages.success(request, 'Обработка записана.')
+    return _experiment_redirect(card, 'experiment-conditioning')
+
+
+def _validate_conditioning_source(form, card):
+    cell = form.cleaned_data.get('source_cell')
+    if cell and card.source_sheet_id and cell.sheet_id != card.source_sheet_id:
+        form.add_error(
+            'source_cell', 'Ячейка должна принадлежать листу источника карточки.',
+        )
 
 
 @author_required
 def conditioning_add(request, pk):
     card = get_object_or_404(TestSession, pk=pk)
-    if card.status == "completed":
-        return HttpResponseForbidden("Завершённый эксперимент доступен только для просмотра.")
+    if card.status == 'completed':
+        return HttpResponseForbidden(
+            'Завершённый эксперимент доступен только для просмотра.',
+        )
     form = ConditioningForm(request.POST or None)
     if card.source_sheet_id:
-        form.fields["source_cell"].widget.attrs[
-            "data-source-sheet"
-        ] = str(card.source_sheet_id)
+        form.fields['source_cell'].widget.attrs['data-source-sheet'] = str(
+            card.source_sheet_id,
+        )
     if request.method == 'POST' and form.is_valid():
-        cell = form.cleaned_data.get('source_cell')
-        if cell and card.source_sheet_id and cell.sheet_id != card.source_sheet_id:
-            form.add_error('source_cell', 'Ячейка должна принадлежать листу источника карточки.')
-    if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            card = TestSession.objects.select_for_update().get(pk=pk)
-            if card.status == "completed":
-                return HttpResponseForbidden("Карточка уже завершена.")
-            event = form.save(commit=False)
-            if _source_changed(card, event.source_cell):
-                return HttpResponse('Источник карточки изменился. Обновите форму и проверьте первичную ячейку.', status=409)
-            event.session = card
-            event.step_no = (card.conditioning_events.aggregate(value=Max("step_no"))["value"] or 0) + 1
-            event.full_clean()
-            event.save()
-            _audit(request, card, "conditioning_added", "Записана обработка", after={"conditioning": model_to_dict(event)})
-        messages.success(request, "Обработка записана.")
-        return redirect("test_detail", pk=pk)
-    return render(request, "lab/conditioning_form.html", {"form": form, "card": card, "title": "Записать обработку"})
+        _validate_conditioning_source(form, card)
+        if form.is_valid():
+            return _save_conditioning(request, card, form)
+    return render(request, 'lab/conditioning_form.html', {
+        'form': form, 'card': card, 'title': 'Записать обработку',
+    })
 
 
 @site_required

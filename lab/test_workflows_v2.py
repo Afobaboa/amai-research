@@ -271,6 +271,31 @@ class ExpandedWorkflowTests(TestCase):
         self.assertEqual(result.source_cell_id, self.qty_cell.pk)
         self.assertEqual(result.numeric_value, Decimal(-18))
 
+    def test_conditioning_returns_to_processing_section_and_rejects_other_sheet(self):
+        card = TestSession.objects.create(
+            identifier='WINTER.PROCESSING', status='active',
+            source_sheet=self.sheet,
+        )
+        url = reverse('conditioning_add', args=[card.pk])
+        payload = {
+            'target_kind': 'can', 'kind': 'conditioning',
+            'duration_value': '0', 'duration_unit': 'ч', 'temperature_c': '0',
+            'source_cell': self.other_cell.pk,
+        }
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('source_cell', response.context['form'].errors)
+        self.assertFalse(card.conditioning_events.exists())
+        payload['source_cell'] = self.qty_cell.pk
+        response = self.client.post(url, payload)
+        self.assertRedirects(
+            response, reverse('test_detail', args=[card.pk])
+            + '#experiment-conditioning',
+        )
+        event = card.conditioning_events.get()
+        self.assertEqual(event.source_cell_id, self.qty_cell.pk)
+        self.assertEqual(event.duration_value, Decimal(0))
+
     def test_publication_snapshot_distinguishes_unknown_price_from_free_batch(self):
         MaterialLot.objects.filter(pk=self.lot.pk).update(price_per_kg=None)
         missing = self.assert_saved(self.client.post(reverse('recipe_create'),

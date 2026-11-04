@@ -228,7 +228,15 @@ class WorkflowTests(TestCase):
         self.assertRedirects(response, reverse("test_detail", args=[card.pk]))
         self.assertFalse(card.runs.exists())
         self.assertEqual(card.recipe_matches.get(status="confirmed").recipe_version_id, self.recipe.pk)
-        self.client.post(reverse("test_edit", args=[card.pk]), self.card_payload(title="Исправленное название", **{"conditions-0-numeric_value": "-18"}))
+        response = self.client.post(
+            reverse('test_edit', args=[card.pk]), self.card_payload(
+                title='Исправленное название',
+                **{'conditions-0-numeric_value': '-18'},
+            ),
+        )
+        self.assertRedirects(
+            response, reverse('test_detail', args=[card.pk]) + '#experiment-info',
+        )
         card.refresh_from_db()
         self.assertEqual(card.title, "Исправленное название")
         event = ChangeEvent.objects.filter(entity_type="test", entity_id=card.pk).latest("pk")
@@ -243,7 +251,12 @@ class WorkflowTests(TestCase):
         valid = {'measurement_group': self.measurement_group.pk,
                  f'metric_{self.metric.pk}': '0',
                  f'metric_{self.text_metric.pk}_reason': 'Не наблюдали'}
-        self.assertRedirects(self.client.post(url, valid), reverse('test_detail', args=[self.card.pk]))
+        response = self.client.post(url, valid)
+        run = self.card.runs.latest('pk')
+        self.assertRedirects(
+            response, reverse('test_detail', args=[self.card.pk])
+            + f'#measurement-run-{run.pk}',
+        )
         self.assertEqual(Result.objects.get(metric=self.metric).numeric_value, Decimal('0'))
         invalid = {**valid, f'metric_{self.metric.pk}': 'not a number'}
         self.assertEqual(self.client.post(url, invalid).status_code, 200)
@@ -252,8 +265,20 @@ class WorkflowTests(TestCase):
     def test_observation_preserves_text_and_completed_card_is_readonly(self):
         self.sign_in()
         text = "  Первая строка\nВторая строка  "
-        self.assertRedirects(self.client.post(reverse("observation_add", args=[self.card.pk]), {"run": self.test_run.pk, "text_value": text}), reverse("test_detail", args=[self.card.pk]))
-        self.assertEqual(self.test_run.observations.get().text_value, text)
+        run = TestRun.objects.create(
+            session=self.card, scope=self.measurement_group.name,
+            measurement_group=self.measurement_group,
+        )
+        url = reverse('observation_add', args=[self.card.pk])
+        selected = self.client.get(url, {'run': run.pk})
+        self.assertEqual(str(selected.context['form']['run'].value()), str(run.pk))
+        response = self.client.post(url, {'run': run.pk, 'text_value': text})
+        self.assertRedirects(
+            response, reverse('test_detail', args=[self.card.pk])
+            + f'#measurement-run-{run.pk}',
+        )
+        self.assertEqual(run.observations.get().text_value, text)
+        self.assertFalse(self.test_run.observations.exists())
         TestSession.objects.filter(pk=self.card.pk).update(status="completed")
         for route in ["test_edit", "result_add", "observation_add", "conditioning_add"]:
             self.assertEqual(self.client.post(reverse(route, args=[self.card.pk]), {}).status_code, 403)

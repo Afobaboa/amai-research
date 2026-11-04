@@ -16,7 +16,8 @@
     "test:forms": "npm run build && node checks/browser.mjs --forms-only",
     "test:forms:firefox": "npm run build && node checks/browser.mjs --forms-only --firefox",
     "test:assistant": "npm run build && node checks/assistant_browser.mjs",
-    "test:recipe-editor": "npm run build && node checks/recipe_editor.mjs"
+    "test:recipe-editor": "npm run build && node checks/recipe_editor.mjs",
+    "test:workspace": "npm run build && node checks/workspace_browser.mjs"
   },
   "devDependencies": {
     "playwright": "1.64.1",

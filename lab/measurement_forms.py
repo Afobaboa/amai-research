@@ -66,6 +66,16 @@ class GroupValuesForm(forms.Form):
                  for key in (entry[0], entry[0] + '_reason')]
         self.order_fields(['method_code', *names, 'observation', 'source_cell'])
 
+    @property
+    def value_rows(self):
+        return [
+            {
+                'value': self[name], 'reason': self[name + '_reason'],
+                'metric': metric, 'result': result, 'locked': locked,
+            }
+            for name, metric, result, locked in self.entries
+        ]
+
     def _add_values(self):
         seen = set()
         if self.run:

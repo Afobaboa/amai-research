@@ -13,7 +13,7 @@ from .measurement_forms import (
 )
 from .models import MeasurementGroup, Observation, Result, TestRun, TestSession
 from .search import filter_search
-from .views import _audit, author_required, site_required
+from .views import _audit, _experiment_redirect, author_required, site_required
 
 
 @site_required
@@ -133,7 +133,7 @@ def _save_group(request, card, group, run):
                f'Сохранена группа измерений «{group.name}»',
                before=before, after=_run_snapshot(run))
     messages.success(request, 'Группа измерений сохранена.', extra_tags='form-draft-saved')
-    return redirect('test_detail', pk=card.pk)
+    return _experiment_redirect(card, f'measurement-run-{run.pk}')
 
 
 def _entry_page(request, card, group, form, run=None, selection=None):

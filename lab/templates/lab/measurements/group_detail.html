@@ -2,13 +2,30 @@
 {% block title %}{{ group.name }}{% endblock %}
 {% block breadcrumb %}Группы измерений<span class="breadcrumb-separator">/</span>{{ group.name }}{% endblock %}
 {% block content %}
-<a class="back-link" href="{% url 'measurement_group_list' %}">← Группы измерений</a>
-<div class="page-heading"><div><h1>{{ group.name }}</h1><p>{{ group.description|default:'Набор показателей для эксперимента.' }}</p></div>{% if can_write %}<a class="button" href="{% url 'measurement_group_edit' group.pk %}">Редактировать группу</a>{% endif %}</div>
-<section class="panel"><div class="panel-heading"><h2>Показатели группы</h2>{% if can_write %}<a class="text-link" href="{% url 'metric_create' %}">Создать показатель</a>{% endif %}</div>
-  <div class="table-scroll"><table><thead><tr><th>ПОКАЗАТЕЛЬ</th><th>ЕДИНИЦА</th><th>ТИП ЗНАЧЕНИЯ</th></tr></thead><tbody>
-    {% for metric in metrics %}<tr><td>{{ metric.label }}</td><td>{{ metric.unit_code|default:'—' }}</td><td>{{ metric.get_value_kind_display }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">Добавьте показатели через редактирование группы.</td></tr>{% endfor %}
-  </tbody></table></div>
-</section>
-<div class="info-note">При добавлении этой группы в эксперимент появятся поля для всех её показателей. Один показатель может входить в несколько групп.</div>
-<section class="panel"><div class="panel-heading"><h2>История группы</h2></div><div class="panel-body">{% include 'lab/includes/events.html' %}</div></section>
+<div class="catalog-workspace" data-workspace>
+  <a class="back-link" href="{% url 'measurement_group_list' %}">← Группы измерений</a>
+  <div class="page-heading workspace-heading">
+    <div><h1>{{ group.name }}</h1></div>
+    <div class="heading-actions">
+      {% if can_write %}<a class="button" href="{% url 'measurement_group_edit' group.pk %}">Редактировать группу</a>{% endif %}
+      <button class="button quiet" type="button" data-workspace-fullscreen hidden>На весь экран</button>
+    </div>
+  </div>
+  <div class="workspace-grid catalog-reference-grid">
+  <section class="panel workspace-primary" id="group-metrics" data-workspace-section>
+    <div class="panel-heading"><h2>Показатели группы</h2>{% if can_write %}<a class="text-link" href="{% url 'metric_create' %}">Создать показатель</a>{% endif %}</div>
+    <div class="table-scroll workspace-table-scroll"><table>
+      <thead><tr><th>ПОКАЗАТЕЛЬ</th><th>ЕДИНИЦА</th><th>ТИП ЗНАЧЕНИЯ</th></tr></thead>
+      <tbody>{% for metric in metrics %}<tr><td>{{ metric.label }}</td><td>{{ metric.unit_code|default:'—' }}</td><td>{{ metric.get_value_kind_display }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">Добавьте показатели через редактирование группы.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  <section class="panel" id="group-about" data-workspace-section>
+    <div class="panel-heading"><h2>Описание группы</h2></div>
+    <div class="panel-body"><p class="preserve-text">{{ group.description|default:'Набор показателей для эксперимента.' }}</p><p class="muted">При добавлении этой группы в эксперимент появятся поля для всех её показателей. Один показатель может входить в несколько групп.</p></div>
+  </section>
+  <section class="panel" id="group-history" data-workspace-section>
+    <div class="panel-heading"><h2>История группы</h2></div><div class="panel-body workspace-table-scroll">{% include 'lab/includes/events.html' %}</div>
+  </section>
+  </div>
+</div>
 {% endblock %}

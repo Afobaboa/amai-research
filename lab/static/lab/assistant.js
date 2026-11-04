@@ -451,8 +451,9 @@
         setWidth(next, true);
     });
     window.addEventListener('resize', () => { stopResize(); setWidth(); });
+    const workspaceExpanded = () => document.body.matches('.workspace-expanded, .recipe-workspace-expanded');
     const syncModal = () => {
-        const modal = open && !desktop.matches;
+        const modal = open && !desktop.matches && !workspaceExpanded();
         document.body.classList.toggle('assistant-modal-open', modal);
         backdrop.hidden = !modal;
         panel.setAttribute('role', modal ? 'dialog' : 'complementary');
@@ -463,6 +464,17 @@
         document.querySelectorAll('.main-shell, .sidebar')
             .forEach(node => { node.inert = modal; });
     };
+    let expandedWorkspace = workspaceExpanded();
+    new MutationObserver(() => {
+        const expanded = workspaceExpanded();
+        if (expanded === expandedWorkspace)
+            return;
+        expandedWorkspace = expanded;
+        syncModal();
+        if (!expanded && open && !desktop.matches) {
+            $('close').focus({ preventScroll: true });
+        }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
     const setOpen = (value, focus = false, remember = true) => {
         if (!value) {
             stopResize();
@@ -496,7 +508,7 @@
             syncModal();
     });
     document.addEventListener('keydown', event => {
-        if (!open)
+        if (!open || workspaceExpanded())
             return;
         if (event.key === 'Escape') {
             event.preventDefault();

@@ -3,30 +3,34 @@
 {% block title %}{{ category.name }}{% endblock %}
 {% block breadcrumb %}Категории материалов<span class="breadcrumb-separator">/</span>{{ category.name }}{% endblock %}
 {% block content %}
-<a class="back-link" href="{% url 'category_list' %}">← Все категории материалов</a>
-<div class="page-heading">
-  <div><h1>{{ category.name }}</h1><p class="preserve-text">{{ category.description|default:'Описание категории пока не задано.' }}</p></div>
-  {% if can_write %}<a class="button" href="{% url 'category_edit' category.pk %}">Редактировать</a>{% endif %}
-</div>
-<section class="panel">
-  <div class="panel-heading"><h2>Материалы категории</h2><span>{{ page_obj.paginator.count }}</span></div>
-  <div class="table-scroll">
-    <table>
-      <thead><tr><th>МАТЕРИАЛ</th><th>ПАРТИИ</th></tr></thead>
-      <tbody>
-        {% for material in materials %}
-        <tr>
-          <td><a class="record-link" href="{% url 'material_detail' material.pk %}">{{ material.name }}</a></td>
-          <td><a class="record-link" href="{% url 'lot_list' %}?material={{ material.pk }}">{{ material.lot_count }}</a></td>
-        </tr>
-        {% empty %}<tr><td colspan="2" class="muted">Материалы этой категории пока не назначены.</td></tr>{% endfor %}
-      </tbody>
-    </table>
+<div class="catalog-workspace" data-workspace>
+  <a class="back-link" href="{% url 'category_list' %}">← Все категории материалов</a>
+  <div class="page-heading workspace-heading">
+    <div><h1>{{ category.name }}</h1></div>
+    <div class="heading-actions">
+      {% if can_write %}<a class="button" href="{% url 'category_edit' category.pk %}">Редактировать</a>{% endif %}
+      <button class="button quiet" type="button" data-workspace-fullscreen hidden>На весь экран</button>
+    </div>
   </div>
-  {% include 'lab/includes/pagination.html' %}
-</section>
-<section class="panel">
-  <div class="panel-heading"><h2>История категории</h2></div>
-  <div class="panel-body">{% include 'lab/includes/events.html' %}</div>
-</section>
+  <div class="workspace-grid catalog-reference-grid">
+  <section class="panel workspace-primary" id="category-materials" data-workspace-section>
+    <div class="panel-heading"><h2>Материалы категории</h2><span>{{ page_obj.paginator.count }}</span></div>
+    <div class="table-scroll workspace-table-scroll"><table>
+      <thead><tr><th>МАТЕРИАЛ</th><th>ПАРТИИ</th></tr></thead>
+      <tbody>{% for material in materials %}<tr>
+        <td><a class="record-link" href="{% url 'material_detail' material.pk %}">{{ material.name }}</a></td>
+        <td><a class="record-link" href="{% url 'lot_list' %}?material={{ material.pk }}">{{ material.lot_count }}</a></td>
+      </tr>{% empty %}<tr><td colspan="2" class="muted">Материалы этой категории пока не назначены.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% include 'lab/includes/pagination.html' %}
+  </section>
+  <section class="panel" id="category-about" data-workspace-section>
+    <div class="panel-heading"><h2>Описание категории</h2></div>
+    <div class="panel-body preserve-text">{{ category.description|default:'Описание категории пока не задано.' }}</div>
+  </section>
+  <section class="panel" id="category-history" data-workspace-section>
+    <div class="panel-heading"><h2>История категории</h2></div><div class="panel-body workspace-table-scroll">{% include 'lab/includes/events.html' %}</div>
+  </section>
+  </div>
+</div>
 {% endblock %}

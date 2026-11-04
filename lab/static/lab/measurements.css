@@ -1,0 +1,182 @@
+/* Experiments share the recipe worksheet's compact, full-width layout. */
+.experiment-workspace, .measurement-workspace, .experiment-form {
+  min-width: 0; width: 100%; max-width: none;
+}
+.experiment-workspace { container-type: inline-size; }
+.experiment-title-line, .experiment-recipe-match {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.experiment-title-line h1 { margin-bottom: 0; }
+.experiment-info-strip {
+  margin-bottom: 12px; padding: 10px 12px; background: var(--amai-surface);
+  border: 1px solid var(--amai-line); border-radius: var(--amai-radius);
+}
+.experiment-meta-strip {
+  display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0;
+}
+.experiment-meta-strip > div { min-width: 0; }
+.experiment-meta-strip dt {
+  margin-bottom: 3px; color: var(--amai-muted); font-size: 10px;
+}
+.experiment-meta-strip dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.experiment-info-recipes dd { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.experiment-info-notes {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 8px;
+  padding-top: 8px; border-top: 1px solid var(--amai-line); font-size: 12px;
+}
+.experiment-info-notes > strong {
+  flex-shrink: 0; color: var(--amai-muted); font-size: 10px; font-weight: 500;
+}
+.experiment-info-notes .preserve-text { min-width: 0; }
+.experiment-groups { --workspace-section-height: 170px; }
+.experiment-support { --workspace-section-height: 140px; margin-top: 12px; }
+.experiment-groups .panel, .experiment-support .panel { margin: 0; }
+.experiment-groups .panel-heading, .experiment-support .panel-heading {
+  padding: 8px 10px; flex-wrap: nowrap; align-items: center;
+}
+.experiment-group-heading { min-width: 0; }
+.experiment-groups .panel-heading h2, .experiment-support .panel-heading h2 {
+  font-size: 13px; line-height: 1.35; overflow-wrap: anywhere;
+}
+.experiment-groups .panel-heading p { margin-top: 2px; font-size: 10px; }
+.experiment-groups .heading-actions { flex-shrink: 0; flex-wrap: nowrap; }
+.experiment-groups .button.small { padding-inline: 7px; font-size: 11px; }
+.experiment-results-table { table-layout: fixed; }
+.experiment-results-table th:first-child { width: 42%; }
+.experiment-results-table th:nth-child(2) { width: 26%; }
+.experiment-results-table th:nth-child(3) { width: 32%; }
+.experiment-groups th, .experiment-groups td,
+.experiment-support th, .experiment-support td { padding: 6px 9px; }
+.experiment-results-table td { font-size: 12px; overflow-wrap: anywhere; }
+.experiment-results-table td:nth-child(2) { color: #2862a9; background: #f3f7fd; }
+.experiment-results-table .cell-subtitle { font-family: var(--amai-font); }
+.experiment-result-unit, .experiment-results-table .experiment-origin {
+  color: var(--amai-muted); font-size: 10px;
+}
+.experiment-results-table .experiment-origin a { white-space: nowrap; }
+.experiment-results .experiment-observations { padding: 8px 10px; }
+.experiment-observations h3 { margin-bottom: 6px; font-size: 12px; }
+.experiment-results .observation {
+  padding: 7px 9px; margin-bottom: 6px; border-left-width: 2px;
+}
+.experiment-results .observation p { font-size: 12px; line-height: 1.45; }
+.experiment-results .observation small { margin-top: 4px; font-size: 10px; }
+.experiment-conditioning-table { table-layout: fixed; }
+.experiment-conditioning-table th { white-space: normal; }
+.experiment-conditioning-table td { overflow-wrap: anywhere; font-size: 12px; }
+.measurement-selection { max-width: 620px; }
+.measurement-method {
+  padding: 10px 12px; border-bottom: 1px solid var(--amai-line);
+}
+.measurement-method .field { display: flex; align-items: center; gap: 12px; }
+.measurement-method .field > label { margin: 0; white-space: nowrap; }
+.measurement-method input { max-width: 420px; }
+.measurement-table { table-layout: fixed; min-width: 680px; }
+.measurement-table thead th:nth-child(1) { width: 26%; }
+.measurement-table thead th:nth-child(2) { width: 17%; }
+.measurement-table thead th:nth-child(3) { width: 8%; }
+.measurement-table thead th:nth-child(4) { width: 31%; }
+.measurement-table thead th:nth-child(5) { width: 18%; }
+.measurement-table tbody th {
+  font-size: 12px; font-weight: 500; color: var(--amai-ink);
+  letter-spacing: 0; text-transform: none; white-space: normal;
+  background: transparent; border-bottom: 1px solid var(--amai-line);
+}
+.measurement-table td { padding: 0 8px; vertical-align: middle; }
+.measurement-table td.measurement-value-cell { padding: 0; background: #f0f6ff; }
+.measurement-table td.measurement-reason-cell { padding: 0; }
+.measurement-table .field > label, .measurement-table .help {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.measurement-workspace .measurement-table input {
+  min-height: var(--amai-control); border: 1px solid transparent; border-radius: 0;
+  padding: 6px 8px; background: transparent; box-shadow: none; font-size: 12px;
+}
+.measurement-table .measurement-value-cell input {
+  color: #2862a9; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.measurement-workspace .measurement-table input:focus {
+  border-color: var(--amai-primary); background: white;
+}
+.measurement-table .field-error { margin: 0; padding: 4px 8px; font-size: 11px; }
+.measurement-table .invalid input { border-color: var(--amai-danger); }
+.measurement-table .measurement-origin {
+  color: var(--amai-muted); font-size: 11px; overflow-wrap: anywhere;
+}
+.measurement-workspace .measurement-locked input:disabled {
+  color: var(--amai-muted); -webkit-text-fill-color: currentColor;
+  background: #f7f9fc; opacity: 1;
+}
+.measurement-note { border-top: 1px solid var(--amai-line); }
+.measurement-note > summary {
+  min-height: var(--amai-control);
+  padding: 10px 12px; color: var(--amai-muted); font-size: 12px; cursor: pointer;
+}
+.measurement-note > div { padding: 0 12px 12px; }
+.measurement-note textarea { min-height: 76px; }
+.experiment-form .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+}
+.experiment-form .field:has(#id_title) { grid-column: span 2; }
+.experiment-form .field:has(textarea) { grid-column: 1 / -1; }
+.experiment-form textarea { min-height: 76px; }
+@media (max-width: 800px) {
+  .experiment-form .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .experiment-form .field:has(#id_title) { grid-column: auto; }
+  .experiment-meta-strip { gap: 8px 16px; }
+}
+@media (max-width: 640px) {
+  .experiment-form .form-grid { grid-template-columns: 1fr; }
+  .experiment-title-line { gap: 8px; }
+  .experiment-info-notes { display: block; }
+  .experiment-info-notes > strong { display: block; margin-bottom: 4px; }
+  .experiment-groups .panel-heading { flex-wrap: wrap; }
+  .experiment-groups .heading-actions { margin-left: auto; }
+  .experiment-results-table { min-width: 320px; }
+  .experiment-results-table .experiment-origin a { white-space: normal; }
+  .measurement-method .field { display: block; }
+  .measurement-method .field > label { margin-bottom: 6px; white-space: normal; }
+  .measurement-table { min-width: 0; }
+  .measurement-table thead { display: none; }
+  .measurement-table tbody, .measurement-table tr { display: block; }
+  .measurement-table tr { padding: 10px; border-bottom: 1px solid var(--amai-line); }
+  .measurement-table tbody th, .measurement-table td {
+    display: block; width: 100%; padding: 4px 0; border: 0;
+  }
+  .measurement-table tbody th { padding: 0 0 6px; }
+  .measurement-table td.measurement-unit { display: none; }
+  .measurement-table .measurement-value-cell .field > label {
+    position: static; display: block; width: auto; height: auto;
+    margin: 0 0 4px; overflow: visible; clip-path: none; white-space: normal;
+    color: var(--amai-muted); font-size: 11px;
+  }
+  .measurement-table .measurement-reason-cell .field > label {
+    position: static; display: block; width: auto; height: auto;
+    margin: 6px 0 4px; overflow: visible; clip-path: none; white-space: normal;
+    color: var(--amai-muted); font-size: 11px;
+  }
+  .measurement-workspace .measurement-table input {
+    border-color: var(--amai-input-line); border-radius: 5px;
+    background: white;
+  }
+  .measurement-table td.measurement-value-cell { background: transparent; }
+  .measurement-table .measurement-origin { padding-top: 8px; }
+}
+@media (max-width: 1100px), (pointer: coarse) {
+  .measurement-workspace .measurement-table input { font-size: 16px; }
+}
+
+@media (min-width: 1300px) and (pointer: fine) {
+  body.workspace-expanded .experiment-groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1700px) and (pointer: fine) {
+  body:not(.assistant-open) .experiment-workspace .experiment-groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (min-width: 1000px) {
+  .experiment-groups { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

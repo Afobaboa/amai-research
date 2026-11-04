@@ -81,8 +81,11 @@ class MeasurementGroupWorkflowTests(TestCase):
             f'metric_{self.numeric.pk}': '0', f'metric_{self.text.pk}': '5-',
             'observation': text,
         })
-        self.assertRedirects(response, reverse('test_detail', args=[self.card.pk]))
         run = self.card.runs.get()
+        self.assertRedirects(
+            response, reverse('test_detail', args=[self.card.pk])
+            + f'#measurement-run-{run.pk}',
+        )
         self.assertEqual(run.measurement_group, self.group)
         self.assertEqual(run.results.get(metric=self.numeric).numeric_value, Decimal(0))
         self.assertEqual(run.results.get(metric=self.text).text_value, '5-')
@@ -205,10 +208,31 @@ class MeasurementGroupWorkflowTests(TestCase):
 
     def test_repeated_group_entries_have_separate_results(self):
         self.add(**{f'metric_{self.numeric.pk}': '1'})
-        self.add(**{f'metric_{self.numeric.pk}': '2'})
+        response = self.add(**{f'metric_{self.numeric.pk}': '2'})
         self.assertEqual(self.card.runs.count(), 2)
         self.assertEqual(list(Result.objects.filter(metric=self.numeric).values_list('numeric_value', flat=True)),
                          [Decimal(1), Decimal(2)])
+        run = self.card.runs.latest('pk')
+        self.assertRedirects(
+            response, reverse('test_detail', args=[self.card.pk])
+            + f'#measurement-run-{run.pk}',
+        )
+
+    def test_editing_second_group_returns_to_its_section(self):
+        self.make_run()
+        run = self.make_run()
+        number = Result.objects.create(
+            test_run=run, metric=self.numeric, numeric_value=1,
+        )
+        response = self.client.post(self.edit_url(run), {
+            f'result_{number.pk}': '2', f'metric_{self.text.pk}': 'Готово',
+        })
+        self.assertRedirects(
+            response, reverse('test_detail', args=[self.card.pk])
+            + f'#measurement-run-{run.pk}',
+        )
+        number.refresh_from_db()
+        self.assertEqual(number.numeric_value, Decimal(2))
 
     def test_reader_and_completed_experiment_reject_mutations(self):
         run = self.make_run()

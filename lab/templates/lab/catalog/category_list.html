@@ -20,7 +20,7 @@
   Все материалы распределены по категориям. Классификацию можно уточнить в карточке материала.
   {% endif %}
 </div>
-<section class="panel" data-live-results>
+<section class="panel registry-panel" data-live-results>
   <form class="filter-bar" data-live-search method="get">
     <div class="search-field">
       <svg><use href="#i-search"/></svg>
@@ -28,10 +28,10 @@
     </div>
     <button class="button small">Найти</button>
     {% if q %}<a class="text-link" href="{% url 'category_list' %}">Сбросить</a>{% endif %}
-  </form>
+  {% include 'lab/includes/workspace_expand.html' %}</form>
   <div class="table-scroll">
     <table>
-      <thead><tr><th>КАТЕГОРИЯ</th><th>ОПИСАНИЕ</th><th>МАТЕРИАЛОВ</th></tr></thead>
+      <thead><tr><th scope="col">КАТЕГОРИЯ</th><th scope="col">ОПИСАНИЕ</th><th scope="col">МАТЕРИАЛОВ</th></tr></thead>
       <tbody>
         {% for category in categories %}
         <tr>

@@ -1,10 +1,69 @@
-{% extends 'lab/base.html' %}{% load lab_tags %}{% block title %}{{ card.identifier }}{% endblock %}{% block breadcrumb %}Эксперименты<span class="breadcrumb-separator">/</span>{{ card.identifier }}{% endblock %}{% block content %}
-<a class="back-link" href="{% url 'test_list' %}">← Все эксперименты</a><div class="page-heading"><div><h1 class="mono">{{ card.identifier|default:card.pk }}</h1><p>{{ card.title }}</p><div class="detail-meta"><span>Дата эксперимента: <strong>{{ card.recorded_tested_on|date:'d.m.Y'|default:'Не указана' }}</strong></span>{% include 'lab/includes/status.html' with status=card.status %}</div></div>{% if can_write and card.status != 'completed' %}<div class="heading-actions">{% if can_edit_card %}<a class="button" href="{% url 'test_edit' card.pk %}">Редактировать</a><a class="button" href="{% url 'test_status' card.pk %}">Изменить статус</a>{% endif %}<a class="button primary" href="{% url 'result_add' card.pk %}"><svg><use href="#i-plus"/></svg>Добавить группу измерений</a></div>{% endif %}</div>
-{% if card.status == 'completed' %}<div class="info-note">Эксперимент завершён. Карточка и результаты сохранены для просмотра.</div>{% endif %}
-<div class="detail-grid"><div><div class="page-heading"><h2>Группы измерений</h2></div>
-{% for run in runs %}<section class="panel"><div class="panel-heading"><div><h2>{{ run.display_name }}</h2><p>Метод: {{ run.method_code|default:'не указан' }}</p></div>{% if can_write and card.status != 'completed' and run.measurement_group_id %}<a class="button small" href="{% url 'experiment_group_edit' card.pk run.pk %}">Заполнить показатели</a>{% else %}<span class="mono muted">#{{ run.pk }}</span>{% endif %}</div><div class="table-scroll"><table><thead><tr><th>ПОКАЗАТЕЛЬ</th><th>РЕЗУЛЬТАТ</th><th>ЕДИНИЦА</th><th>ПРОИСХОЖДЕНИЕ</th></tr></thead><tbody>{% for result in run.results.all %}<tr><td>{{ result.metric.label }}</td><td class="mono">{{ result.display_value|display_value }}{% if result.value_state != 'present' %}<div class="cell-subtitle">{{ result.get_value_state_display }}{% if result.not_measured_reason %}: {{ result.not_measured_reason }}{% endif %}</div>{% endif %}</td><td>{{ result.metric.unit_code|default:'—' }}</td><td>{{ result.get_origin_display }}{% if result.source_cell %}<div class="cell-subtitle"><a href="{% url 'source_detail' result.source_cell.sheet.file_id %}?sheet={{ result.source_cell.sheet_id }}&amp;cell={{ result.source_cell.address|urlencode }}#cell-{{ result.source_cell.pk }}">{{ result.source_cell }}</a></div>{% endif %}{% if result.calculation_code %}<div class="cell-subtitle">{{ result.calculation_code }}</div>{% endif %}</td></tr>{% endfor %}{% for metric in run.missing_metrics %}<tr><td>{{ metric.label }}</td><td class="muted">Не заполнено</td><td>{{ metric.unit_code|default:'—' }}</td><td>—</td></tr>{% endfor %}</tbody></table></div>{% if run.observations.all %}<div class="panel-body"><h3>{{ ui_text.observations }}</h3>{% for observation in run.observations.all %}<div class="observation"><p>{{ observation.text_value }}</p><small>Наблюдение {{ observation.sequence_no }} · Записано дословно</small></div>{% endfor %}</div>{% endif %}</section>{% empty %}<section class="panel"><div class="empty-state"><svg><use href="#i-flask"/></svg><h3>Результаты впереди</h3><p>Добавьте группу измерений, чтобы записать показатели и наблюдения.</p>{% if can_write and card.status != 'completed' %}<a class="button" href="{% url 'result_add' card.pk %}">{{ ui_text.result_add }}</a>{% endif %}</div></section>{% endfor %}
-{% if can_write and card.status != 'completed' %}<div class="heading-actions" style="margin-bottom:24px">{% if runs %}<a class="button" href="{% url 'observation_add' card.pk %}">+ {{ ui_text.observation_add }}</a>{% endif %}<a class="button" href="{% url 'conditioning_add' card.pk %}">+ {{ ui_text.conditioning_add }}</a></div>{% endif %}
-<section class="panel"><div class="panel-heading"><div><h2>Выдержка и кондиционирование</h2><p>Обработка, записанная в карточке эксперимента</p></div></div><div class="table-scroll"><table><thead><tr><th>ЦЕЛЬ</th><th>ОБРАБОТКА</th><th>ДЛИТЕЛЬНОСТЬ</th><th>ТЕМПЕРАТУРА, °C</th></tr></thead><tbody>{% for treatment in conditioning_events %}<tr><td>{{ treatment.get_target_kind_display }}</td><td>{{ treatment.get_kind_display }}</td><td>{{ treatment.duration_value|display_value }} {{ treatment.duration_unit|default:'' }}</td><td>{{ treatment.temperature_c|display_value }}</td></tr>{% empty %}<tr><td colspan="4" class="muted">Обработка не указана</td></tr>{% endfor %}</tbody></table></div></section>
-<section class="panel"><div class="panel-heading"><h2>История карточки</h2></div><div class="panel-body">{% include 'lab/includes/events.html' %}</div></section></div>
-<aside><section class="panel"><div class="panel-heading"><h2>{{ ui_text.recipe_links }}</h2></div><div class="panel-body">{% for match in matches %}<a class="record-link mono" href="{% url 'recipe_detail' match.recipe_version_id %}">{{ match.recipe_version.version_label }} ↗</a><p style="margin:8px 0">{% include 'lab/includes/status.html' with status=match.status %}</p>{% empty %}<p class="muted">Связь еще не установлена.</p>{% endfor %}</div></section><section class="panel"><div class="panel-heading"><h2>О карточке</h2></div><div class="panel-body"><dl class="meta-list"><div><dt>Автор</dt><dd>{{ card.created_by.full_name|default:'Не указан' }}</dd></div><div><dt>Создана в системе</dt><dd>{{ card.created_at|date:'d.m.Y, H:i' }}</dd></div><div><dt>Записанная дата изготовления</dt><dd>{{ card.recorded_manufactured_on|date:'d.m.Y'|default:'Не указана' }}</dd></div><div><dt>Источник</dt><dd>{% if card.source_sheet %}<a class="record-link" href="{% url 'source_detail' card.source_sheet.file_id %}?sheet={{ card.source_sheet_id }}">{{ card.source_sheet }}</a>{% else %}Ручной ввод{% endif %}</dd></div>{% if card.notes %}<div><dt>Примечание / вывод</dt><dd class="preserve-text">{{ card.notes }}</dd></div>{% endif %}</dl></div></section></aside></div>
+{% extends 'lab/base.html' %}
+{% load lab_tags %}
+{% block title %}{{ card.identifier }}{% endblock %}
+{% block breadcrumb %}Эксперименты<span class="breadcrumb-separator">/</span>{{ card.identifier }}{% endblock %}
+{% block content %}
+<div class="experiment-workspace" data-workspace>
+  <a class="back-link" href="{% url 'test_list' %}">← Все эксперименты</a>
+  <div class="page-heading">
+    <div>
+      <div class="experiment-title-line"><h1 class="mono">{{ card.identifier|default:card.pk }}</h1>{% include 'lab/includes/status.html' with status=card.status %}</div>
+      {% if card.title %}<p>{{ card.title }}</p>{% endif %}
+    </div>
+    <div class="heading-actions">
+      {% if can_write and card.status != 'completed' %}
+        {% if can_edit_card %}<a class="button" href="{% url 'test_edit' card.pk %}">Редактировать</a><a class="button" href="{% url 'test_status' card.pk %}">Изменить статус</a>{% endif %}
+        <a class="button primary" href="{% url 'result_add' card.pk %}"><svg><use href="#i-plus"/></svg>Добавить группу измерений</a>
+      {% endif %}
+      <button class="button small" type="button" data-workspace-fullscreen aria-pressed="false" hidden>На весь экран</button>
+    </div>
+  </div>
+  <section class="experiment-info-strip" id="experiment-info" data-workspace-section aria-label="О карточке">
+    <dl class="experiment-meta-strip">
+      <div><dt>Дата эксперимента</dt><dd>{{ card.recorded_tested_on|date:'d.m.Y'|default:'Не указана' }}</dd></div>
+      <div><dt>Дата изготовления</dt><dd>{{ card.recorded_manufactured_on|date:'d.m.Y'|default:'Не указана' }}</dd></div>
+      <div><dt>Автор</dt><dd>{{ card.created_by.full_name|default:'Не указан' }}</dd></div>
+      <div><dt>Создана в системе</dt><dd>{{ card.created_at|date:'d.m.Y, H:i' }}</dd></div>
+      <div><dt>Источник</dt><dd>{% if card.source_sheet %}<a href="{% url 'source_detail' card.source_sheet.file_id %}?sheet={{ card.source_sheet_id }}">{{ card.source_sheet }} ↗</a>{% else %}Ручной ввод{% endif %}</dd></div>
+      <div class="experiment-info-recipes"><dt>{{ ui_text.recipe_links }}</dt><dd>{% for match in matches %}<span class="experiment-recipe-match"><a class="recipe-chip mono" href="{% url 'recipe_detail' match.recipe_version_id %}">{{ match.recipe_version.version_label }} ↗</a>{% include 'lab/includes/status.html' with status=match.status %}</span>{% empty %}Связь не установлена{% endfor %}</dd></div>
+    </dl>
+    {% if card.notes %}<div class="experiment-info-notes"><strong>Примечание / вывод</strong><div class="preserve-text">{{ card.notes }}</div></div>{% endif %}
+  </section>
+  {% if card.status == 'completed' %}<div class="info-note">Эксперимент завершён. Карточка и результаты сохранены для просмотра.</div>{% endif %}
+  <div class="workspace-grid experiment-groups">
+    {% for run in runs %}
+    <section class="panel experiment-results" id="measurement-run-{{ run.pk }}" data-workspace-section>
+      <div class="panel-heading">
+        <div class="experiment-group-heading"><h2>{{ run.display_name }}</h2><p>Метод: {{ run.method_code|default:'не указан' }}</p></div>
+        <div class="heading-actions">{% if can_write and card.status != 'completed' %}{% if run.measurement_group_id %}<a class="button small" href="{% url 'experiment_group_edit' card.pk run.pk %}" aria-label="Заполнить показатели">Заполнить</a>{% endif %}<a class="button small" href="{% url 'observation_add' card.pk %}?run={{ run.pk }}">+ {{ ui_text.observation_add }}</a>{% else %}<span class="mono muted">#{{ run.pk }}</span>{% endif %}</div>
+      </div>
+      <div class="table-scroll workspace-table-scroll">
+        <table class="experiment-results-table">
+          <thead><tr><th scope="col">Показатель</th><th scope="col">Результат</th><th scope="col">Происхождение</th></tr></thead>
+          <tbody>
+            {% for result in run.results.all %}
+            <tr>
+              <td role="rowheader">{{ result.metric.label }}{% if result.metric.unit_code %}<span class="experiment-result-unit">, {{ result.metric.unit_code }}</span>{% endif %}</td>
+              <td class="mono"><span title="{{ result.display_value|display_value }}">{{ result.display_value|decimal_display }}</span>{% if result.value_state != 'present' %}<div class="cell-subtitle">{{ result.get_value_state_display }}{% if result.not_measured_reason %}: {{ result.not_measured_reason }}{% endif %}</div>{% endif %}</td>
+              <td class="experiment-origin"><span>{{ result.get_origin_display }}</span>{% if result.source_cell %} <a href="{% url 'source_detail' result.source_cell.sheet.file_id %}?sheet={{ result.source_cell.sheet_id }}&amp;cell={{ result.source_cell.address|urlencode }}#cell-{{ result.source_cell.pk }}">{{ result.source_cell }}</a>{% endif %}{% if result.calculation_code %}<div class="cell-subtitle">{{ result.calculation_code }}</div>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            {% for metric in run.missing_metrics %}<tr><td role="rowheader">{{ metric.label }}{% if metric.unit_code %}<span class="experiment-result-unit">, {{ metric.unit_code }}</span>{% endif %}</td><td class="muted">Не заполнено</td><td>—</td></tr>{% endfor %}
+          </tbody>
+        </table>
+        {% if run.observations.all %}<div class="panel-body experiment-observations"><h3>{{ ui_text.observations }}</h3>{% for observation in run.observations.all %}<div class="observation"><p>{{ observation.text_value }}</p><small>Наблюдение {{ observation.sequence_no }} · Записано дословно</small></div>{% endfor %}</div>{% endif %}
+      </div>
+    </section>
+    {% empty %}
+    <section class="panel" id="experiment-measurements" data-workspace-section><div class="empty-state"><svg><use href="#i-flask"/></svg><h3>Результаты впереди</h3><p>Добавьте группу измерений, чтобы записать показатели и наблюдения.</p>{% if can_write and card.status != 'completed' %}<a class="button" href="{% url 'result_add' card.pk %}">{{ ui_text.result_add }}</a>{% endif %}</div></section>
+    {% endfor %}
+  </div>
+  <div class="workspace-grid experiment-support">
+    <section class="panel" id="experiment-conditioning" data-workspace-section>
+      <div class="panel-heading"><h2>Выдержка и кондиционирование</h2>{% if can_write and card.status != 'completed' %}<a class="button small" href="{% url 'conditioning_add' card.pk %}">+ {{ ui_text.conditioning_add }}</a>{% endif %}</div>
+      <div class="table-scroll workspace-table-scroll"><table class="experiment-conditioning-table"><thead><tr><th scope="col">Цель</th><th scope="col">Обработка</th><th scope="col">Длительность</th><th scope="col">Температура, °C</th></tr></thead><tbody>{% for treatment in conditioning_events %}<tr><td>{{ treatment.get_target_kind_display }}</td><td>{{ treatment.get_kind_display }}</td><td>{{ treatment.duration_value|display_value }} {{ treatment.duration_unit|default:'' }}</td><td>{{ treatment.temperature_c|display_value }}</td></tr>{% empty %}<tr><td colspan="4" class="muted">Обработка не указана</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+    <section class="panel" id="experiment-history" data-workspace-section><div class="panel-heading"><h2>История карточки</h2></div><div class="panel-body workspace-table-scroll">{% include 'lab/includes/events.html' %}</div></section>
+  </div>
+</div>
 {% endblock %}

@@ -1,0 +1,81 @@
+/* The overview is a compact index of records and recent work. */
+.overview-workspace { container-type: inline-size; }
+.overview-panels {
+  --workspace-section-height: calc(100dvh - 310px);
+  display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  align-items: start; gap: 12px;
+}
+.overview-panels > .panel { min-width: 0; margin-bottom: 0; }
+.overview-stats {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 12px; border: 1px solid var(--amai-line);
+  border-radius: 8px; background: var(--amai-surface); overflow: hidden;
+}
+.amai-ui .overview-stat {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 13px 16px; color: var(--amai-ink);
+}
+.overview-stat + .overview-stat { border-left: 1px solid var(--amai-line); }
+.overview-stat:hover { background: var(--amai-pale); }
+.overview-stat > span { color: var(--amai-muted); font-size: 12px; }
+.overview-stat > strong {
+  margin-left: auto; font-size: 22px; font-weight: 650;
+  font-variant-numeric: tabular-nums; letter-spacing: -.5px;
+}
+.overview-stat > svg { width: 14px; height: 14px; color: #92a0b2; }
+.overview-stat-active > strong { color: var(--amai-primary); }
+.overview-experiments { table-layout: fixed; min-width: 560px; }
+.overview-experiments th:first-child { width: 28%; }
+.overview-experiments th:nth-child(2) { width: 14%; }
+.overview-experiments th:nth-child(3) { width: 20%; }
+.overview-experiments th:nth-child(4) { width: 17%; }
+.overview-experiments th:nth-child(5) { width: 21%; }
+.overview-experiments td { overflow-wrap: anywhere; }
+.overview-workspace .cell-subtitle { max-width: 480px; line-height: 1.4; }
+.history-table { min-width: 780px; }
+.history-table th:first-child { width: 148px; }
+.history-table td { vertical-align: top; }
+.history-date { color: var(--amai-muted); white-space: nowrap; }
+.history-summary { font-size: 13px; font-weight: 500; line-height: 1.5; }
+.history-table .event-meta { margin: 0; font-size: inherit; }
+.history-action {
+  display: inline-block; padding: 3px 6px; border-radius: 4px;
+  background: var(--amai-bg); color: var(--amai-muted);
+  white-space: nowrap; font-size: 11px;
+}
+.history-table .history-diff { margin-top: 2px; }
+.history-table .history-diff > summary {
+  min-height: var(--amai-control); padding: 3px 0; font-size: 11px;
+}
+.history-diff .diff-table { margin-top: 6px; }
+.history-diff .diff-table table { min-width: 400px; }
+.history-diff .diff-table td { white-space: normal; }
+.history-diff .diff-table .preserve-text { line-height: 1.5; }
+.overview-events-table { table-layout: fixed; min-width: 360px; }
+.overview-events-table th:first-child { width: 88px; }
+.overview-events-table th:last-child { width: 105px; }
+.overview-events-table td { overflow-wrap: anywhere; }
+.overview-event-date { font-size: 11px; }
+.overview-event-date > span { display: block; }
+.overview-event-action {
+  display: block; margin-top: 2px; color: var(--amai-muted); font-size: 10px;
+}
+
+@container (max-width: 950px) {
+  .overview-panels { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 1000px) {
+  .overview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-stat:nth-child(3) { border-left: 0; }
+  .overview-stat:nth-child(n + 3) { border-top: 1px solid var(--amai-line); }
+}
+@media (max-width: 480px) {
+  .amai-ui .overview-stat { gap: 6px; padding: 10px; }
+  .overview-stat > span { font-size: 11px; }
+  .overview-stat > strong { font-size: 20px; }
+  .overview-stat > svg { display: none; }
+}
+@media (pointer: coarse) {
+  .amai-ui .overview-stat { min-height: 52px; }
+}
