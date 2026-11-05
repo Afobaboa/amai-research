@@ -1,12 +1,13 @@
 PYTHON ?= python3
 PORT ?= 8000
 
-.PHONY: help setup setup-browser init-data upgrade-data init-demo upgrade-demo dev check test test-backend test-frontend test-frontend-headed
+.PHONY: help setup setup-browser init-data upgrade-data init-demo upgrade-demo dev prod check test test-backend test-frontend test-frontend-headed
 
 help:
 	@echo "make setup                Python, миграции и данные из Excel"
 	@echo "make dev                  Фронт и бэкенд на http://127.0.0.1:8000"
 	@echo "make dev PORT=8001        Запуск на другом порту"
+	@echo "make prod                 Обновить main и развернуть продакшен на этом сервере"
 	@echo "make init-data            Миграции, сотрудники и реальные зимние рецептуры"
 	@echo "make upgrade-data         Копия базы, миграции и замена демоданных"
 	@echo "make setup-browser        Playwright и Chromium для UI-тестов"
@@ -34,6 +35,9 @@ upgrade-demo: upgrade-data
 
 dev:
 	$(PYTHON) scripts/local.py dev --port $(PORT)
+
+prod:
+	$(PYTHON) scripts/prod.py
 
 check:
 	$(PYTHON) scripts/local.py check

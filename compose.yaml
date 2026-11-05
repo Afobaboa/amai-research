@@ -41,6 +41,12 @@ services:
   web:
     build: .
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "/app/deploy/check_web.py"]
+      interval: 5s
+      timeout: 10s
+      start_period: 30s
+      retries: 12
     environment: *app_environment
     depends_on:
       db:
