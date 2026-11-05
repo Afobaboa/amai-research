@@ -28,7 +28,10 @@
   flex-shrink: 0; color: var(--amai-muted); font-size: 10px; font-weight: 500;
 }
 .experiment-info-notes .preserve-text { min-width: 0; }
-.experiment-groups { --workspace-section-height: 170px; }
+.experiment-groups { --workspace-section-height: none; }
+.experiment-groups.experiment-masonry {
+  grid-auto-rows: 1px; row-gap: 0;
+}
 .experiment-support { --workspace-section-height: 140px; margin-top: 12px; }
 .experiment-groups .panel, .experiment-support .panel { margin: 0; }
 .experiment-groups .panel-heading, .experiment-support .panel-heading {
@@ -179,4 +182,7 @@
 }
 @container (min-width: 1000px) {
   .experiment-groups { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media print {
+  .experiment-groups.experiment-masonry { display: block; }
 }

@@ -65,6 +65,15 @@
         requestAnimationFrame(() => target.scrollIntoView({ block: 'nearest' }));
     }
     function fitWorkspaceTables() {
+        document.querySelectorAll('.experiment-groups').forEach(grid => {
+            grid.classList.add('experiment-masonry');
+            Array.from(grid.children).forEach(card => {
+                if (!(card instanceof HTMLElement))
+                    return;
+                const height = Math.ceil(card.getBoundingClientRect().height + 12);
+                card.style.gridRowEnd = `span ${height}`;
+            });
+        });
         const desktop = window.matchMedia('(min-width: 1101px)').matches;
         document.querySelectorAll('[data-live-results] > .table-scroll, .workspace-table-scroll').forEach(scroll => {
             if (!scroll.getClientRects().length)
@@ -100,6 +109,10 @@
         previousWidth = width;
         scheduleFit();
     }).observe(document.getElementById('main-content'));
+    const measurementObserver = new ResizeObserver(scheduleFit);
+    document.querySelectorAll('.experiment-groups > .panel').forEach(card => {
+        measurementObserver.observe(card);
+    });
     new MutationObserver(scheduleFit).observe(document.getElementById('main-content'), {
         childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'],
     });
